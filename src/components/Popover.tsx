@@ -111,7 +111,7 @@ export function Popover() {
                 </div>
               )}
 
-              {(usageData.seven_day || usageData.seven_day_opus || usageData.seven_day_sonnet) && (
+              {(usageData.seven_day || usageData.seven_day_opus || usageData.seven_day_sonnet || usageData.seven_day_oauth_apps || usageData.seven_day_cowork) && (
                 <div className="usage-section">
                   <h2 className="section-heading">Weekly Limits</h2>
                   {usageData.seven_day && (
@@ -137,6 +137,24 @@ export function Popover() {
                         label="Sonnet Only"
                         percentage={usageData.seven_day_sonnet.utilization}
                         resetAt={usageData.seven_day_sonnet.resets_at}
+                        showRemaining={show_remaining}
+                      />
+                    )}
+                  {usageData.seven_day_oauth_apps &&
+                    usageData.seven_day_oauth_apps.utilization > 0 && (
+                      <UsageBar
+                        label="OAuth Apps"
+                        percentage={usageData.seven_day_oauth_apps.utilization}
+                        resetAt={usageData.seven_day_oauth_apps.resets_at}
+                        showRemaining={show_remaining}
+                      />
+                    )}
+                  {usageData.seven_day_cowork &&
+                    usageData.seven_day_cowork.utilization > 0 && (
+                      <UsageBar
+                        label="Cowork"
+                        percentage={usageData.seven_day_cowork.utilization}
+                        resetAt={usageData.seven_day_cowork.resets_at}
                         showRemaining={show_remaining}
                       />
                     )}
