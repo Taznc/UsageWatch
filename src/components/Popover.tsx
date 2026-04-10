@@ -13,7 +13,7 @@ export function Popover() {
   const { state, dispatch } = useApp();
   const { show_remaining } = state.settings;
   const [showHistory, setShowHistory] = useState(false);
-  const [pinned, setPinned] = useState(false);
+  const [pinned, setPinned] = useState(true);
 
   const hideWindow = () => getCurrentWindow().hide();
   const startDrag = (e: React.MouseEvent) => {
