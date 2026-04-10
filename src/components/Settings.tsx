@@ -50,15 +50,17 @@ export function Settings() {
   // Build preview of what the menu bar will look like
   const buildPreview = (): string => {
     const parts: string[] = [];
-    if (trayFormat.show_session_pct) {
-      let s = "S:42%";
-      if (trayFormat.show_session_timer) s += " 2h9m";
-      parts.push(s);
+    if (trayFormat.show_session_pct || trayFormat.show_session_timer) {
+      const sub: string[] = [];
+      if (trayFormat.show_session_pct) sub.push("S:42%");
+      if (trayFormat.show_session_timer) sub.push("2h9m");
+      parts.push(sub.join(" "));
     }
-    if (trayFormat.show_weekly_pct) {
-      let s = "W:85%";
-      if (trayFormat.show_weekly_timer) s += " Tue";
-      parts.push(s);
+    if (trayFormat.show_weekly_pct || trayFormat.show_weekly_timer) {
+      const sub: string[] = [];
+      if (trayFormat.show_weekly_pct) sub.push("W:85%");
+      if (trayFormat.show_weekly_timer) sub.push("Tue");
+      parts.push(sub.join(" "));
     }
     if (trayFormat.show_sonnet_pct) parts.push("So:8%");
     if (trayFormat.show_opus_pct) parts.push("Op:15%");

@@ -129,36 +129,44 @@ fn update_tray_title(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
     let mut segments: Vec<String> = Vec::new();
 
     // Session segment
-    if format.show_session_pct {
+    if format.show_session_pct || format.show_session_timer {
         if let Some(ref fh) = data.five_hour {
-            let mut s = format!("S:{}%", fh.utilization.round() as i32);
+            let mut parts: Vec<String> = Vec::new();
+            if format.show_session_pct {
+                parts.push(format!("S:{}%", fh.utilization.round() as i32));
+            }
             if format.show_session_timer {
                 if let Some(ref reset) = fh.resets_at {
                     let countdown = format_countdown(reset);
                     if !countdown.is_empty() {
-                        s.push(' ');
-                        s.push_str(&countdown);
+                        parts.push(countdown);
                     }
                 }
             }
-            segments.push(s);
+            if !parts.is_empty() {
+                segments.push(parts.join(" "));
+            }
         }
     }
 
     // Weekly segment
-    if format.show_weekly_pct {
+    if format.show_weekly_pct || format.show_weekly_timer {
         if let Some(ref sd) = data.seven_day {
-            let mut s = format!("W:{}%", sd.utilization.round() as i32);
+            let mut parts: Vec<String> = Vec::new();
+            if format.show_weekly_pct {
+                parts.push(format!("W:{}%", sd.utilization.round() as i32));
+            }
             if format.show_weekly_timer {
                 if let Some(ref reset) = sd.resets_at {
                     let countdown = format_countdown(reset);
                     if !countdown.is_empty() {
-                        s.push(' ');
-                        s.push_str(&countdown);
+                        parts.push(countdown);
                     }
                 }
             }
-            segments.push(s);
+            if !parts.is_empty() {
+                segments.push(parts.join(" "));
+            }
         }
     }
 
