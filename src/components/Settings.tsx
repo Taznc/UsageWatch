@@ -149,6 +149,7 @@ export function Settings() {
               className="btn primary"
               onClick={testAndSave}
               disabled={testing}
+              style={{ marginBottom: 14 }}
             >
               {testing ? "Testing..." : "Test & Save"}
             </button>
