@@ -16,6 +16,11 @@ export function Popover() {
   const [pinned, setPinned] = useState(false);
 
   const hideWindow = () => getCurrentWindow().hide();
+  const startDrag = (e: React.MouseEvent) => {
+    // Only drag from the header background, not from buttons
+    if ((e.target as HTMLElement).closest("button")) return;
+    getCurrentWindow().startDragging();
+  };
 
   // Hide window when it loses focus (clicking outside) — unless pinned
   useEffect(() => {
@@ -30,8 +35,8 @@ export function Popover() {
 
   return (
     <div className="popover">
-      <div className="popover-header" data-tauri-drag-region>
-        <h1 className="popover-title" data-tauri-drag-region>Claude Usage</h1>
+      <div className="popover-header" onMouseDown={startDrag}>
+        <h1 className="popover-title">Claude Usage</h1>
         <div className="popover-actions">
           <button
             className={`icon-btn pin-btn ${pinned ? "active" : ""}`}

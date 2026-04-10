@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useApp } from "../context/AppContext";
 import { formatPollInterval } from "../utils/format";
 import { DebugPanel } from "./DebugPanel";
@@ -74,7 +75,9 @@ export function Settings() {
 
   return (
     <div className="settings">
-      <div className="settings-header" data-tauri-drag-region>
+      <div className="settings-header" onMouseDown={(e) => {
+        if (!(e.target as HTMLElement).closest("button")) getCurrentWindow().startDragging();
+      }}>
         <button
           className="icon-btn back-btn"
           onClick={() => dispatch({ type: "SET_VIEW", view: "popover" })}
