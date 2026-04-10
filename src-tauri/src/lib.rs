@@ -17,9 +17,7 @@ pub fn run() {
     let poll_interval = Arc::new(Mutex::new(60u64));
     let poll_interval_clone = poll_interval.clone();
 
-    // Create credential cache and load from keychain once at startup
     let cache = Arc::new(CredentialsCache::new());
-    cache.load_from_keychain();
     let cache_for_polling = cache.clone();
 
     tauri::Builder::default()
@@ -46,6 +44,7 @@ pub fn run() {
                 )
                 .build(),
         )
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
@@ -68,6 +67,9 @@ pub fn run() {
         ])
         .setup(move |app| {
             let handle = app.handle();
+
+            // Load saved credentials from store file into memory cache
+            commands::credentials::load_credentials_from_store(handle, &cache);
 
             // Build tray menu
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;

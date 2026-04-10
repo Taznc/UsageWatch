@@ -1,9 +1,47 @@
 use std::sync::Arc;
+use tauri::AppHandle;
+use tauri_plugin_store::StoreExt;
 use crate::credentials_cache::CredentialsCache;
 use crate::models::Organization;
 
+fn save_to_store(app: &AppHandle, key: &str, value: &str) -> Result<(), String> {
+    let store = app
+        .store("credentials.json")
+        .map_err(|e| format!("Store error: {}", e))?;
+    store.set(key, serde_json::json!(value));
+    store.save().map_err(|e| format!("Store save error: {}", e))
+}
+
+fn load_from_store(app: &AppHandle, key: &str) -> Option<String> {
+    let store = app.store("credentials.json").ok()?;
+    store.get(key).and_then(|v| v.as_str().map(|s| s.to_string()))
+}
+
+fn delete_from_store(app: &AppHandle, key: &str) -> Result<(), String> {
+    let store = app
+        .store("credentials.json")
+        .map_err(|e| format!("Store error: {}", e))?;
+    let _ = store.delete(key);
+    store.save().map_err(|e| format!("Store save error: {}", e))
+}
+
+/// Called once at startup to load credentials from the store file into memory
+pub fn load_credentials_from_store(app: &AppHandle, cache: &CredentialsCache) {
+    if let Some(key) = load_from_store(app, "session_key") {
+        cache.set_session_key(key);
+    }
+    if let Some(id) = load_from_store(app, "org_id") {
+        cache.set_org_id(id);
+    }
+}
+
 #[tauri::command]
-pub fn save_session_key(key: String, cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<(), String> {
+pub fn save_session_key(
+    app: AppHandle,
+    key: String,
+    cache: tauri::State<'_, Arc<CredentialsCache>>,
+) -> Result<(), String> {
+    save_to_store(&app, "session_key", &key)?;
     cache.set_session_key(key);
     Ok(())
 }
@@ -14,13 +52,22 @@ pub fn get_session_key(cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result
 }
 
 #[tauri::command]
-pub fn delete_session_key(cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<(), String> {
-    cache.delete_session_key();
+pub fn delete_session_key(
+    app: AppHandle,
+    cache: tauri::State<'_, Arc<CredentialsCache>>,
+) -> Result<(), String> {
+    delete_from_store(&app, "session_key")?;
+    cache.clear_session_key();
     Ok(())
 }
 
 #[tauri::command]
-pub fn save_org_id(org_id: String, cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<(), String> {
+pub fn save_org_id(
+    app: AppHandle,
+    org_id: String,
+    cache: tauri::State<'_, Arc<CredentialsCache>>,
+) -> Result<(), String> {
+    save_to_store(&app, "org_id", &org_id)?;
     cache.set_org_id(org_id);
     Ok(())
 }
