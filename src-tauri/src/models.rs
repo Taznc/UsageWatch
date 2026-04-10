@@ -63,9 +63,20 @@ pub struct CreditGrant {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BundlesInfo {
+    #[serde(default)]
+    pub purchases_reset_at: Option<String>,
+    #[serde(default)]
+    pub bundle_paid_this_month_minor_units: f64,
+    #[serde(default)]
+    pub bundle_monthly_cap_minor_units: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BillingInfo {
     pub prepaid_credits: Option<PrepaidCredits>,
     pub credit_grant: Option<CreditGrant>,
+    pub bundles: Option<BundlesInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

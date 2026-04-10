@@ -40,9 +40,16 @@ export interface CreditGrant {
   currency: string | null;
 }
 
+export interface BundlesInfo {
+  purchases_reset_at: string | null;
+  bundle_paid_this_month_minor_units: number;
+  bundle_monthly_cap_minor_units: number;
+}
+
 export interface BillingInfo {
   prepaid_credits: PrepaidCredits | null;
   credit_grant: CreditGrant | null;
+  bundles: BundlesInfo | null;
 }
 
 export interface Organization {

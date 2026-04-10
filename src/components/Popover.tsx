@@ -206,6 +206,11 @@ export function Popover() {
                         <span>${(usageData.extra_usage.used_credits / 100).toFixed(2)} spent</span>
                         <span>${(usageData.extra_usage.monthly_limit / 100).toFixed(2)} / mo limit</span>
                       </div>
+                      {billing?.bundles?.purchases_reset_at && (
+                        <div className="extra-usage-reset">
+                          Resets {new Date(billing.bundles.purchases_reset_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

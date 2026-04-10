@@ -1,4 +1,4 @@
-use crate::models::{BillingInfo, CreditGrant, PrepaidCredits, UsageData};
+use crate::models::{BillingInfo, BundlesInfo, CreditGrant, PrepaidCredits, UsageData};
 
 #[tauri::command]
 pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageData, String> {
@@ -84,9 +84,20 @@ pub async fn fetch_billing(session_key: String, org_id: String) -> Result<Billin
         _ => None,
     };
 
+    // Fetch bundles (for reset date)
+    let bundles_url = format!(
+        "https://claude.ai/api/organizations/{}/prepaid/bundles",
+        org_id
+    );
+    let bundles = match headers(client.get(&bundles_url)).send().await {
+        Ok(resp) if resp.status().is_success() => resp.json::<BundlesInfo>().await.ok(),
+        _ => None,
+    };
+
     Ok(BillingInfo {
         prepaid_credits,
         credit_grant,
+        bundles,
     })
 }
 
