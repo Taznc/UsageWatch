@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useUsageData } from "../hooks/useUsageData";
 import { useHistoryRecorder } from "../hooks/useHistoryRecorder";
 import { useApp } from "../context/AppContext";
@@ -12,6 +13,16 @@ export function Popover() {
   const { state, dispatch } = useApp();
   const { show_remaining } = state.settings;
   const [showHistory, setShowHistory] = useState(false);
+
+  const hideWindow = () => getCurrentWindow().hide();
+
+  // Hide window when it loses focus (clicking outside)
+  useEffect(() => {
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (!focused) hideWindow();
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
 
   // Record usage data to SQLite on each update
   useHistoryRecorder(usageData);
@@ -42,6 +53,13 @@ export function Popover() {
             title="Settings"
           >
             &#x2699;
+          </button>
+          <button
+            className="icon-btn close-btn"
+            onClick={hideWindow}
+            title="Close"
+          >
+            &#x2715;
           </button>
         </div>
       </div>

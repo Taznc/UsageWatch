@@ -77,6 +77,11 @@ body {
   background: var(--bg-card);
 }
 
+.close-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--red);
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
