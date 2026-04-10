@@ -136,8 +136,8 @@ export function Popover() {
                     <div className="usage-bar-header">
                       <span className="usage-bar-label">Extra Usage</span>
                       <span className="usage-bar-pct">
-                        ${usageData.extra_usage.used_credits.toFixed(2)} / $
-                        {usageData.extra_usage.monthly_limit.toFixed(2)}
+                        ${(usageData.extra_usage.used_credits / 100).toFixed(2)} / $
+                        {(usageData.extra_usage.monthly_limit / 100).toFixed(2)}
                       </span>
                     </div>
                     <div className="usage-bar-track">
