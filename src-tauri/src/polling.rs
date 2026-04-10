@@ -60,7 +60,7 @@ pub fn start_polling(app: &AppHandle, poll_interval: Arc<Mutex<u64>>) {
                 Ok(data) => {
                     // Update tray title with session percentage
                     if let Some(ref five_hour) = data.five_hour {
-                        let pct = five_hour.utilization_pct;
+                        let pct = five_hour.utilization;
                         update_tray_title(&app_handle, pct);
                     }
                     UsageUpdate {

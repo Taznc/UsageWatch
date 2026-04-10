@@ -1,17 +1,22 @@
 export interface UsageWindow {
-  utilization_pct: number;
-  reset_at: string | null;
+  utilization: number;
+  resets_at: string | null;
 }
 
 export interface ExtraUsage {
-  current_spending: number;
-  budget_limit: number;
+  is_enabled: boolean;
+  monthly_limit: number;
+  used_credits: number;
+  utilization: number;
 }
 
 export interface UsageData {
   five_hour: UsageWindow | null;
   seven_day: UsageWindow | null;
   seven_day_opus: UsageWindow | null;
+  seven_day_sonnet: UsageWindow | null;
+  seven_day_oauth_apps: UsageWindow | null;
+  seven_day_cowork: UsageWindow | null;
   extra_usage: ExtraUsage | null;
 }
 

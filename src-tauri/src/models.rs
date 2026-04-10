@@ -9,23 +9,33 @@ pub struct UsageData {
     #[serde(default)]
     pub seven_day_opus: Option<UsageWindow>,
     #[serde(default)]
+    pub seven_day_sonnet: Option<UsageWindow>,
+    #[serde(default)]
+    pub seven_day_oauth_apps: Option<UsageWindow>,
+    #[serde(default)]
+    pub seven_day_cowork: Option<UsageWindow>,
+    #[serde(default)]
     pub extra_usage: Option<ExtraUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageWindow {
     #[serde(default)]
-    pub utilization_pct: f64,
+    pub utilization: f64,
     #[serde(default)]
-    pub reset_at: Option<String>,
+    pub resets_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtraUsage {
     #[serde(default)]
-    pub current_spending: f64,
+    pub is_enabled: bool,
     #[serde(default)]
-    pub budget_limit: f64,
+    pub monthly_limit: f64,
+    #[serde(default)]
+    pub used_credits: f64,
+    #[serde(default)]
+    pub utilization: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

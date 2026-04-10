@@ -69,8 +69,8 @@ export function Popover() {
               {usageData.five_hour && (
                 <UsageBar
                   label="Session (5h)"
-                  percentage={usageData.five_hour.utilization_pct}
-                  resetAt={usageData.five_hour.reset_at}
+                  percentage={usageData.five_hour.utilization}
+                  resetAt={usageData.five_hour.resets_at}
                   showRemaining={show_remaining}
                 />
               )}
@@ -78,42 +78,47 @@ export function Popover() {
               {usageData.seven_day && (
                 <UsageBar
                   label="Weekly (7d)"
-                  percentage={usageData.seven_day.utilization_pct}
-                  resetAt={usageData.seven_day.reset_at}
+                  percentage={usageData.seven_day.utilization}
+                  resetAt={usageData.seven_day.resets_at}
                   showRemaining={show_remaining}
                 />
               )}
 
               {usageData.seven_day_opus &&
-                usageData.seven_day_opus.utilization_pct > 0 && (
+                usageData.seven_day_opus.utilization > 0 && (
                   <UsageBar
                     label="Opus (7d)"
-                    percentage={usageData.seven_day_opus.utilization_pct}
-                    resetAt={usageData.seven_day_opus.reset_at}
+                    percentage={usageData.seven_day_opus.utilization}
+                    resetAt={usageData.seven_day_opus.resets_at}
+                    showRemaining={show_remaining}
+                  />
+                )}
+
+              {usageData.seven_day_sonnet &&
+                usageData.seven_day_sonnet.utilization > 0 && (
+                  <UsageBar
+                    label="Sonnet (7d)"
+                    percentage={usageData.seven_day_sonnet.utilization}
+                    resetAt={usageData.seven_day_sonnet.resets_at}
                     showRemaining={show_remaining}
                   />
                 )}
 
               {usageData.extra_usage &&
-                usageData.extra_usage.budget_limit > 0 && (
+                usageData.extra_usage.is_enabled && (
                   <div className="extra-usage">
                     <div className="usage-bar-header">
                       <span className="usage-bar-label">Extra Usage</span>
                       <span className="usage-bar-pct">
-                        ${usageData.extra_usage.current_spending.toFixed(2)} / $
-                        {usageData.extra_usage.budget_limit.toFixed(2)}
+                        ${usageData.extra_usage.used_credits.toFixed(2)} / $
+                        {usageData.extra_usage.monthly_limit.toFixed(2)}
                       </span>
                     </div>
                     <div className="usage-bar-track">
                       <div
                         className="usage-bar-fill"
                         style={{
-                          width: `${Math.min(
-                            (usageData.extra_usage.current_spending /
-                              usageData.extra_usage.budget_limit) *
-                              100,
-                            100
-                          )}%`,
+                          width: `${Math.min(usageData.extra_usage.utilization, 100)}%`,
                           backgroundColor: "#8b5cf6",
                         }}
                       />

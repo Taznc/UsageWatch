@@ -32,13 +32,13 @@ export function useHistoryRecorder(usageData: UsageData | null) {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             now,
-            usageData!.five_hour?.utilization_pct ?? null,
-            usageData!.five_hour?.reset_at ?? null,
-            usageData!.seven_day?.utilization_pct ?? null,
-            usageData!.seven_day?.reset_at ?? null,
-            usageData!.seven_day_opus?.utilization_pct ?? null,
-            usageData!.extra_usage?.current_spending ?? null,
-            usageData!.extra_usage?.budget_limit ?? null,
+            usageData!.five_hour?.utilization ?? null,
+            usageData!.five_hour?.resets_at ?? null,
+            usageData!.seven_day?.utilization ?? null,
+            usageData!.seven_day?.resets_at ?? null,
+            usageData!.seven_day_opus?.utilization ?? null,
+            usageData!.extra_usage?.used_credits ?? null,
+            usageData!.extra_usage?.monthly_limit ?? null,
           ]
         );
         lastRecorded.current = now;
