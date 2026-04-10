@@ -1,58 +1,33 @@
-use keyring::Entry;
+use std::sync::Arc;
+use crate::credentials_cache::CredentialsCache;
 use crate::models::Organization;
 
-const SERVICE: &str = "claude-usage-tracker";
-const USER_SESSION_KEY: &str = "session-key";
-const USER_ORG_ID: &str = "org-id";
-
-fn get_entry(user: &str) -> Result<Entry, String> {
-    Entry::new(SERVICE, user).map_err(|e| format!("Keyring error: {}", e))
+#[tauri::command]
+pub fn save_session_key(key: String, cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<(), String> {
+    cache.set_session_key(key);
+    Ok(())
 }
 
 #[tauri::command]
-pub fn save_session_key(key: String) -> Result<(), String> {
-    let entry = get_entry(USER_SESSION_KEY)?;
-    entry
-        .set_password(&key)
-        .map_err(|e| format!("Failed to save session key: {}", e))
+pub fn get_session_key(cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<Option<String>, String> {
+    Ok(cache.get_session_key())
 }
 
 #[tauri::command]
-pub fn get_session_key() -> Result<Option<String>, String> {
-    let entry = get_entry(USER_SESSION_KEY)?;
-    match entry.get_password() {
-        Ok(key) => Ok(Some(key)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(format!("Failed to get session key: {}", e)),
-    }
+pub fn delete_session_key(cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<(), String> {
+    cache.delete_session_key();
+    Ok(())
 }
 
 #[tauri::command]
-pub fn delete_session_key() -> Result<(), String> {
-    let entry = get_entry(USER_SESSION_KEY)?;
-    match entry.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("Failed to delete session key: {}", e)),
-    }
+pub fn save_org_id(org_id: String, cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<(), String> {
+    cache.set_org_id(org_id);
+    Ok(())
 }
 
 #[tauri::command]
-pub fn save_org_id(org_id: String) -> Result<(), String> {
-    let entry = get_entry(USER_ORG_ID)?;
-    entry
-        .set_password(&org_id)
-        .map_err(|e| format!("Failed to save org ID: {}", e))
-}
-
-#[tauri::command]
-pub fn get_org_id() -> Result<Option<String>, String> {
-    let entry = get_entry(USER_ORG_ID)?;
-    match entry.get_password() {
-        Ok(id) => Ok(Some(id)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(format!("Failed to get org ID: {}", e)),
-    }
+pub fn get_org_id(cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<Option<String>, String> {
+    Ok(cache.get_org_id())
 }
 
 #[tauri::command]

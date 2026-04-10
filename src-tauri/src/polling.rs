@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use tokio::time::{interval, Duration};
 
+use crate::credentials_cache::CredentialsCache;
 use crate::models::UsageData;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -11,7 +12,7 @@ pub struct UsageUpdate {
     pub timestamp: String,
 }
 
-pub fn start_polling(app: &AppHandle, poll_interval: Arc<Mutex<u64>>) {
+pub fn start_polling(app: &AppHandle, poll_interval: Arc<Mutex<u64>>, cache: Arc<CredentialsCache>) {
     let app_handle = app.clone();
 
     tauri::async_runtime::spawn(async move {
@@ -21,35 +22,22 @@ pub fn start_polling(app: &AppHandle, poll_interval: Arc<Mutex<u64>>) {
         loop {
             let secs = { *poll_interval.lock().unwrap() };
             if secs == 0 {
-                // Polling disabled (no credentials yet)
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 continue;
             }
 
-            // Fetch credentials
-            let session_key = match keyring::Entry::new("claude-usage-tracker", "session-key") {
-                Ok(entry) => match entry.get_password() {
-                    Ok(key) => key,
-                    Err(_) => {
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        continue;
-                    }
-                },
-                Err(_) => {
+            // Read credentials from in-memory cache (no keychain access)
+            let session_key = match cache.get_session_key() {
+                Some(key) => key,
+                None => {
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
                 }
             };
 
-            let org_id = match keyring::Entry::new("claude-usage-tracker", "org-id") {
-                Ok(entry) => match entry.get_password() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        continue;
-                    }
-                },
-                Err(_) => {
+            let org_id = match cache.get_org_id() {
+                Some(id) => id,
+                None => {
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
                 }
@@ -58,10 +46,8 @@ pub fn start_polling(app: &AppHandle, poll_interval: Arc<Mutex<u64>>) {
             // Fetch usage data
             let update = match fetch_usage_internal(&session_key, &org_id).await {
                 Ok(data) => {
-                    // Update tray title with session percentage
                     if let Some(ref five_hour) = data.five_hour {
-                        let pct = five_hour.utilization;
-                        update_tray_title(&app_handle, pct);
+                        update_tray_title(&app_handle, five_hour.utilization);
                     }
                     UsageUpdate {
                         data: Some(data),
@@ -79,8 +65,8 @@ pub fn start_polling(app: &AppHandle, poll_interval: Arc<Mutex<u64>>) {
             let _ = app_handle.emit("usage-update", &update);
 
             let mut tick = interval(Duration::from_secs(secs));
-            tick.tick().await; // first tick is immediate
-            tick.tick().await; // wait for the interval
+            tick.tick().await;
+            tick.tick().await;
         }
     });
 }

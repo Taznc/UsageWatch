@@ -1,4 +1,5 @@
 mod commands;
+mod credentials_cache;
 mod models;
 mod polling;
 
@@ -9,10 +10,17 @@ use tauri::{
     Emitter, Manager,
 };
 
+use credentials_cache::CredentialsCache;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let poll_interval = Arc::new(Mutex::new(60u64));
     let poll_interval_clone = poll_interval.clone();
+
+    // Create credential cache and load from keychain once at startup
+    let cache = Arc::new(CredentialsCache::new());
+    cache.load_from_keychain();
+    let cache_for_polling = cache.clone();
 
     tauri::Builder::default()
         .plugin(
@@ -45,6 +53,7 @@ pub fn run() {
             None,
         ))
         .manage(poll_interval.clone())
+        .manage(cache.clone())
         .invoke_handler(tauri::generate_handler![
             commands::credentials::save_session_key,
             commands::credentials::get_session_key,
@@ -105,7 +114,7 @@ pub fn run() {
                 .build(app)?;
 
             // Start background polling
-            polling::start_polling(handle, poll_interval_clone);
+            polling::start_polling(handle, poll_interval_clone, cache_for_polling);
 
             Ok(())
         })
