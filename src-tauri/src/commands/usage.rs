@@ -1,4 +1,4 @@
-use crate::models::UsageData;
+use crate::models::{BillingInfo, CreditGrant, PrepaidCredits, UsageData};
 
 #[tauri::command]
 pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageData, String> {
@@ -53,6 +53,41 @@ pub async fn fetch_usage_raw(session_key: String, org_id: String) -> Result<Stri
         .text()
         .await
         .map_err(|e| format!("Failed to read response: {}", e))
+}
+
+#[tauri::command]
+pub async fn fetch_billing(session_key: String, org_id: String) -> Result<BillingInfo, String> {
+    let client = reqwest::Client::new();
+    let headers = |req: reqwest::RequestBuilder| {
+        req.header("cookie", format!("sessionKey={}", session_key))
+            .header("content-type", "application/json")
+            .header("user-agent", "Claude Usage Tracker/0.1.0")
+    };
+
+    // Fetch prepaid credits
+    let credits_url = format!(
+        "https://claude.ai/api/organizations/{}/prepaid/credits",
+        org_id
+    );
+    let prepaid_credits = match headers(client.get(&credits_url)).send().await {
+        Ok(resp) if resp.status().is_success() => resp.json::<PrepaidCredits>().await.ok(),
+        _ => None,
+    };
+
+    // Fetch credit grant
+    let grant_url = format!(
+        "https://claude.ai/api/organizations/{}/overage_credit_grant",
+        org_id
+    );
+    let credit_grant = match headers(client.get(&grant_url)).send().await {
+        Ok(resp) if resp.status().is_success() => resp.json::<CreditGrant>().await.ok(),
+        _ => None,
+    };
+
+    Ok(BillingInfo {
+        prepaid_credits,
+        credit_grant,
+    })
 }
 
 #[tauri::command]

@@ -62,6 +62,7 @@ pub fn run() {
             commands::credentials::test_connection,
             commands::usage::fetch_usage,
             commands::usage::fetch_usage_raw,
+            commands::usage::fetch_billing,
             commands::usage::fetch_status,
             set_poll_interval,
         ])

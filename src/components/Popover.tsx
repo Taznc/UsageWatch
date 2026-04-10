@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { useUsageData } from "../hooks/useUsageData";
 import { useHistoryRecorder } from "../hooks/useHistoryRecorder";
 import { useApp } from "../context/AppContext";
@@ -7,12 +8,14 @@ import { UsageBar } from "./UsageBar";
 import { HistoryChart } from "./HistoryChart";
 import { StatusIndicator } from "./StatusIndicator";
 import { formatTimestamp } from "../utils/format";
+import type { BillingInfo } from "../types/usage";
 
 export function Popover() {
   const { usageData, lastUpdated, error, isLoading, isOffline, refresh } = useUsageData();
   const { state, dispatch } = useApp();
   const { show_remaining } = state.settings;
   const [showHistory, setShowHistory] = useState(false);
+  const [billing, setBilling] = useState<BillingInfo | null>(null);
   const [pinned, setPinned] = useState(true);
 
   const hideWindow = () => getCurrentWindow().hide();
@@ -29,6 +32,25 @@ export function Popover() {
     });
     return () => { unlisten.then((fn) => fn()); };
   }, [pinned]);
+
+  // Fetch billing info on mount and every 5 minutes
+  useEffect(() => {
+    async function loadBilling() {
+      try {
+        const sessionKey = await invoke<string | null>("get_session_key");
+        const orgId = await invoke<string | null>("get_org_id");
+        if (sessionKey && orgId) {
+          const info = await invoke<BillingInfo>("fetch_billing", { sessionKey, orgId });
+          setBilling(info);
+        }
+      } catch {
+        // Non-critical — billing info is optional
+      }
+    }
+    loadBilling();
+    const interval = setInterval(loadBilling, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Record usage data to SQLite on each update
   useHistoryRecorder(usageData);
@@ -182,11 +204,35 @@ export function Popover() {
                       </div>
                       <div className="extra-usage-details">
                         <span>${(usageData.extra_usage.used_credits / 100).toFixed(2)} spent</span>
-                        <span>${(usageData.extra_usage.monthly_limit / 100).toFixed(2)} limit</span>
+                        <span>${(usageData.extra_usage.monthly_limit / 100).toFixed(2)} / mo limit</span>
                       </div>
                     </div>
                   </div>
                 )}
+
+              {billing && (billing.prepaid_credits || billing.credit_grant) && (
+                <div className="usage-section">
+                  <h2 className="section-heading">Balance</h2>
+                  <div className="billing-cards">
+                    {billing.prepaid_credits && (
+                      <div className="billing-card">
+                        <span className="billing-value">
+                          ${(billing.prepaid_credits.amount / 100).toFixed(2)}
+                        </span>
+                        <span className="billing-label">Current balance</span>
+                      </div>
+                    )}
+                    {billing.credit_grant && billing.credit_grant.granted && (
+                      <div className="billing-card">
+                        <span className="billing-value credit">
+                          ${(billing.credit_grant.amount_minor_units / 100).toFixed(2)}
+                        </span>
+                        <span className="billing-label">Promotion credit</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             !error && (

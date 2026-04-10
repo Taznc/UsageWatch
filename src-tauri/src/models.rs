@@ -39,6 +39,36 @@ pub struct ExtraUsage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrepaidCredits {
+    #[serde(default)]
+    pub amount: f64,
+    #[serde(default)]
+    pub currency: Option<String>,
+    #[serde(default)]
+    pub auto_reload_settings: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditGrant {
+    #[serde(default)]
+    pub available: bool,
+    #[serde(default)]
+    pub eligible: bool,
+    #[serde(default)]
+    pub granted: bool,
+    #[serde(default)]
+    pub amount_minor_units: f64,
+    #[serde(default)]
+    pub currency: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillingInfo {
+    pub prepaid_credits: Option<PrepaidCredits>,
+    pub credit_grant: Option<CreditGrant>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
     pub uuid: String,
     pub name: String,

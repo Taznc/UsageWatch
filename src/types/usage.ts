@@ -26,6 +26,25 @@ export interface UsageUpdate {
   timestamp: string;
 }
 
+export interface PrepaidCredits {
+  amount: number;
+  currency: string | null;
+  auto_reload_settings: unknown;
+}
+
+export interface CreditGrant {
+  available: boolean;
+  eligible: boolean;
+  granted: boolean;
+  amount_minor_units: number;
+  currency: string | null;
+}
+
+export interface BillingInfo {
+  prepaid_credits: PrepaidCredits | null;
+  credit_grant: CreditGrant | null;
+}
+
 export interface Organization {
   uuid: string;
   name: string;

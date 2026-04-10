@@ -206,6 +206,38 @@ body {
   padding: 12px;
 }
 
+/* Billing cards */
+.billing-cards {
+  display: flex;
+  gap: 10px;
+}
+
+.billing-card {
+  flex: 1;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.billing-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-value.credit {
+  color: var(--green);
+}
+
+.billing-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .extra-usage-details {
   display: flex;
   justify-content: space-between;
