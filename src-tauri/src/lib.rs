@@ -110,13 +110,17 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let tauri::tray::TrayIconEvent::Click {
-                        button: tauri::tray::MouseButton::Left,
-                        position,
-                        rect,
-                        ..
-                    } = event
-                    {
+                    // Only handle left button down, ignore up/move/etc.
+                    match &event {
+                        tauri::tray::TrayIconEvent::Click {
+                            button: tauri::tray::MouseButton::Left,
+                            button_state: tauri::tray::MouseButtonState::Up,
+                            position,
+                            rect,
+                            ..
+                        } => {
+                        let position = *position;
+                        let rect = rect.clone();
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
@@ -146,6 +150,8 @@ pub fn run() {
                                 let _ = app.emit("window-opened", ());
                             }
                         }
+                        }
+                        _ => {}
                     }
                 })
                 .build(app)?;
