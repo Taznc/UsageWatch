@@ -1,0 +1,100 @@
+mod commands;
+mod models;
+mod polling;
+
+use std::sync::{Arc, Mutex};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::TrayIconBuilder,
+    Emitter, Manager,
+};
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let poll_interval = Arc::new(Mutex::new(60u64));
+    let poll_interval_clone = poll_interval.clone();
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .manage(poll_interval.clone())
+        .invoke_handler(tauri::generate_handler![
+            commands::credentials::save_session_key,
+            commands::credentials::get_session_key,
+            commands::credentials::delete_session_key,
+            commands::credentials::save_org_id,
+            commands::credentials::get_org_id,
+            commands::credentials::test_connection,
+            commands::usage::fetch_usage,
+            set_poll_interval,
+        ])
+        .setup(move |app| {
+            let handle = app.handle();
+
+            // Build tray menu
+            let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
+            let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&refresh, &settings, &quit])?;
+
+            // Build tray icon
+            TrayIconBuilder::with_id("main-tray")
+                .icon(app.default_window_icon().unwrap().clone())
+                .icon_as_template(true)
+                .title("--")
+                .tooltip("Claude Usage Tracker")
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "refresh" => {
+                        let _ = app.emit("refresh-requested", ());
+                    }
+                    "settings" => {
+                        let _ = app.emit("open-settings", ());
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click { .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // Start background polling
+            polling::start_polling(handle, poll_interval_clone);
+
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn set_poll_interval(
+    interval: u64,
+    state: tauri::State<'_, Arc<Mutex<u64>>>,
+) -> Result<(), String> {
+    let interval = interval.max(30); // enforce minimum
+    let mut lock = state.lock().map_err(|e| e.to_string())?;
+    *lock = interval;
+    Ok(())
+}
