@@ -11,7 +11,7 @@ use tauri::{
 };
 
 use credentials_cache::CredentialsCache;
-use models::TrayFormat;
+use models::{TrayFormat, UsageData};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -204,6 +204,32 @@ fn set_tray_format(
     }
     // Persist to store
     save_tray_format_to_store(&app, &format);
+    // Immediately update tray with current format
+    // Fetch fresh usage data inline
+    let cache = app.state::<Arc<CredentialsCache>>();
+    if let (Some(session_key), Some(org_id)) = (cache.get_session_key(), cache.get_org_id()) {
+        let app_clone = app.clone();
+        let format_clone = format.clone();
+        tauri::async_runtime::spawn(async move {
+            let client = reqwest::Client::new();
+            let url = format!(
+                "https://claude.ai/api/organizations/{}/usage",
+                org_id
+            );
+            if let Ok(resp) = client
+                .get(&url)
+                .header("cookie", format!("sessionKey={}", session_key))
+                .header("content-type", "application/json")
+                .header("user-agent", "Claude Usage Tracker/0.1.0")
+                .send()
+                .await
+            {
+                if let Ok(data) = resp.json::<UsageData>().await {
+                    polling::update_tray_title_public(&app_clone, &data, &format_clone);
+                }
+            }
+        });
+    }
     Ok(())
 }
 

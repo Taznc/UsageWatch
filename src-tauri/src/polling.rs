@@ -121,6 +121,10 @@ fn format_countdown(resets_at: &str) -> String {
     format!("{}m", minutes)
 }
 
+pub fn update_tray_title_public(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
+    update_tray_title(app, data, format);
+}
+
 fn update_tray_title(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
     let mut segments: Vec<String> = Vec::new();
 
