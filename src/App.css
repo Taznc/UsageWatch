@@ -31,7 +31,6 @@ body {
 
 .app {
   width: 380px;
-  animation: popoverIn 0.15s ease-out;
 }
 
 .app.animate-in {
