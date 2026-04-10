@@ -38,16 +38,26 @@ body {
   padding: 16px;
 }
 
+.popover-top {
+  cursor: grab;
+  -webkit-app-region: drag;
+  margin-bottom: 16px;
+}
+
+.popover-top:active {
+  cursor: grabbing;
+}
+
+.popover-top button,
+.popover-top a {
+  -webkit-app-region: no-drag;
+}
+
 .popover-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  cursor: grab;
-}
-
-.popover-header:active {
-  cursor: grabbing;
+  margin-bottom: 8px;
 }
 
 .popover-title {
@@ -388,6 +398,16 @@ select.input {
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+.settings-header:active {
+  cursor: grabbing;
+}
+
+.settings-header button {
+  -webkit-app-region: no-drag;
 }
 
 .settings-header h2 {

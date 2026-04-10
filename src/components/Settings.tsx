@@ -76,7 +76,10 @@ export function Settings() {
   return (
     <div className="settings">
       <div className="settings-header" onMouseDown={(e) => {
-        if (!(e.target as HTMLElement).closest("button")) getCurrentWindow().startDragging();
+        if (!(e.target as HTMLElement).closest("button, a, input, select")) {
+          e.preventDefault();
+          getCurrentWindow().startDragging();
+        }
       }}>
         <button
           className="icon-btn back-btn"

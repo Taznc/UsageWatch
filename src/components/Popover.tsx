@@ -17,8 +17,8 @@ export function Popover() {
 
   const hideWindow = () => getCurrentWindow().hide();
   const startDrag = (e: React.MouseEvent) => {
-    // Only drag from the header background, not from buttons
-    if ((e.target as HTMLElement).closest("button")) return;
+    if ((e.target as HTMLElement).closest("button, a, input, select")) return;
+    e.preventDefault();
     getCurrentWindow().startDragging();
   };
 
@@ -35,49 +35,51 @@ export function Popover() {
 
   return (
     <div className="popover">
-      <div className="popover-header" onMouseDown={startDrag}>
-        <h1 className="popover-title">Claude Usage</h1>
-        <div className="popover-actions">
-          <button
-            className={`icon-btn pin-btn ${pinned ? "active" : ""}`}
-            onClick={() => setPinned(!pinned)}
-            title={pinned ? "Unpin window" : "Pin window (keep open)"}
-          >
-            &#x1F4CC;
-          </button>
-          <button
-            className={`icon-btn ${showHistory ? "active" : ""}`}
-            onClick={() => setShowHistory(!showHistory)}
-            title="History"
-          >
-            &#x1F4CA;
-          </button>
-          <button
-            className="icon-btn"
-            onClick={refresh}
-            disabled={isLoading}
-            title="Refresh"
-          >
-            <span className={isLoading ? "spin" : ""}>&#x21bb;</span>
-          </button>
-          <button
-            className="icon-btn"
-            onClick={() => dispatch({ type: "SET_VIEW", view: "settings" })}
-            title="Settings"
-          >
-            &#x2699;
-          </button>
-          <button
-            className="icon-btn close-btn"
-            onClick={hideWindow}
-            title="Close"
-          >
-            &#x2715;
-          </button>
+      <div className="popover-top" onMouseDown={startDrag}>
+        <div className="popover-header">
+          <h1 className="popover-title">Claude Usage</h1>
+          <div className="popover-actions">
+            <button
+              className={`icon-btn pin-btn ${pinned ? "active" : ""}`}
+              onClick={() => setPinned(!pinned)}
+              title={pinned ? "Unpin window" : "Pin window (keep open)"}
+            >
+              &#x1F4CC;
+            </button>
+            <button
+              className={`icon-btn ${showHistory ? "active" : ""}`}
+              onClick={() => setShowHistory(!showHistory)}
+              title="History"
+            >
+              &#x1F4CA;
+            </button>
+            <button
+              className="icon-btn"
+              onClick={refresh}
+              disabled={isLoading}
+              title="Refresh"
+            >
+              <span className={isLoading ? "spin" : ""}>&#x21bb;</span>
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => dispatch({ type: "SET_VIEW", view: "settings" })}
+              title="Settings"
+            >
+              &#x2699;
+            </button>
+            <button
+              className="icon-btn close-btn"
+              onClick={hideWindow}
+              title="Close"
+            >
+              &#x2715;
+            </button>
+          </div>
         </div>
-      </div>
 
-      <StatusIndicator />
+        <StatusIndicator />
+      </div>
 
       {isOffline && (
         <div className="status-banner offline">
