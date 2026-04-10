@@ -59,7 +59,7 @@ export function Settings() {
     if (trayFormat.show_weekly_pct || trayFormat.show_weekly_timer) {
       const sub: string[] = [];
       if (trayFormat.show_weekly_pct) sub.push("W:85%");
-      if (trayFormat.show_weekly_timer) sub.push("Tue");
+      if (trayFormat.show_weekly_timer) sub.push("3d15h");
       parts.push(sub.join(" "));
     }
     if (trayFormat.show_sonnet_pct) parts.push("So:8%");
@@ -343,7 +343,7 @@ export function Settings() {
                 { key: "show_session_pct" as const, label: "Session %" },
                 { key: "show_session_timer" as const, label: "Session countdown" },
                 { key: "show_weekly_pct" as const, label: "Weekly %" },
-                { key: "show_weekly_timer" as const, label: "Weekly reset day" },
+                { key: "show_weekly_timer" as const, label: "Weekly countdown" },
                 { key: "show_sonnet_pct" as const, label: "Sonnet %" },
                 { key: "show_opus_pct" as const, label: "Opus %" },
                 { key: "show_extra_usage" as const, label: "Extra usage spend" },

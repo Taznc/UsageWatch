@@ -110,10 +110,10 @@ fn format_countdown(resets_at: &str) -> String {
     let hours = diff.num_hours();
     let minutes = diff.num_minutes() % 60;
 
-    if hours > 24 {
-        // Show day name for weekly resets
-        let day = reset.format("%a").to_string();
-        return day;
+    if hours >= 48 {
+        let days = hours / 24;
+        let rem_hours = hours % 24;
+        return format!("{}d{}h", days, rem_hours);
     }
     if hours > 0 {
         return format!("{}h{}m", hours, minutes);
