@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../context/AppContext";
 import { formatPollInterval } from "../utils/format";
+import { DebugPanel } from "./DebugPanel";
 import type { Organization } from "../types/usage";
 
 export function Settings() {
@@ -244,6 +245,9 @@ export function Settings() {
                 Show remaining % instead of used %
               </label>
             </div>
+            <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
+            <h3 style={{ fontSize: 13, marginBottom: 8 }}>Debug</h3>
+            <DebugPanel />
           </div>
         )}
       </div>

@@ -15,6 +15,29 @@ pub fn run() {
     let poll_interval_clone = poll_interval.clone();
 
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_sql::Builder::default()
+                .add_migrations(
+                    "sqlite:usage_history.db",
+                    vec![tauri_plugin_sql::Migration {
+                        version: 1,
+                        description: "create usage_history table",
+                        sql: "CREATE TABLE IF NOT EXISTS usage_history (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            timestamp TEXT NOT NULL,
+                            five_hour_pct REAL,
+                            five_hour_reset_at TEXT,
+                            seven_day_pct REAL,
+                            seven_day_reset_at TEXT,
+                            seven_day_opus_pct REAL,
+                            extra_spending REAL,
+                            extra_budget REAL
+                        )",
+                        kind: tauri_plugin_sql::MigrationKind::Up,
+                    }],
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
@@ -30,6 +53,8 @@ pub fn run() {
             commands::credentials::get_org_id,
             commands::credentials::test_connection,
             commands::usage::fetch_usage,
+            commands::usage::fetch_usage_raw,
+            commands::usage::fetch_status,
             set_poll_interval,
         ])
         .setup(move |app| {

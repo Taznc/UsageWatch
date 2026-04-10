@@ -430,6 +430,76 @@ select.input {
   border-radius: var(--radius);
 }
 
+/* Status indicator */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  font-size: 11px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-text {
+  color: var(--text-muted);
+}
+
+/* History chart */
+.history-chart {
+  padding: 4px 0;
+}
+
+.chart-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.chart-loading,
+.chart-empty {
+  text-align: center;
+  padding: 30px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.icon-btn.active {
+  background: var(--bg-card);
+  border-color: var(--blue);
+}
+
+/* Debug panel */
+.debug-panel {
+  margin-top: 8px;
+}
+
+.debug-output {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text);
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* Scrollbar */
 .app::-webkit-scrollbar {
   width: 6px;
