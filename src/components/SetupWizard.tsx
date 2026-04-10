@@ -3,6 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../context/AppContext";
 import type { Organization } from "../types/usage";
 
+interface BrowserResult {
+  browser: string;
+  session_key: string | null;
+}
+
 export function SetupWizard() {
   const { dispatch } = useApp();
   const [step, setStep] = useState(0);
@@ -10,7 +15,34 @@ export function SetupWizard() {
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [selectedOrg, setSelectedOrg] = useState("");
   const [testing, setTesting] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [browserResults, setBrowserResults] = useState<BrowserResult[]>([]);
   const [error, setError] = useState("");
+
+  const scanBrowsers = async () => {
+    setScanning(true);
+    setError("");
+    setBrowserResults([]);
+    try {
+      const results = await invoke<BrowserResult[]>("pull_session_from_browsers");
+      setBrowserResults(results);
+      if (results.length === 0) {
+        setError("No session found. Make sure you're logged into claude.ai in your browser.");
+      } else if (results.length === 1 && results[0].session_key) {
+        // Auto-fill if only one browser found
+        setSessionKey(results[0].session_key);
+      }
+    } catch (e: any) {
+      setError(String(e));
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const selectBrowserKey = (key: string) => {
+    setSessionKey(key);
+    setBrowserResults([]);
+  };
 
   const testConnection = async () => {
     if (!sessionKey.trim()) {
@@ -62,12 +94,7 @@ export function SetupWizard() {
           <h2>Welcome</h2>
           <p>
             This app monitors your Claude usage limits by polling the Claude API.
-            You'll need your session key to get started.
-          </p>
-          <p className="setup-hint">
-            To find your session key, open claude.ai in your browser, open DevTools
-            (F12), go to Application &gt; Cookies, and copy the value of{" "}
-            <code>sessionKey</code>.
+            You'll need to be logged into claude.ai in your browser.
           </p>
           <button className="btn primary" onClick={() => setStep(1)}>
             Get Started
@@ -77,7 +104,41 @@ export function SetupWizard() {
 
       {step === 1 && (
         <div className="setup-step">
-          <h2>Enter Session Key</h2>
+          <h2>Connect Your Account</h2>
+
+          <button
+            className="btn primary full-width"
+            onClick={scanBrowsers}
+            disabled={scanning}
+          >
+            {scanning ? "Scanning browsers..." : "Auto-detect from Browser"}
+          </button>
+
+          {browserResults.length > 1 && (
+            <div className="browser-results">
+              <p className="form-hint">Found in multiple browsers — select one:</p>
+              {browserResults.map((r) => (
+                <button
+                  key={r.browser}
+                  className="btn secondary full-width browser-option"
+                  onClick={() => selectBrowserKey(r.session_key!)}
+                >
+                  {r.browser}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {sessionKey && (
+            <div className="form-success">
+              Session key detected! Click Test Connection to continue.
+            </div>
+          )}
+
+          <div className="divider">
+            <span>or enter manually</span>
+          </div>
+
           <div className="form-group">
             <label htmlFor="session-key">Session Key</label>
             <input
@@ -89,6 +150,12 @@ export function SetupWizard() {
               className="input"
             />
           </div>
+
+          <p className="setup-hint">
+            Open claude.ai → DevTools (F12) → Application → Cookies → copy{" "}
+            <code>sessionKey</code>
+          </p>
+
           {error && <div className="form-error">{error}</div>}
           <div className="btn-group">
             <button className="btn secondary" onClick={() => setStep(0)}>
@@ -97,7 +164,7 @@ export function SetupWizard() {
             <button
               className="btn primary"
               onClick={testConnection}
-              disabled={testing}
+              disabled={testing || !sessionKey}
             >
               {testing ? "Testing..." : "Test Connection"}
             </button>

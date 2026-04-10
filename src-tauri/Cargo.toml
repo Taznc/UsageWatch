@@ -29,4 +29,5 @@ chrono = { version = "0.4", features = ["serde"] }
 tauri-plugin-store = "2"
 tokio = { version = "1", features = ["time"] }
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+rookie = "0.5"
 

@@ -14,6 +14,7 @@ export function Settings() {
   const [orgId, setOrgId] = useState("");
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [testing, setTesting] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("credentials");
@@ -105,6 +106,34 @@ export function Settings() {
       <div className="tab-content">
         {activeTab === "credentials" && (
           <div className="settings-section">
+            <button
+              className="btn primary full-width"
+              onClick={async () => {
+                setScanning(true);
+                setError("");
+                setSaveStatus("");
+                try {
+                  const results = await invoke<{ browser: string; session_key: string | null }[]>("pull_session_from_browsers");
+                  const found = results.find(r => r.session_key);
+                  if (found?.session_key) {
+                    setSessionKey(found.session_key);
+                    setSaveStatus(`Found in ${found.browser}! Click Test & Save.`);
+                  } else {
+                    setError("No session found in any browser.");
+                  }
+                } catch (e: any) {
+                  setError(String(e));
+                } finally {
+                  setScanning(false);
+                }
+              }}
+              disabled={scanning}
+            >
+              {scanning ? "Scanning..." : "Auto-detect from Browser"}
+            </button>
+
+            <div className="divider"><span>or enter manually</span></div>
+
             <div className="form-group">
               <label htmlFor="settings-key">Session Key</label>
               <input

@@ -344,6 +344,39 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Browser auto-detect */
+.full-width {
+  width: 100%;
+}
+
+.browser-results {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.browser-option {
+  text-align: left;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  margin: 14px 0;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 /* Forms */
 .form-group {
   margin-bottom: 14px;
