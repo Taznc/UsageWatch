@@ -43,22 +43,6 @@ export function useUsageData() {
     };
   }, [dispatch]);
 
-  // Check for existing credentials on mount
-  useEffect(() => {
-    async function checkCredentials() {
-      try {
-        const sessionKey = await invoke<string | null>("get_session_key");
-        const orgId = await invoke<string | null>("get_org_id");
-        if (sessionKey && orgId) {
-          dispatch({ type: "SET_HAS_CREDENTIALS", has: true });
-        }
-      } catch {
-        // No credentials yet
-      }
-    }
-    checkCredentials();
-  }, [dispatch]);
-
   // Online/offline detection
   useEffect(() => {
     const handleOnline = () => dispatch({ type: "SET_OFFLINE", offline: false });

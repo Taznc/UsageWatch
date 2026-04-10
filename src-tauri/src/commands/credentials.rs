@@ -27,11 +27,27 @@ fn delete_from_store(app: &AppHandle, key: &str) -> Result<(), String> {
 
 /// Called once at startup to load credentials from the store file into memory
 pub fn load_credentials_from_store(app: &AppHandle, cache: &CredentialsCache) {
-    if let Some(key) = load_from_store(app, "session_key") {
-        cache.set_session_key(key);
-    }
-    if let Some(id) = load_from_store(app, "org_id") {
-        cache.set_org_id(id);
+    match app.store("credentials.json") {
+        Ok(store) => {
+            if let Some(val) = store.get("session_key") {
+                eprintln!("[credentials] loaded session_key type: {:?}", val);
+                if let Some(s) = val.as_str() {
+                    cache.set_session_key(s.to_string());
+                }
+            } else {
+                eprintln!("[credentials] no session_key in store");
+            }
+            if let Some(val) = store.get("org_id") {
+                if let Some(s) = val.as_str() {
+                    cache.set_org_id(s.to_string());
+                }
+            } else {
+                eprintln!("[credentials] no org_id in store");
+            }
+        }
+        Err(e) => {
+            eprintln!("[credentials] failed to open store: {}", e);
+        }
     }
 }
 
