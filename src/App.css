@@ -46,6 +46,11 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  cursor: grab;
+}
+
+.popover-header:active {
+  cursor: grabbing;
 }
 
 .popover-title {

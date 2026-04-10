@@ -74,7 +74,7 @@ export function Settings() {
 
   return (
     <div className="settings">
-      <div className="settings-header">
+      <div className="settings-header" data-tauri-drag-region>
         <button
           className="icon-btn back-btn"
           onClick={() => dispatch({ type: "SET_VIEW", view: "popover" })}

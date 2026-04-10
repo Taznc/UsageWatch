@@ -30,8 +30,8 @@ export function Popover() {
 
   return (
     <div className="popover">
-      <div className="popover-header">
-        <h1 className="popover-title">Claude Usage</h1>
+      <div className="popover-header" data-tauri-drag-region>
+        <h1 className="popover-title" data-tauri-drag-region>Claude Usage</h1>
         <div className="popover-actions">
           <button
             className={`icon-btn pin-btn ${pinned ? "active" : ""}`}
