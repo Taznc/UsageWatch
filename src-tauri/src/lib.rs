@@ -108,14 +108,40 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let tauri::tray::TrayIconEvent::Click { .. } = event {
+                    if let tauri::tray::TrayIconEvent::Click {
+                        position,
+                        rect,
+                        ..
+                    } = event
+                    {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
+                                // Position window centered under the tray icon
+                                let window_width = 380.0_f64;
+                                let (icon_w, icon_h) = match rect.size {
+                                    tauri::Size::Physical(s) => {
+                                        (s.width as f64, s.height as f64)
+                                    }
+                                    tauri::Size::Logical(s) => (s.width, s.height),
+                                };
+                                let icon_y = match rect.position {
+                                    tauri::Position::Physical(p) => p.y as f64,
+                                    tauri::Position::Logical(p) => p.y,
+                                };
+                                let icon_center_x = position.x + icon_w / 2.0;
+                                let x = icon_center_x - window_width / 2.0;
+                                let y = icon_y + icon_h + 4.0;
+
+                                let _ = window.set_position(
+                                    tauri::PhysicalPosition::new(x as i32, y as i32),
+                                );
                                 let _ = window.show();
                                 let _ = window.set_focus();
+                                // Tell frontend to play the open animation
+                                let _ = app.emit("window-opened", ());
                             }
                         }
                     }
