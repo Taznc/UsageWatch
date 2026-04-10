@@ -67,6 +67,12 @@ pub fn run() {
             set_poll_interval,
         ])
         .setup(move |app| {
+            // Hide dock icon on macOS (agent/accessory app)
+            #[cfg(target_os = "macos")]
+            {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
+
             let handle = app.handle();
 
             // Load saved credentials from store file into memory cache
