@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useUsageData } from "../hooks/useUsageData";
 import { useHistoryRecorder } from "../hooks/useHistoryRecorder";
 import { useApp } from "../context/AppContext";
@@ -26,9 +27,20 @@ export function Popover() {
   };
 
   // Hide window when it loses focus (clicking outside) — unless pinned
+  // Uses a guard to ignore focus loss right after the window opens
+  const focusGuard = useRef(false);
+
+  useEffect(() => {
+    const unlistenOpen = listen("window-opened", () => {
+      focusGuard.current = true;
+      setTimeout(() => { focusGuard.current = false; }, 300);
+    });
+    return () => { unlistenOpen.then((fn) => fn()); };
+  }, []);
+
   useEffect(() => {
     const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (!focused && !pinned) hideWindow();
+      if (!focused && !pinned && !focusGuard.current) hideWindow();
     });
     return () => { unlisten.then((fn) => fn()); };
   }, [pinned]);
