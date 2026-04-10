@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getUsageColor, formatCountdown } from "../utils/format";
+import { getUsageColor, formatCountdown, formatResetDate } from "../utils/format";
 
 interface UsageBarProps {
   label: string;
@@ -22,6 +22,7 @@ export function UsageBar({ label, percentage, resetAt, showRemaining = false }: 
 
   const displayPct = showRemaining ? Math.max(0, 100 - percentage) : percentage;
   const color = getUsageColor(percentage);
+  const resetDate = formatResetDate(resetAt);
 
   return (
     <div className="usage-bar-container">
@@ -42,7 +43,10 @@ export function UsageBar({ label, percentage, resetAt, showRemaining = false }: 
       </div>
       {resetAt && (
         <div className="usage-bar-footer">
-          <span className="usage-bar-reset">Resets in {countdown}</span>
+          <span className="usage-bar-reset">
+            Resets in {countdown}
+            {resetDate && <span className="usage-bar-reset-date"> · {resetDate}</span>}
+          </span>
         </div>
       )}
     </div>

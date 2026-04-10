@@ -179,6 +179,19 @@ body {
   padding: 12px;
 }
 
+.extra-usage-details {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.usage-bar-reset-date {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
 /* Footer */
 .popover-footer {
   margin-top: 14px;

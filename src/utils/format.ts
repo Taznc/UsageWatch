@@ -37,6 +37,22 @@ export function formatTimestamp(iso: string): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+export function formatResetDate(resetAt: string | null): string {
+  if (!resetAt) return "";
+  const date = new Date(resetAt);
+  const now = new Date();
+
+  // If within the next 24 hours, just show time
+  const diffMs = date.getTime() - now.getTime();
+  if (diffMs > 0 && diffMs < 24 * 60 * 60 * 1000) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
+  // Otherwise show day + time like "Tue 1:00 PM"
+  return date.toLocaleDateString([], { weekday: "short" }) + " " +
+    date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 export function formatPollInterval(secs: number): string {
   if (secs >= 60) {
     const mins = Math.floor(secs / 60);

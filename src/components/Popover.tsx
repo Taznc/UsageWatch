@@ -94,7 +94,7 @@ export function Popover() {
             <div className="usage-list">
               {usageData.five_hour && (
                 <UsageBar
-                  label="Session (5h)"
+                  label="Current Session"
                   percentage={usageData.five_hour.utilization}
                   resetAt={usageData.five_hour.resets_at}
                   showRemaining={show_remaining}
@@ -103,7 +103,7 @@ export function Popover() {
 
               {usageData.seven_day && (
                 <UsageBar
-                  label="Weekly (7d)"
+                  label="All Models"
                   percentage={usageData.seven_day.utilization}
                   resetAt={usageData.seven_day.resets_at}
                   showRemaining={show_remaining}
@@ -113,7 +113,7 @@ export function Popover() {
               {usageData.seven_day_opus &&
                 usageData.seven_day_opus.utilization > 0 && (
                   <UsageBar
-                    label="Opus (7d)"
+                    label="Opus Only"
                     percentage={usageData.seven_day_opus.utilization}
                     resetAt={usageData.seven_day_opus.resets_at}
                     showRemaining={show_remaining}
@@ -123,7 +123,7 @@ export function Popover() {
               {usageData.seven_day_sonnet &&
                 usageData.seven_day_sonnet.utilization > 0 && (
                   <UsageBar
-                    label="Sonnet (7d)"
+                    label="Sonnet Only"
                     percentage={usageData.seven_day_sonnet.utilization}
                     resetAt={usageData.seven_day_sonnet.resets_at}
                     showRemaining={show_remaining}
@@ -135,9 +135,8 @@ export function Popover() {
                   <div className="extra-usage">
                     <div className="usage-bar-header">
                       <span className="usage-bar-label">Extra Usage</span>
-                      <span className="usage-bar-pct">
-                        ${(usageData.extra_usage.used_credits / 100).toFixed(2)} / $
-                        {(usageData.extra_usage.monthly_limit / 100).toFixed(2)}
+                      <span className="usage-bar-pct" style={{ color: "#8b5cf6" }}>
+                        {usageData.extra_usage.utilization.toFixed(0)}% used
                       </span>
                     </div>
                     <div className="usage-bar-track">
@@ -148,6 +147,10 @@ export function Popover() {
                           backgroundColor: "#8b5cf6",
                         }}
                       />
+                    </div>
+                    <div className="extra-usage-details">
+                      <span>${(usageData.extra_usage.used_credits / 100).toFixed(2)} spent</span>
+                      <span>${(usageData.extra_usage.monthly_limit / 100).toFixed(2)} limit</span>
                     </div>
                   </div>
                 )}
