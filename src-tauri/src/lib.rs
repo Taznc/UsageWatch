@@ -85,12 +85,14 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&refresh, &settings, &quit])?;
 
             // Build tray icon
+            let tray_menu = menu;
             TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
                 .title("--")
                 .tooltip("Claude Usage Tracker")
-                .menu(&menu)
+                .menu(&tray_menu)
+                .menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "refresh" => {
                         let _ = app.emit("refresh-requested", ());
@@ -109,6 +111,7 @@ pub fn run() {
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
                         position,
                         rect,
                         ..
@@ -140,7 +143,6 @@ pub fn run() {
                                 );
                                 let _ = window.show();
                                 let _ = window.set_focus();
-                                // Tell frontend to play the open animation
                                 let _ = app.emit("window-opened", ());
                             }
                         }
