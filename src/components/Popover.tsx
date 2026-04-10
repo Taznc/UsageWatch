@@ -13,16 +13,17 @@ export function Popover() {
   const { state, dispatch } = useApp();
   const { show_remaining } = state.settings;
   const [showHistory, setShowHistory] = useState(false);
+  const [pinned, setPinned] = useState(false);
 
   const hideWindow = () => getCurrentWindow().hide();
 
-  // Hide window when it loses focus (clicking outside)
+  // Hide window when it loses focus (clicking outside) — unless pinned
   useEffect(() => {
     const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (!focused) hideWindow();
+      if (!focused && !pinned) hideWindow();
     });
     return () => { unlisten.then((fn) => fn()); };
-  }, []);
+  }, [pinned]);
 
   // Record usage data to SQLite on each update
   useHistoryRecorder(usageData);
@@ -32,6 +33,13 @@ export function Popover() {
       <div className="popover-header">
         <h1 className="popover-title">Claude Usage</h1>
         <div className="popover-actions">
+          <button
+            className={`icon-btn pin-btn ${pinned ? "active" : ""}`}
+            onClick={() => setPinned(!pinned)}
+            title={pinned ? "Unpin window" : "Pin window (keep open)"}
+          >
+            &#x1F4CC;
+          </button>
           <button
             className={`icon-btn ${showHistory ? "active" : ""}`}
             onClick={() => setShowHistory(!showHistory)}
