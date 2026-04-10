@@ -31,9 +31,6 @@ body {
 
 .app {
   width: 380px;
-  min-height: 200px;
-  max-height: 520px;
-  overflow-y: auto;
 }
 
 /* Popover */
@@ -543,16 +540,3 @@ select.input {
   user-select: text;
 }
 
-/* Scrollbar */
-.app::-webkit-scrollbar {
-  width: 6px;
-}
-
-.app::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.app::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
