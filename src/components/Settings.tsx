@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useApp } from "../context/AppContext";
 import { formatPollInterval } from "../utils/format";
 import { DebugPanel } from "./DebugPanel";
-import type { Organization } from "../types/usage";
+import type { Organization, TrayFormat } from "../types/usage";
 
 export function Settings() {
   const { state, dispatch } = useApp();
@@ -18,6 +18,53 @@ export function Settings() {
   const [saveStatus, setSaveStatus] = useState("");
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("credentials");
+  const [trayFormat, setTrayFormat] = useState<TrayFormat>({
+    show_session_pct: true,
+    show_weekly_pct: true,
+    show_sonnet_pct: false,
+    show_opus_pct: false,
+    show_session_timer: true,
+    show_weekly_timer: false,
+    show_extra_usage: false,
+    separator: " | ",
+  });
+
+  useEffect(() => {
+    async function loadTrayFormat() {
+      try {
+        const fmt = await invoke<TrayFormat>("get_tray_format");
+        setTrayFormat(fmt);
+      } catch {}
+    }
+    loadTrayFormat();
+  }, []);
+
+  const updateTrayFormat = async (updates: Partial<TrayFormat>) => {
+    const newFormat = { ...trayFormat, ...updates };
+    setTrayFormat(newFormat);
+    try {
+      await invoke("set_tray_format", { format: newFormat });
+    } catch {}
+  };
+
+  // Build preview of what the menu bar will look like
+  const buildPreview = (): string => {
+    const parts: string[] = [];
+    if (trayFormat.show_session_pct) {
+      let s = "S:42%";
+      if (trayFormat.show_session_timer) s += " 2h9m";
+      parts.push(s);
+    }
+    if (trayFormat.show_weekly_pct) {
+      let s = "W:85%";
+      if (trayFormat.show_weekly_timer) s += " Tue";
+      parts.push(s);
+    }
+    if (trayFormat.show_sonnet_pct) parts.push("So:8%");
+    if (trayFormat.show_opus_pct) parts.push("Op:15%");
+    if (trayFormat.show_extra_usage) parts.push("$5/$20");
+    return parts.length > 0 ? parts.join(trayFormat.separator) : "--";
+  };
 
   useEffect(() => {
     async function loadCredentials() {
@@ -281,6 +328,51 @@ export function Settings() {
                 Show remaining % instead of used %
               </label>
             </div>
+
+            <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
+
+            <h3 style={{ fontSize: 13, marginBottom: 12 }}>Menu Bar Display</h3>
+            <div className="tray-preview">
+              {buildPreview()}
+            </div>
+
+            <div className="tray-segments">
+              {[
+                { key: "show_session_pct" as const, label: "Session %" },
+                { key: "show_session_timer" as const, label: "Session countdown" },
+                { key: "show_weekly_pct" as const, label: "Weekly %" },
+                { key: "show_weekly_timer" as const, label: "Weekly reset day" },
+                { key: "show_sonnet_pct" as const, label: "Sonnet %" },
+                { key: "show_opus_pct" as const, label: "Opus %" },
+                { key: "show_extra_usage" as const, label: "Extra usage spend" },
+              ].map(({ key, label }) => (
+                <div className="form-group toggle-group" key={key}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={trayFormat[key]}
+                      onChange={(e) => updateTrayFormat({ [key]: e.target.checked })}
+                    />
+                    {label}
+                  </label>
+                </div>
+              ))}
+            </div>
+
+            <div className="form-group">
+              <label>Separator</label>
+              <select
+                className="input"
+                value={trayFormat.separator}
+                onChange={(e) => updateTrayFormat({ separator: e.target.value })}
+              >
+                <option value=" | ">Pipe ( | )</option>
+                <option value=" · ">Dot ( · )</option>
+                <option value="  ">Space</option>
+                <option value=" / ">Slash ( / )</option>
+              </select>
+            </div>
+
             <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
             <h3 style={{ fontSize: 13, marginBottom: 8 }}>Debug</h3>
             <DebugPanel />

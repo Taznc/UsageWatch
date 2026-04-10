@@ -67,4 +67,15 @@ export interface AppSettings {
   autostart: boolean;
 }
 
+export interface TrayFormat {
+  show_session_pct: boolean;
+  show_weekly_pct: boolean;
+  show_sonnet_pct: boolean;
+  show_opus_pct: boolean;
+  show_session_timer: boolean;
+  show_weekly_timer: boolean;
+  show_extra_usage: boolean;
+  separator: string;
+}
+
 export type AppView = "popover" | "settings" | "setup";

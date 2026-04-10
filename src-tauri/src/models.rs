@@ -80,6 +80,49 @@ pub struct BillingInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrayFormat {
+    #[serde(default = "default_true")]
+    pub show_session_pct: bool,
+    #[serde(default = "default_true")]
+    pub show_weekly_pct: bool,
+    #[serde(default)]
+    pub show_sonnet_pct: bool,
+    #[serde(default)]
+    pub show_opus_pct: bool,
+    #[serde(default = "default_true")]
+    pub show_session_timer: bool,
+    #[serde(default)]
+    pub show_weekly_timer: bool,
+    #[serde(default)]
+    pub show_extra_usage: bool,
+    #[serde(default = "default_separator")]
+    pub separator: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_separator() -> String {
+    " | ".to_string()
+}
+
+impl Default for TrayFormat {
+    fn default() -> Self {
+        Self {
+            show_session_pct: true,
+            show_weekly_pct: true,
+            show_sonnet_pct: false,
+            show_opus_pct: false,
+            show_session_timer: true,
+            show_weekly_timer: false,
+            show_extra_usage: false,
+            separator: " | ".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
     pub uuid: String,
     pub name: String,

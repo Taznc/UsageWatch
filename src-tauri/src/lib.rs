@@ -11,6 +11,7 @@ use tauri::{
 };
 
 use credentials_cache::CredentialsCache;
+use models::TrayFormat;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,6 +20,9 @@ pub fn run() {
 
     let cache = Arc::new(CredentialsCache::new());
     let cache_for_polling = cache.clone();
+
+    let tray_format = Arc::new(Mutex::new(TrayFormat::default()));
+    let tray_format_for_polling = tray_format.clone();
 
     tauri::Builder::default()
         .plugin(
@@ -53,6 +57,7 @@ pub fn run() {
         ))
         .manage(poll_interval.clone())
         .manage(cache.clone())
+        .manage(tray_format.clone())
         .invoke_handler(tauri::generate_handler![
             commands::credentials::save_session_key,
             commands::credentials::get_session_key,
@@ -66,6 +71,8 @@ pub fn run() {
             commands::usage::fetch_billing,
             commands::usage::fetch_status,
             set_poll_interval,
+            get_tray_format,
+            set_tray_format,
         ])
         .setup(move |app| {
             // Hide dock icon on macOS (agent/accessory app)
@@ -78,6 +85,9 @@ pub fn run() {
 
             // Load saved credentials from store file into memory cache
             commands::credentials::load_credentials_from_store(handle, &cache);
+
+            // Load tray format from store
+            load_tray_format_from_store(handle, &tray_format);
 
             // Build tray menu
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
@@ -111,7 +121,6 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    // Only handle left button down, ignore up/move/etc.
                     match &event {
                         tauri::tray::TrayIconEvent::Click {
                             button: tauri::tray::MouseButton::Left,
@@ -127,7 +136,6 @@ pub fn run() {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
-                                // Position window centered under the tray icon
                                 let window_width = 380.0_f64;
                                 let (icon_w, icon_h) = match rect.size {
                                     tauri::Size::Physical(s) => {
@@ -158,7 +166,7 @@ pub fn run() {
                 .build(app)?;
 
             // Start background polling
-            polling::start_polling(handle, poll_interval_clone, cache_for_polling);
+            polling::start_polling(handle, poll_interval_clone, cache_for_polling, tray_format_for_polling);
 
             Ok(())
         })
@@ -171,8 +179,51 @@ fn set_poll_interval(
     interval: u64,
     state: tauri::State<'_, Arc<Mutex<u64>>>,
 ) -> Result<(), String> {
-    let interval = interval.max(30); // enforce minimum
+    let interval = interval.max(30);
     let mut lock = state.lock().map_err(|e| e.to_string())?;
     *lock = interval;
     Ok(())
+}
+
+#[tauri::command]
+fn get_tray_format(state: tauri::State<'_, Arc<Mutex<TrayFormat>>>) -> Result<TrayFormat, String> {
+    let lock = state.lock().map_err(|e| e.to_string())?;
+    Ok(lock.clone())
+}
+
+#[tauri::command]
+fn set_tray_format(
+    app: tauri::AppHandle,
+    format: TrayFormat,
+    state: tauri::State<'_, Arc<Mutex<TrayFormat>>>,
+) -> Result<(), String> {
+    // Update in-memory state
+    {
+        let mut lock = state.lock().map_err(|e| e.to_string())?;
+        *lock = format.clone();
+    }
+    // Persist to store
+    save_tray_format_to_store(&app, &format);
+    Ok(())
+}
+
+fn load_tray_format_from_store(app: &tauri::AppHandle, tray_format: &Arc<Mutex<TrayFormat>>) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        if let Some(val) = store.get("tray_format") {
+            if let Ok(fmt) = serde_json::from_value::<TrayFormat>(val.clone()) {
+                *tray_format.lock().unwrap() = fmt;
+            }
+        }
+    }
+}
+
+fn save_tray_format_to_store(app: &tauri::AppHandle, format: &TrayFormat) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        if let Ok(val) = serde_json::to_value(format) {
+            store.set("tray_format", val);
+            let _ = store.save();
+        }
+    }
 }
