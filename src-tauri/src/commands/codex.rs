@@ -39,15 +39,17 @@ struct RefreshResponse {
 // ── Path resolution ────────────────────────────────────────────────────────
 
 fn codex_auth_path() -> PathBuf {
-    std::env::var("CODEX_HOME")
+    // Allow override via CODEX_HOME on any platform
+    if let Ok(home) = std::env::var("CODEX_HOME") {
+        return PathBuf::from(home).join("auth.json");
+    }
+    // Unix: $HOME  |  Windows: $USERPROFILE (HOME is not standard on Windows)
+    // The Codex CLI (Node.js) uses os.homedir() which maps to USERPROFILE on Windows.
+    let home_dir = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            std::env::var("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default()
-                .join(".codex")
-        })
-        .join("auth.json")
+        .unwrap_or_default();
+    home_dir.join(".codex").join("auth.json")
 }
 
 // ── Token management ───────────────────────────────────────────────────────

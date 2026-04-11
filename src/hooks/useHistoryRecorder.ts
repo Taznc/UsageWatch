@@ -58,6 +58,96 @@ export interface HistoryPoint {
   seven_day_opus_pct: number | null;
 }
 
+export interface BurnRate {
+  session_pct_per_hour: number | null;
+  session_mins_to_limit: number | null;
+  weekly_pct_per_hour: number | null;
+  weekly_mins_to_limit: number | null;
+}
+
+export async function getBurnRate(
+  currentSessionPct: number | null,
+  currentWeeklyPct: number | null
+): Promise<BurnRate> {
+  const nullResult: BurnRate = {
+    session_pct_per_hour: null,
+    session_mins_to_limit: null,
+    weekly_pct_per_hour: null,
+    weekly_mins_to_limit: null,
+  };
+
+  try {
+    const database = await getDb();
+    const cutoff = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+    const rows = await database.select<
+      { timestamp: string; five_hour_pct: number | null; seven_day_pct: number | null }[]
+    >(
+      `SELECT timestamp, five_hour_pct, seven_day_pct
+       FROM usage_history
+       WHERE timestamp > $1
+       ORDER BY timestamp ASC`,
+      [cutoff]
+    );
+
+    if (rows.length < 2) return nullResult;
+
+    function calcRate(
+      points: { timestamp: string; pct: number }[],
+      currentPct: number | null
+    ): { pctPerHour: number | null; minsToLimit: number | null } {
+      if (points.length < 2 || currentPct == null) {
+        return { pctPerHour: null, minsToLimit: null };
+      }
+
+      if (currentPct >= 100) {
+        return { pctPerHour: null, minsToLimit: 0 };
+      }
+
+      const first = points[0];
+      const firstTime = new Date(first.timestamp).getTime();
+      const nowTime = Date.now();
+      const hoursElapsed = (nowTime - firstTime) / (1000 * 60 * 60);
+
+      if (hoursElapsed < 0.005) {
+        return { pctPerHour: null, minsToLimit: null };
+      }
+
+      const delta = currentPct - first.pct;
+      // Negative delta means a reset happened — rate is not meaningful
+      if (delta <= 0) {
+        return { pctPerHour: null, minsToLimit: null };
+      }
+
+      const pctPerHour = delta / hoursElapsed;
+      const remaining = 100 - currentPct;
+      const minsToLimit = remaining / (pctPerHour / 60);
+
+      return { pctPerHour, minsToLimit: Math.round(minsToLimit) };
+    }
+
+    const sessionPoints = rows
+      .filter((r) => r.five_hour_pct != null)
+      .map((r) => ({ timestamp: r.timestamp, pct: r.five_hour_pct! }));
+
+    const weeklyPoints = rows
+      .filter((r) => r.seven_day_pct != null)
+      .map((r) => ({ timestamp: r.timestamp, pct: r.seven_day_pct! }));
+
+    const session = calcRate(sessionPoints, currentSessionPct);
+    const weekly = calcRate(weeklyPoints, currentWeeklyPct);
+
+    return {
+      session_pct_per_hour: session.pctPerHour,
+      session_mins_to_limit: session.minsToLimit,
+      weekly_pct_per_hour: weekly.pctPerHour,
+      weekly_mins_to_limit: weekly.minsToLimit,
+    };
+  } catch (e) {
+    console.error("Failed to calculate burn rate:", e);
+    return nullResult;
+  }
+}
+
 export async function getUsageHistory(days: number = 7): Promise<HistoryPoint[]> {
   const database = await getDb();
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();

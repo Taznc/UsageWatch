@@ -52,6 +52,8 @@ pub fn refresh_tray() {
                 .and_then(|u| u.data.as_ref())
                 .map(TrayDisplayData::from_codex)
         }
+        // Cursor polling not yet implemented — tray shows nothing when Cursor is active
+        Provider::Cursor => None,
     };
 
     if let Some(dd) = display {

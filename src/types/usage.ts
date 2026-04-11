@@ -111,9 +111,19 @@ export interface CodexUpdate {
   timestamp: string;
 }
 
+// ── Alert configuration ─────────────────────────────────────────────────────
+
+export interface AlertConfig {
+  enabled: boolean;
+  session_threshold: number;   // 0-100, 0 = disabled
+  weekly_threshold: number;    // 0-100, 0 = disabled
+  burn_rate_mins: number;      // minutes, 0 = disabled
+  notify_on_reset: boolean;
+}
+
 // ── Provider switching types ────────────────────────────────────────────────
 
-export type Provider = "Claude" | "Codex";
+export type Provider = "Claude" | "Codex" | "Cursor";
 
 export interface AppMapping {
   app_identifier: string;

@@ -23,7 +23,7 @@ use credentials_cache::CredentialsCache;
 
 /// Browser-like User-Agent to avoid Cloudflare challenges when calling claude.ai APIs.
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-use models::{TrayConfig, TrayFormat};
+use models::{AlertConfig, TrayConfig, TrayFormat};
 use polling::{CodexUpdate, UsageUpdate};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -39,6 +39,8 @@ pub fn run() {
 
     let tray_config = Arc::new(Mutex::new(TrayConfig::default()));
     let tray_config_for_state = tray_config.clone();
+
+    let alert_config = Arc::new(Mutex::new(AlertConfig::default()));
 
     let latest_usage: Arc<Mutex<Option<UsageUpdate>>> = Arc::new(Mutex::new(None));
     let latest_usage_for_polling = latest_usage.clone();
@@ -86,6 +88,7 @@ pub fn run() {
         .manage(cache.clone())
         .manage(tray_format.clone())
         .manage(tray_config.clone())
+        .manage(alert_config.clone())
         .invoke_handler(tauri::generate_handler![
             commands::credentials::save_session_key,
             commands::credentials::get_session_key,
@@ -99,12 +102,17 @@ pub fn run() {
             commands::usage::fetch_billing,
             commands::usage::fetch_status,
             commands::codex::check_codex_auth,
+            commands::cursor::check_cursor_auth,
+            commands::cursor::get_cursor_email,
+            commands::cursor::get_cursor_auth_path,
             set_poll_interval,
             get_tray_format,
             set_tray_format,
             get_tray_config,
             set_tray_config,
             get_running_apps,
+            get_alert_config,
+            set_alert_config,
         ])
         .setup(move |app| {
             // Hide dock icon on macOS (agent/accessory app)
@@ -121,6 +129,7 @@ pub fn run() {
             // Load tray format and tray config from store
             load_tray_format_from_store(handle, &tray_format);
             load_tray_config_from_store(handle, &tray_config);
+            load_alert_config_from_store(handle, &alert_config);
 
             // Build tray menu
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
@@ -324,6 +333,28 @@ fn get_running_apps() -> Vec<models::RunningApp> {
     }
 }
 
+#[tauri::command]
+fn get_alert_config(
+    state: tauri::State<'_, Arc<Mutex<AlertConfig>>>,
+) -> Result<AlertConfig, String> {
+    let lock = state.lock().map_err(|e| e.to_string())?;
+    Ok(lock.clone())
+}
+
+#[tauri::command]
+fn set_alert_config(
+    app: tauri::AppHandle,
+    config: AlertConfig,
+    state: tauri::State<'_, Arc<Mutex<AlertConfig>>>,
+) -> Result<(), String> {
+    {
+        let mut lock = state.lock().map_err(|e| e.to_string())?;
+        *lock = config.clone();
+    }
+    save_alert_config_to_store(&app, &config);
+    Ok(())
+}
+
 fn load_tray_format_from_store(app: &tauri::AppHandle, tray_format: &Arc<Mutex<TrayFormat>>) {
     use tauri_plugin_store::StoreExt;
     if let Ok(store) = app.store("credentials.json") {
@@ -367,6 +398,27 @@ fn save_tray_config_to_store(app: &tauri::AppHandle, config: &TrayConfig) {
     if let Ok(store) = app.store("credentials.json") {
         if let Ok(val) = serde_json::to_value(config) {
             store.set("tray_config", val);
+            let _ = store.save();
+        }
+    }
+}
+
+fn load_alert_config_from_store(app: &tauri::AppHandle, alert_config: &Arc<Mutex<AlertConfig>>) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        if let Some(val) = store.get("alert_config") {
+            if let Ok(cfg) = serde_json::from_value::<AlertConfig>(val.clone()) {
+                *alert_config.lock().unwrap() = cfg;
+            }
+        }
+    }
+}
+
+fn save_alert_config_to_store(app: &tauri::AppHandle, config: &AlertConfig) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        if let Ok(val) = serde_json::to_value(config) {
+            store.set("alert_config", val);
             let _ = store.save();
         }
     }

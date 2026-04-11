@@ -274,13 +274,49 @@ impl CodexUsageData {
     }
 }
 
+// ── Alert configuration ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertConfig {
+    /// Master toggle
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Session (5h) usage % threshold — alert when exceeded (0 = disabled)
+    #[serde(default = "default_session_threshold")]
+    pub session_threshold: u32,
+    /// Weekly (7d) usage % threshold — alert when exceeded (0 = disabled)
+    #[serde(default = "default_weekly_threshold")]
+    pub weekly_threshold: u32,
+    /// Alert when estimated time-to-limit drops below this many minutes (0 = disabled)
+    #[serde(default)]
+    pub burn_rate_mins: u32,
+    /// Notify when a usage window resets after being near/at the limit
+    #[serde(default = "default_true")]
+    pub notify_on_reset: bool,
+}
+
+fn default_session_threshold() -> u32 { 80 }
+fn default_weekly_threshold() -> u32 { 80 }
+
+impl Default for AlertConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            session_threshold: 80,
+            weekly_threshold: 80,
+            burn_rate_mins: 30,
+            notify_on_reset: true,
+        }
+    }
+}
+
 // ── Provider switching types ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Provider {
     Claude,
     Codex,
-    // Cursor,  // uncomment when ready
+    Cursor,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -314,6 +350,11 @@ impl Default for TrayConfig {
                 AppMapping {
                     app_identifier: "com.openai.codex".to_string(),
                     provider: Provider::Codex,
+                },
+                AppMapping {
+                    // Cursor uses ToDesktop packaging on macOS
+                    app_identifier: "com.todesktop.230313mzl4w4u92".to_string(),
+                    provider: Provider::Cursor,
                 },
             ],
             default_provider: Provider::Claude,

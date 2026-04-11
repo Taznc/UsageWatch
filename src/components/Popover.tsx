@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useUsageData } from "../hooks/useUsageData";
 import { useHistoryRecorder } from "../hooks/useHistoryRecorder";
+import { useBurnRate } from "../hooks/useBurnRate";
+import { useAlertEngine } from "../hooks/useAlertEngine";
 import { useApp } from "../context/AppContext";
 import { UsageBar } from "./UsageBar";
 import { HistoryChart } from "./HistoryChart";
@@ -69,6 +71,15 @@ export function Popover() {
 
   // Record usage data to SQLite on each update
   useHistoryRecorder(usageData);
+
+  // Calculate burn rate from recorded history
+  const burnRate = useBurnRate(
+    usageData?.five_hour?.utilization ?? null,
+    usageData?.seven_day?.utilization ?? null
+  );
+
+  // Monitor thresholds and fire native notifications
+  useAlertEngine(usageData, burnRate);
 
   return (
     <div className="popover">
@@ -165,6 +176,7 @@ export function Popover() {
                         percentage={usageData.five_hour.utilization}
                         resetAt={usageData.five_hour.resets_at}
                         showRemaining={show_remaining}
+                        estimatedMinsToLimit={burnRate.session_mins_to_limit}
                       />
                     </div>
                   )}
@@ -178,6 +190,7 @@ export function Popover() {
                           percentage={usageData.seven_day.utilization}
                           resetAt={usageData.seven_day.resets_at}
                           showRemaining={show_remaining}
+                          estimatedMinsToLimit={burnRate.weekly_mins_to_limit}
                         />
                       )}
                       {usageData.seven_day_opus &&

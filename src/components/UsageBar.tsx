@@ -1,14 +1,32 @@
 import { useState, useEffect } from "react";
 import { getUsageColor, formatCountdown, formatResetDate } from "../utils/format";
 
+function formatBurnRate(mins: number): string {
+  if (mins === 0) return "At limit";
+  if (mins < 60) return `~${mins}m until limit at current pace`;
+  if (mins < 1440) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0
+      ? `~${h}h ${m}m until limit at current pace`
+      : `~${h}h until limit at current pace`;
+  }
+  const d = Math.floor(mins / 1440);
+  const h = Math.floor((mins % 1440) / 60);
+  return h > 0
+    ? `~${d}d ${h}h until limit at current pace`
+    : `~${d}d until limit at current pace`;
+}
+
 interface UsageBarProps {
   label: string;
   percentage: number;
   resetAt: string | null;
   showRemaining?: boolean;
+  estimatedMinsToLimit?: number | null;
 }
 
-export function UsageBar({ label, percentage, resetAt, showRemaining = false }: UsageBarProps) {
+export function UsageBar({ label, percentage, resetAt, showRemaining = false, estimatedMinsToLimit }: UsageBarProps) {
   const [countdown, setCountdown] = useState(formatCountdown(resetAt));
 
   useEffect(() => {
@@ -47,6 +65,11 @@ export function UsageBar({ label, percentage, resetAt, showRemaining = false }: 
             Resets in {countdown}
             {resetDate && <span className="usage-bar-reset-date"> · {resetDate}</span>}
           </span>
+          {estimatedMinsToLimit != null && (
+            <div className="usage-bar-burn-rate">
+              {formatBurnRate(estimatedMinsToLimit)}
+            </div>
+          )}
         </div>
       )}
     </div>
