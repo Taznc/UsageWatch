@@ -773,6 +773,7 @@ dependencies = [
 name = "claude-usage-tracker"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "chrono",
  "objc2",
  "objc2-app-kit",

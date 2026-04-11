@@ -1,24 +1,35 @@
+//! macOS native styled tray title via Objective-C FFI.
+
 #[cfg(target_os = "macos")]
 pub use macos::*;
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use objc2::rc::Retained;
-    use objc2::runtime::AnyObject;
-    use objc2_app_kit::{
-        NSColor, NSFont, NSFontAttributeName, NSForegroundColorAttributeName,
-        NSStatusBar,
-    };
-    use objc2_foundation::{NSMutableAttributedString, NSRange, NSString};
+    use std::ffi::CString;
+
+    #[repr(C)]
+    struct CTraySegment {
+        text: *const std::ffi::c_char,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+        font_size: f32,
+        is_bold: std::ffi::c_int,
+    }
+
+    extern "C" {
+        fn set_styled_tray_title(segments: *const CTraySegment, count: std::ffi::c_int);
+    }
 
     #[derive(Debug, Clone)]
     pub struct StyledSegment {
         pub text: String,
-        pub r: f64,
-        pub g: f64,
-        pub b: f64,
-        pub a: f64,
-        pub font_size: f64,
+        pub r: f32,
+        pub g: f32,
+        pub b: f32,
+        pub a: f32,
+        pub font_size: f32,
         pub is_bold: bool,
     }
 
@@ -28,117 +39,43 @@ mod macos {
         ) -> Self {
             Self {
                 text: text.to_string(),
-                r: r as f64 / 255.0,
-                g: g as f64 / 255.0,
-                b: b as f64 / 255.0,
-                a: a as f64 / 255.0,
-                font_size,
+                r: r as f32 / 255.0,
+                g: g as f32 / 255.0,
+                b: b as f32 / 255.0,
+                a: a as f32 / 255.0,
+                font_size: font_size as f32,
                 is_bold,
             }
         }
     }
 
-    fn build_attributed_string(segments: &[StyledSegment]) -> Retained<NSMutableAttributedString> {
-        let result = NSMutableAttributedString::new();
-
-        for seg in segments {
-            let ns_text = NSString::from_str(&seg.text);
-            let sub = NSMutableAttributedString::from_nsstring(&ns_text);
-            let range = NSRange::new(0, ns_text.length());
-
-            let font: Retained<NSFont> = if seg.is_bold {
-                NSFont::boldSystemFontOfSize(seg.font_size)
-            } else {
-                NSFont::systemFontOfSize(seg.font_size)
-            };
-
-            let color =
-                NSColor::colorWithSRGBRed_green_blue_alpha(seg.r, seg.g, seg.b, seg.a);
-
-            unsafe {
-                sub.addAttribute_value_range(
-                    NSFontAttributeName,
-                    font.as_ref() as &AnyObject,
-                    range,
-                );
-                sub.addAttribute_value_range(
-                    NSForegroundColorAttributeName,
-                    color.as_ref() as &AnyObject,
-                    range,
-                );
-            }
-
-            result.appendAttributedString(&sub);
-        }
-
-        result
-    }
-
-    /// Set styled attributed title on the tray's NSStatusItem button.
-    ///
-    /// Uses NSStatusBar to access status items. Since macOS doesn't expose
-    /// enumeration of existing items, we access the button through the
-    /// status bar's internal item list via the Objective-C runtime.
-    pub fn set_attributed_title_on_tray(
-        _tray: &tauri::tray::TrayIcon,
-        segments: &[StyledSegment],
-    ) {
+    pub fn set_native_styled_title(segments: &[StyledSegment]) {
         if segments.is_empty() {
             return;
         }
 
-        let attr_string = build_attributed_string(segments);
+        // Convert to C strings (must keep them alive during the call)
+        let c_strings: Vec<CString> = segments
+            .iter()
+            .map(|s| CString::new(s.text.as_str()).unwrap_or_default())
+            .collect();
+
+        let c_segments: Vec<CTraySegment> = segments
+            .iter()
+            .zip(c_strings.iter())
+            .map(|(seg, cs)| CTraySegment {
+                text: cs.as_ptr(),
+                r: seg.r,
+                g: seg.g,
+                b: seg.b,
+                a: seg.a,
+                font_size: seg.font_size,
+                is_bold: if seg.is_bold { 1 } else { 0 },
+            })
+            .collect();
 
         unsafe {
-            // Get the system status bar
-            let status_bar = NSStatusBar::systemStatusBar();
-
-            // Access the internal _statusItems array via Objective-C runtime
-            // This is a private API but stable across macOS versions
-            use objc2::msg_send;
-            let items: *mut AnyObject = msg_send![&*status_bar, _statusItems];
-            if items.is_null() {
-                eprintln!("[styled_tray] _statusItems returned null");
-                return;
-            }
-
-            let count: usize = msg_send![items, count];
-            if count == 0 {
-                eprintln!("[styled_tray] no status items found");
-                return;
-            }
-
-            // Find our status item — iterate and look for the one owned by our app
-            // For a single-tray app, we take the last item (most recently added)
-            for i in (0..count).rev() {
-                let item: *mut AnyObject = msg_send![items, objectAtIndex: i];
-                if item.is_null() {
-                    continue;
-                }
-
-                // Get the button from the status item
-                let button: *mut AnyObject = msg_send![item, button];
-                if button.is_null() {
-                    continue;
-                }
-
-                // Check if this button has a title (our tray sets one)
-                let title: *mut AnyObject = msg_send![button, title];
-                if title.is_null() {
-                    continue;
-                }
-
-                let length: usize = msg_send![title, length];
-                if length == 0 {
-                    continue;
-                }
-
-                // Set the attributed title
-                let _: () = msg_send![button, setAttributedTitle: &*attr_string];
-                return;
-            }
-
-            eprintln!("[styled_tray] could not find our status item button");
+            set_styled_tray_title(c_segments.as_ptr(), c_segments.len() as std::ffi::c_int);
         }
     }
 }

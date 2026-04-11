@@ -110,9 +110,23 @@ fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
             }
         }
 
-        // Set plain text title (works on all platforms)
-        let title = tray_renderer::build_tray_title(data, format);
-        let _ = tray.set_title(Some(&title));
+        // On macOS: set styled attributed title via native Objective-C
+        #[cfg(target_os = "macos")]
+        {
+            // Set plain title first (needed for button detection)
+            let plain = tray_renderer::build_tray_title(data, format);
+            let _ = tray.set_title(Some(&plain));
+            // Overlay with styled version
+            let segments = build_styled_segments(data, format);
+            crate::styled_tray::set_native_styled_title(&segments);
+        }
+
+        // On non-macOS: plain text only
+        #[cfg(not(target_os = "macos"))]
+        {
+            let title = tray_renderer::build_tray_title(data, format);
+            let _ = tray.set_title(Some(&title));
+        }
     }
 }
 
