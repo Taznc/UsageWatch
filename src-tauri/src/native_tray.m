@@ -45,18 +45,39 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
         @autoreleasepool {
             @try {
                 for (NSWindow *window in [NSApp windows]) {
-                    NSString *className = NSStringFromClass([window class]);
-                    if (![className isEqualToString:@"NSStatusBarWindow"]) continue;
+                    if (![NSStringFromClass([window class]) isEqualToString:@"NSStatusBarWindow"])
+                        continue;
 
+                    // The contentView is NSStatusBarContentView.
+                    // The button is a subview of it, or accessible via the
+                    // window's private _statusItem property.
                     NSView *contentView = [window contentView];
                     if (!contentView) continue;
 
-                    if ([contentView respondsToSelector:@selector(setAttributedTitle:)] &&
-                        [contentView respondsToSelector:@selector(title)]) {
-                        NSString *title = [(NSButton *)contentView title];
-                        if (title && title.length > 0) {
-                            [(NSButton *)contentView setAttributedTitle:captured];
+                    // Try to get the status item from the window
+                    NSStatusItem *statusItem = nil;
+                    @try {
+                        statusItem = [window valueForKey:@"_statusItem"];
+                    } @catch (NSException *e) {
+                        // Fall through to subview search
+                    }
+
+                    if (statusItem) {
+                        NSStatusBarButton *button = statusItem.button;
+                        if (button && button.title.length > 0) {
+                            [button setAttributedTitle:captured];
                             return;
+                        }
+                    }
+
+                    // Fallback: search subviews for NSStatusBarButton
+                    for (NSView *subview in contentView.subviews) {
+                        if ([subview isKindOfClass:[NSButton class]]) {
+                            NSButton *button = (NSButton *)subview;
+                            if (button.title.length > 0) {
+                                [button setAttributedTitle:captured];
+                                return;
+                            }
                         }
                     }
                 }
