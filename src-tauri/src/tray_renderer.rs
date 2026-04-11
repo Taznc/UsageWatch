@@ -15,10 +15,10 @@ fn color_u8(r: u8, g: u8, b: u8, a: u8) -> Color {
 
 const SCALE: f32 = 2.0; // Retina 2x
 const HEIGHT: f32 = 22.0;
-const LABEL_SIZE: f32 = 10.0;
-const VALUE_SIZE: f32 = 13.0;
-const TIMER_SIZE: f32 = 10.0;
-const PADDING: f32 = 2.0;
+const LABEL_SIZE: f32 = 14.0;
+const VALUE_SIZE: f32 = 16.0;
+const TIMER_SIZE: f32 = 13.0;
+const PADDING: f32 = 4.0;
 const SEP_MARGIN: f32 = 6.0;
 
 static FONT_MEDIUM: &[u8] = include_bytes!("../fonts/Inter-Medium.ttf");
@@ -26,21 +26,20 @@ static FONT_BOLD: &[u8] = include_bytes!("../fonts/Inter-Bold.ttf");
 
 fn usage_color(pct: f64) -> Color {
     if pct >= 90.0 {
-        color_u8(239, 68, 68, 255) // red
+        color_u8(255, 85, 85, 255) // bright red
     } else if pct >= 75.0 {
-        color_u8(245, 158, 11, 255) // orange
+        color_u8(255, 180, 30, 255) // bright orange
     } else {
-        color_u8(34, 197, 94, 255) // green
+        color_u8(60, 220, 120, 255) // bright green
     }
 }
 
 fn label_color() -> Color {
-    // Light gray for labels — works on dark menu bar
-    color_u8(160, 160, 170, 255)
+    color_u8(200, 200, 210, 255) // brighter gray
 }
 
 fn timer_color() -> Color {
-    color_u8(140, 140, 150, 255)
+    color_u8(180, 180, 190, 255) // brighter gray
 }
 
 fn sep_color() -> Color {
