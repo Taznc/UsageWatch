@@ -30,7 +30,6 @@ static NSStatusBarButton *findOurButton(void) {
 }
 
 void set_styled_tray_title(const TraySegment *segments, int count) {
-    // Build the attributed string on the calling thread (data is valid here)
     NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
 
     for (int i = 0; i < count; i++) {
@@ -61,18 +60,36 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
 
     if (result.length == 0) return;
 
-    // Dispatch to main thread with a small delay so Tauri's set_title
-    // (which also dispatches to main) completes first and updates
-    // the TrayTarget dimensions. We then only change the colors/styling
-    // without changing the text content or button width.
     NSAttributedString *captured = [result copy];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(50 * NSEC_PER_MSEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(100 * NSEC_PER_MSEC)),
                    dispatch_get_main_queue(), ^{
         @autoreleasepool {
             @try {
                 NSStatusBarButton *button = findOurButton();
-                if (button) {
-                    [button setAttributedTitle:captured];
+                if (!button) return;
+
+                // Save the current button frame (set by Tauri's set_title)
+                NSRect savedFrame = button.frame;
+
+                // Set the styled title
+                [button setAttributedTitle:captured];
+
+                // Restore the original frame so the TrayTarget overlay stays valid
+                [button setFrame:savedFrame];
+
+                // Also resize all subviews (TrayTarget overlay) to match
+                for (NSView *subview in button.subviews) {
+                    [subview setFrame:button.bounds];
+                    // Update tracking areas
+                    for (NSTrackingArea *area in [subview.trackingAreas copy]) {
+                        [subview removeTrackingArea:area];
+                        NSTrackingArea *newArea = [[NSTrackingArea alloc]
+                            initWithRect:button.bounds
+                                 options:area.options
+                                   owner:area.owner
+                                userInfo:area.userInfo];
+                        [subview addTrackingArea:newArea];
+                    }
                 }
             } @catch (NSException *e) {
                 NSLog(@"[styled_tray] Exception: %@", e);
