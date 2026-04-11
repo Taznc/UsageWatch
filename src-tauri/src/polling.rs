@@ -102,13 +102,8 @@ pub fn update_tray_title_public(app: &AppHandle, data: &UsageData, format: &Tray
 
 fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
     if let Some(tray) = app.tray_by_id("main-tray") {
-        // Set color-coded dot icon
-        if let Some(png_bytes) = tray_renderer::render_status_icon(data) {
-            if let Ok(img) = tauri::image::Image::from_bytes(&png_bytes) {
-                let _ = tray.set_icon(Some(img.to_owned()));
-                let _ = tray.set_icon_as_template(false);
-            }
-        }
+        // Remove icon — show text only
+        let _ = tray.set_icon(None::<tauri::image::Image<'_>>);
 
         // On macOS: set styled attributed title via native Objective-C
         // Do NOT call set_title() — it overwrites the attributedTitle
@@ -132,7 +127,7 @@ fn build_styled_segments(data: &UsageData, format: &TrayFormat) -> Vec<crate::st
     use crate::styled_tray::StyledSegment;
 
     let label_color = (220, 220, 230, 255);
-    let timer_color = (190, 190, 200, 255);
+    let timer_color = (120, 180, 255, 255); // light blue — distinct from labels
     let sep_color = (150, 150, 160, 255);
 
     fn pct_color(pct: f64) -> (u8, u8, u8, u8) {
