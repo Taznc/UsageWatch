@@ -1,0 +1,46 @@
+{
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "6.0"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "10.15"
+    }
+  ],
+  "Version": "1.0.0",
+  "Name": "Claude Usage",
+  "Description": "Displays Claude AI usage limits from the UsageWatch app. Requires UsageWatch to be running.",
+  "Author": "Josh Ashworth",
+  "Category": "Claude Usage",
+  "CategoryIcon": "imgs/plugin",
+  "Icon": "imgs/plugin",
+  "CodePath": "bin/plugin.js",
+  "Actions": [
+    {
+      "Name": "Session Usage",
+      "UUID": "com.usagewatch.session",
+      "Icon": "imgs/actions/session/icon",
+      "Tooltip": "Shows current 5-hour Claude session usage %",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/session/icon"
+        }
+      ]
+    },
+    {
+      "Name": "Weekly Usage",
+      "UUID": "com.usagewatch.weekly",
+      "Icon": "imgs/actions/weekly/icon",
+      "Tooltip": "Shows 7-day Claude weekly usage %",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/weekly/icon"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "usagewatch-streamdeck",
+  "version": "1.0.0",
+  "description": "Stream Deck plugin for UsageWatch — displays Claude AI usage on Stream Deck keys",
+  "main": "bin/plugin.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "install-plugin": "node scripts/install.mjs"
+  },
+  "dependencies": {
+    "@elgato/streamdeck": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.0.0"
+  }
+}
