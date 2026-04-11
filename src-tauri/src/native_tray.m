@@ -29,78 +29,80 @@ static NSStatusBarButton *findOurButton(void) {
     return nil;
 }
 
-/// Sync the TrayTarget overlay subview to match the button's current bounds.
-/// This must be called after any change to the button's title/attributedTitle
-/// because the tray-icon crate's TrayTarget only gets resized by its own
-/// set_title/set_icon methods (via update_dimensions).
-static void syncTrayTargetFrame(NSStatusBarButton *button) {
-    NSRect bounds = button.bounds;
-    for (NSView *subview in button.subviews) {
-        [subview setFrame:bounds];
-        // Rebuild tracking areas to match new bounds
-        for (NSTrackingArea *area in [subview.trackingAreas copy]) {
-            [subview removeTrackingArea:area];
-            NSTrackingArea *newArea = [[NSTrackingArea alloc]
-                initWithRect:bounds
-                     options:area.options
-                       owner:area.owner
-                    userInfo:area.userInfo];
-            [subview addTrackingArea:newArea];
-        }
-    }
-}
-
 void set_styled_tray_title(const TraySegment *segments, int count) {
-    NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
+    // Get the button's current font BEFORE building the attributed string
+    // We'll use this exact font for all segments so the button doesn't resize
+    NSStatusBarButton *button = nil;
 
+    if ([NSThread isMainThread]) {
+        button = findOurButton();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), ^{});
+        // Can't access button from bg thread, will get it in the dispatch block
+    }
+
+    // Build the full plain text to know total length
+    NSMutableString *plainText = [NSMutableString string];
     for (int i = 0; i < count; i++) {
         NSString *text = [NSString stringWithUTF8String:segments[i].text];
-        if (!text) continue;
-
-        NSFont *font;
-        if (segments[i].is_bold) {
-            font = [NSFont boldSystemFontOfSize:segments[i].font_size];
-        } else {
-            font = [NSFont systemFontOfSize:segments[i].font_size];
-        }
-
-        NSColor *color = [NSColor colorWithSRGBRed:segments[i].r
-                                             green:segments[i].g
-                                              blue:segments[i].b
-                                             alpha:segments[i].a];
-
-        NSDictionary *attrs = @{
-            NSFontAttributeName: font,
-            NSForegroundColorAttributeName: color,
-        };
-
-        NSAttributedString *seg = [[NSAttributedString alloc] initWithString:text
-                                                                  attributes:attrs];
-        [result appendAttributedString:seg];
+        if (text) [plainText appendString:text];
     }
 
-    if (result.length == 0) return;
+    // Build segment ranges and colors
+    typedef struct {
+        NSUInteger location;
+        NSUInteger length;
+        float r, g, b, a;
+    } ColorRange;
 
-    NSAttributedString *captured = [result copy];
+    ColorRange *ranges = malloc(sizeof(ColorRange) * count);
+    NSUInteger offset = 0;
+    for (int i = 0; i < count; i++) {
+        NSString *text = [NSString stringWithUTF8String:segments[i].text];
+        NSUInteger len = text ? text.length : 0;
+        ranges[i] = (ColorRange){ offset, len, segments[i].r, segments[i].g, segments[i].b, segments[i].a };
+        offset += len;
+    }
 
-    // Delay to let Tauri's set_title() and update_dimensions() complete first
+    int capturedCount = count;
+
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(50 * NSEC_PER_MSEC)),
                    dispatch_get_main_queue(), ^{
         @autoreleasepool {
             @try {
-                NSStatusBarButton *button = findOurButton();
-                if (!button) return;
+                NSStatusBarButton *btn = findOurButton();
+                if (!btn) { free(ranges); return; }
 
-                // Set the styled title — this may resize the button
-                [button setAttributedTitle:captured];
+                // Get the button's CURRENT attributed title (set by Tauri's set_title)
+                NSAttributedString *current = [btn attributedTitle];
+                if (!current || current.length == 0) { free(ranges); return; }
 
-                // Let the button settle its layout
-                [button sizeToFit];
+                // Create a mutable copy — same text, same font, same size
+                NSMutableAttributedString *styled = [current mutableCopy];
 
-                // Now sync the TrayTarget overlay to match the new size
-                syncTrayTargetFrame(button);
+                // Only change the foreground color for each segment range
+                // This preserves the exact font metrics so the button doesn't resize
+                for (int i = 0; i < capturedCount; i++) {
+                    if (ranges[i].location + ranges[i].length > styled.length) continue;
+
+                    NSColor *color = [NSColor colorWithSRGBRed:ranges[i].r
+                                                         green:ranges[i].g
+                                                          blue:ranges[i].b
+                                                         alpha:ranges[i].a];
+
+                    [styled addAttribute:NSForegroundColorAttributeName
+                                   value:color
+                                   range:NSMakeRange(ranges[i].location, ranges[i].length)];
+                }
+
+                free(ranges);
+
+                // Set the styled version — same font/size, only colors changed
+                // Button frame should NOT change
+                [btn setAttributedTitle:styled];
 
             } @catch (NSException *e) {
+                free(ranges);
                 NSLog(@"[styled_tray] Exception: %@", e);
             }
         }
