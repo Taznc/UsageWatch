@@ -106,7 +106,7 @@ pub fn run() {
                 .title("--")
                 .tooltip("Claude Usage Tracker")
                 .menu(&tray_menu)
-                .menu_on_left_click(false)
+                .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "refresh" => {
                         let _ = app.emit("refresh-requested", ());

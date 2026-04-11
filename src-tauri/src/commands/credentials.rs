@@ -12,10 +12,6 @@ fn save_to_store(app: &AppHandle, key: &str, value: &str) -> Result<(), String> 
     store.save().map_err(|e| format!("Store save error: {}", e))
 }
 
-fn load_from_store(app: &AppHandle, key: &str) -> Option<String> {
-    let store = app.store("credentials.json").ok()?;
-    store.get(key).and_then(|v| v.as_str().map(|s| s.to_string()))
-}
 
 fn delete_from_store(app: &AppHandle, key: &str) -> Result<(), String> {
     let store = app
