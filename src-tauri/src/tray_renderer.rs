@@ -13,7 +13,7 @@ fn color_u8(r: u8, g: u8, b: u8, a: u8) -> Color {
     .unwrap_or(Color::WHITE)
 }
 
-const SCALE: f32 = 2.0; // Retina 2x
+const SCALE: f32 = 1.0; // Render at 1x — macOS handles HiDPI scaling
 const HEIGHT: f32 = 22.0;
 const LABEL_SIZE: f32 = 14.0;
 const VALUE_SIZE: f32 = 16.0;
