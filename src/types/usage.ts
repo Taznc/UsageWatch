@@ -79,3 +79,56 @@ export interface TrayFormat {
 }
 
 export type AppView = "popover" | "settings" | "setup";
+
+// ── Codex ─────────────────────────────────────────────────────────────────
+
+export interface CodexUsageWindow {
+  used_percent: number;
+  resets_at: string | null;
+  limit_window_seconds: number;
+}
+
+export interface CodexCredits {
+  has_credits: boolean;
+  unlimited: boolean;
+  overage_limit_reached: boolean;
+  balance: string | null;
+}
+
+export interface CodexUsageData {
+  plan_type: string | null;
+  allowed: boolean;
+  limit_reached: boolean;
+  session_window: CodexUsageWindow | null;
+  weekly_window: CodexUsageWindow | null;
+  credits: CodexCredits | null;
+  code_review_window: CodexUsageWindow | null;
+}
+
+export interface CodexUpdate {
+  data: CodexUsageData | null;
+  error: string | null;
+  timestamp: string;
+}
+
+// ── Provider switching types ────────────────────────────────────────────────
+
+export type Provider = "Claude" | "Codex";
+
+export interface AppMapping {
+  app_identifier: string;
+  provider: Provider;
+}
+
+export type TrayMode = "Dynamic" | { Static: Provider };
+
+export interface TrayConfig {
+  mode: TrayMode;
+  app_mappings: AppMapping[];
+  default_provider: Provider;
+}
+
+export interface RunningApp {
+  bundle_id: string;
+  name: string;
+}

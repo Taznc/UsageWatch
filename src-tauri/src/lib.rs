@@ -1,11 +1,14 @@
 mod commands;
 mod credentials_cache;
+#[cfg(target_os = "macos")]
+mod focus_monitor;
 mod http_server;
 mod models;
 mod polling;
 #[cfg(target_os = "macos")]
 mod styled_tray;
 mod tray_renderer;
+mod tray_state;
 
 use std::sync::{Arc, Mutex};
 use tauri::{
@@ -17,7 +20,7 @@ use tauri::{
 use objc2::rc::Retained;
 
 use credentials_cache::CredentialsCache;
-use models::{TrayFormat, UsageData};
+use models::{TrayConfig, TrayFormat};
 use polling::{CodexUpdate, UsageUpdate};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -30,7 +33,9 @@ pub fn run() {
     let cache_for_polling = cache.clone();
 
     let tray_format = Arc::new(Mutex::new(TrayFormat::default()));
-    let tray_format_for_polling = tray_format.clone();
+
+    let tray_config = Arc::new(Mutex::new(TrayConfig::default()));
+    let tray_config_for_state = tray_config.clone();
 
     let latest_usage: Arc<Mutex<Option<UsageUpdate>>> = Arc::new(Mutex::new(None));
     let latest_usage_for_polling = latest_usage.clone();
@@ -38,6 +43,10 @@ pub fn run() {
 
     let latest_codex: Arc<Mutex<Option<CodexUpdate>>> = Arc::new(Mutex::new(None));
     let latest_codex_for_polling = latest_codex.clone();
+
+    let tray_format_for_state = tray_format.clone();
+    let latest_usage_for_state = latest_usage.clone();
+    let latest_codex_for_state = latest_codex.clone();
 
     tauri::Builder::default()
         .plugin(
@@ -73,6 +82,7 @@ pub fn run() {
         .manage(poll_interval.clone())
         .manage(cache.clone())
         .manage(tray_format.clone())
+        .manage(tray_config.clone())
         .invoke_handler(tauri::generate_handler![
             commands::credentials::save_session_key,
             commands::credentials::get_session_key,
@@ -89,6 +99,9 @@ pub fn run() {
             set_poll_interval,
             get_tray_format,
             set_tray_format,
+            get_tray_config,
+            set_tray_config,
+            get_running_apps,
         ])
         .setup(move |app| {
             // Hide dock icon on macOS (agent/accessory app)
@@ -102,14 +115,16 @@ pub fn run() {
             // Load saved credentials from store file into memory cache
             commands::credentials::load_credentials_from_store(handle, &cache);
 
-            // Load tray format from store
+            // Load tray format and tray config from store
             load_tray_format_from_store(handle, &tray_format);
+            load_tray_config_from_store(handle, &tray_config);
 
             // Build tray menu
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let widget = MenuItem::with_id(app, "widget", "Widget", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&refresh, &settings, &quit])?;
+            let menu = Menu::with_items(app, &[&refresh, &settings, &widget, &quit])?;
 
             // Build tray icon
             let tray_menu = menu;
@@ -131,13 +146,22 @@ pub fn run() {
                             let _ = window.set_focus();
                         }
                     }
+                    "widget" => {
+                        if let Some(w) = app.get_webview_window("widget") {
+                            if w.is_visible().unwrap_or(false) {
+                                let _ = w.hide();
+                            } else {
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            }
+                        }
+                    }
                     "quit" => {
                         app.exit(0);
                     }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    eprintln!("[tray] event: {:?}", event);
                     match &event {
                         tauri::tray::TrayIconEvent::Click {
                             button: tauri::tray::MouseButton::Left,
@@ -195,11 +219,24 @@ pub fn run() {
                 });
             }
 
+            // Initialize global tray state for provider-aware rendering
+            tray_state::init(tray_state::TrayState {
+                app_handle: handle.clone(),
+                tray_config: tray_config_for_state,
+                tray_format: tray_format_for_state,
+                latest_usage: latest_usage_for_state,
+                latest_codex: latest_codex_for_state,
+            });
+
+            // Start focus observation (macOS KVO on frontmostApplication)
+            #[cfg(target_os = "macos")]
+            focus_monitor::start();
+
             // Start Stream Deck HTTP API server
             http_server::start(handle.clone(), latest_usage_for_server);
 
             // Start background polling
-            polling::start_polling(handle, poll_interval_clone, cache_for_polling, tray_format_for_polling, latest_usage_for_polling);
+            polling::start_polling(handle, poll_interval_clone, cache_for_polling, latest_usage_for_polling);
             polling::start_codex_polling(handle, poll_interval_clone2, latest_codex_for_polling);
 
             Ok(())
@@ -231,40 +268,49 @@ fn set_tray_format(
     format: TrayFormat,
     state: tauri::State<'_, Arc<Mutex<TrayFormat>>>,
 ) -> Result<(), String> {
-    // Update in-memory state
     {
         let mut lock = state.lock().map_err(|e| e.to_string())?;
         *lock = format.clone();
     }
-    // Persist to store
     save_tray_format_to_store(&app, &format);
-    // Immediately update tray with current format
-    // Fetch fresh usage data inline
-    let cache = app.state::<Arc<CredentialsCache>>();
-    if let (Some(session_key), Some(org_id)) = (cache.get_session_key(), cache.get_org_id()) {
-        let app_clone = app.clone();
-        let format_clone = format.clone();
-        tauri::async_runtime::spawn(async move {
-            let client = reqwest::Client::new();
-            let url = format!(
-                "https://claude.ai/api/organizations/{}/usage",
-                org_id
-            );
-            if let Ok(resp) = client
-                .get(&url)
-                .header("cookie", format!("sessionKey={}", session_key))
-                .header("content-type", "application/json")
-                .header("user-agent", "Claude Usage Tracker/0.1.0")
-                .send()
-                .await
-            {
-                if let Ok(data) = resp.json::<UsageData>().await {
-                    polling::update_tray_title_public(&app_clone, &data, &format_clone);
-                }
-            }
-        });
-    }
+    // Re-render with cached data for the current provider
+    tray_state::refresh_tray();
     Ok(())
+}
+
+#[tauri::command]
+fn get_tray_config(
+    state: tauri::State<'_, Arc<Mutex<TrayConfig>>>,
+) -> Result<TrayConfig, String> {
+    let lock = state.lock().map_err(|e| e.to_string())?;
+    Ok(lock.clone())
+}
+
+#[tauri::command]
+fn set_tray_config(
+    app: tauri::AppHandle,
+    config: TrayConfig,
+    state: tauri::State<'_, Arc<Mutex<TrayConfig>>>,
+) -> Result<(), String> {
+    {
+        let mut lock = state.lock().map_err(|e| e.to_string())?;
+        *lock = config.clone();
+    }
+    save_tray_config_to_store(&app, &config);
+    tray_state::refresh_tray();
+    Ok(())
+}
+
+#[tauri::command]
+fn get_running_apps() -> Vec<models::RunningApp> {
+    #[cfg(target_os = "macos")]
+    {
+        styled_tray::list_running_apps()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Vec::new()
+    }
 }
 
 fn load_tray_format_from_store(app: &tauri::AppHandle, tray_format: &Arc<Mutex<TrayFormat>>) {
@@ -283,6 +329,33 @@ fn save_tray_format_to_store(app: &tauri::AppHandle, format: &TrayFormat) {
     if let Ok(store) = app.store("credentials.json") {
         if let Ok(val) = serde_json::to_value(format) {
             store.set("tray_format", val);
+            let _ = store.save();
+        }
+    }
+}
+
+fn load_tray_config_from_store(app: &tauri::AppHandle, tray_config: &Arc<Mutex<TrayConfig>>) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        if let Some(val) = store.get("tray_config") {
+            if let Ok(mut cfg) = serde_json::from_value::<TrayConfig>(val.clone()) {
+                // If Dynamic with no mappings, seed with defaults so switching works
+                // out of the box (covers upgrades from older configs).
+                if matches!(cfg.mode, models::TrayMode::Dynamic) && cfg.app_mappings.is_empty() {
+                    cfg.app_mappings = TrayConfig::default().app_mappings;
+                    save_tray_config_to_store(app, &cfg);
+                }
+                *tray_config.lock().unwrap() = cfg;
+            }
+        }
+    }
+}
+
+fn save_tray_config_to_store(app: &tauri::AppHandle, config: &TrayConfig) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        if let Ok(val) = serde_json::to_value(config) {
+            store.set("tray_config", val);
             let _ = store.save();
         }
     }

@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, ReactNode } from "react";
-import type { UsageData, AppSettings, AppView } from "../types/usage";
+import type { UsageData, AppSettings, AppView, CodexUsageData } from "../types/usage";
 
 interface AppState {
   view: AppView;
@@ -10,6 +10,9 @@ interface AppState {
   isOffline: boolean;
   hasCredentials: boolean;
   settings: AppSettings;
+  codexData: CodexUsageData | null;
+  codexError: string | null;
+  codexLastUpdated: string | null;
 }
 
 type AppAction =
@@ -19,7 +22,9 @@ type AppAction =
   | { type: "SET_LOADING"; loading: boolean }
   | { type: "SET_OFFLINE"; offline: boolean }
   | { type: "SET_HAS_CREDENTIALS"; has: boolean }
-  | { type: "UPDATE_SETTINGS"; settings: Partial<AppSettings> };
+  | { type: "UPDATE_SETTINGS"; settings: Partial<AppSettings> }
+  | { type: 'SET_CODEX'; data: CodexUsageData; timestamp: string }
+  | { type: 'SET_CODEX_ERROR'; error: string; timestamp: string };
 
 const defaultSettings: AppSettings = {
   poll_interval_secs: 60,
@@ -40,6 +45,9 @@ const initialState: AppState = {
   isOffline: false,
   hasCredentials: false,
   settings: defaultSettings,
+  codexData: null,
+  codexError: null,
+  codexLastUpdated: null,
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -76,6 +84,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         settings: { ...state.settings, ...action.settings },
       };
+    case 'SET_CODEX':
+      return { ...state, codexData: action.data, codexError: null, codexLastUpdated: action.timestamp };
+    case 'SET_CODEX_ERROR':
+      return { ...state, codexError: action.error, codexLastUpdated: action.timestamp };
     default:
       return state;
   }

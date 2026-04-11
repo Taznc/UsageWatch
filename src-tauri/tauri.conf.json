@@ -21,6 +21,19 @@
         "decorations": false,
         "skipTaskbar": true,
         "alwaysOnTop": true
+      },
+      {
+        "label": "widget",
+        "title": "UsageWatch Widget",
+        "url": "widget/index.html",
+        "width": 380,
+        "height": 300,
+        "resizable": false,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
       }
     ],
     "security": {

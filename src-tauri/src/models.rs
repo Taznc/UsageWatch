@@ -153,3 +153,199 @@ impl Default for AppSettings {
         }
     }
 }
+
+// ── Codex API response structs (deserialization only) ──────────────────────
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CodexApiWindow {
+    #[serde(default)]
+    pub used_percent: f64,
+    #[serde(default)]
+    pub reset_at: i64,
+    #[serde(default)]
+    pub reset_after_seconds: i64,
+    #[serde(default)]
+    pub limit_window_seconds: u64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CodexApiRateLimit {
+    #[serde(default)]
+    pub allowed: bool,
+    #[serde(default)]
+    pub limit_reached: bool,
+    pub primary_window: Option<CodexApiWindow>,
+    pub secondary_window: Option<CodexApiWindow>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CodexApiCredits {
+    #[serde(default)]
+    pub has_credits: bool,
+    #[serde(default)]
+    pub unlimited: bool,
+    #[serde(default)]
+    pub overage_limit_reached: bool,
+    pub balance: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CodexApiResponse {
+    pub plan_type: Option<String>,
+    pub rate_limit: Option<CodexApiRateLimit>,
+    pub credits: Option<CodexApiCredits>,
+    pub code_review_rate_limit: Option<CodexApiWindow>,
+}
+
+// ── Codex frontend-ready structs (serialization only) ─────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CodexUsageWindow {
+    pub used_percent: f64,
+    /// ISO-8601 string, converted from Unix timestamp in Rust
+    pub resets_at: Option<String>,
+    pub limit_window_seconds: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CodexCredits {
+    pub has_credits: bool,
+    pub unlimited: bool,
+    pub overage_limit_reached: bool,
+    pub balance: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CodexUsageData {
+    pub plan_type: Option<String>,
+    pub allowed: bool,
+    pub limit_reached: bool,
+    pub session_window: Option<CodexUsageWindow>,
+    pub weekly_window: Option<CodexUsageWindow>,
+    pub credits: Option<CodexCredits>,
+    pub code_review_window: Option<CodexUsageWindow>,
+}
+
+fn unix_to_iso(ts: i64) -> Option<String> {
+    chrono::DateTime::from_timestamp(ts, 0)
+        .map(|dt: chrono::DateTime<chrono::Utc>| dt.to_rfc3339())
+}
+
+fn convert_api_window(w: CodexApiWindow) -> CodexUsageWindow {
+    CodexUsageWindow {
+        used_percent: w.used_percent,
+        resets_at: unix_to_iso(w.reset_at),
+        limit_window_seconds: w.limit_window_seconds,
+    }
+}
+
+impl CodexUsageData {
+    pub fn from_api(api: CodexApiResponse) -> Self {
+        let (allowed, limit_reached, session_window, weekly_window) =
+            if let Some(rl) = api.rate_limit {
+                (
+                    rl.allowed,
+                    rl.limit_reached,
+                    rl.primary_window.map(convert_api_window),
+                    rl.secondary_window.map(convert_api_window),
+                )
+            } else {
+                (true, false, None, None)
+            };
+
+        let credits = api.credits.map(|c| CodexCredits {
+            has_credits: c.has_credits,
+            unlimited: c.unlimited,
+            overage_limit_reached: c.overage_limit_reached,
+            balance: c.balance,
+        });
+
+        let code_review_window = api.code_review_rate_limit.map(convert_api_window);
+
+        CodexUsageData {
+            plan_type: api.plan_type,
+            allowed,
+            limit_reached,
+            session_window,
+            weekly_window,
+            credits,
+            code_review_window,
+        }
+    }
+}
+
+// ── Provider switching types ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Provider {
+    Claude,
+    Codex,
+    // Cursor,  // uncomment when ready
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppMapping {
+    pub app_identifier: String,   // bundle ID (com.googlecode.iterm2) or app name
+    pub provider: Provider,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TrayMode {
+    Dynamic,
+    Static(Provider),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrayConfig {
+    pub mode: TrayMode,
+    pub app_mappings: Vec<AppMapping>,
+    pub default_provider: Provider,
+}
+
+impl Default for TrayConfig {
+    fn default() -> Self {
+        Self {
+            mode: TrayMode::Dynamic,
+            app_mappings: vec![
+                AppMapping {
+                    app_identifier: "com.anthropic.claudefordesktop".to_string(),
+                    provider: Provider::Claude,
+                },
+                AppMapping {
+                    app_identifier: "com.openai.codex".to_string(),
+                    provider: Provider::Codex,
+                },
+            ],
+            default_provider: Provider::Claude,
+        }
+    }
+}
+
+impl TrayConfig {
+    pub fn resolve_provider(&self, bundle_id: Option<&str>, app_name: Option<&str>) -> Provider {
+        match &self.mode {
+            TrayMode::Static(p) => *p,
+            TrayMode::Dynamic => {
+                for mapping in &self.app_mappings {
+                    if let Some(bid) = bundle_id {
+                        if bid == mapping.app_identifier {
+                            return mapping.provider;
+                        }
+                    }
+                    if let Some(name) = app_name {
+                        if name.eq_ignore_ascii_case(&mapping.app_identifier) {
+                            return mapping.provider;
+                        }
+                    }
+                }
+                self.default_provider
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningApp {
+    pub bundle_id: String,
+    pub name: String,
+}

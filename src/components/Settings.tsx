@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useApp } from "../context/AppContext";
 import { formatPollInterval } from "../utils/format";
 import { DebugPanel } from "./DebugPanel";
-import type { Organization, TrayFormat } from "../types/usage";
+import type { Organization, TrayFormat, TrayConfig, RunningApp, Provider } from "../types/usage";
 
 export function Settings() {
   const { state, dispatch } = useApp();
@@ -28,6 +28,17 @@ export function Settings() {
     show_extra_usage: false,
     separator: " | ",
   });
+  const [trayConfig, setTrayConfig] = useState<TrayConfig>({
+    mode: "Dynamic",
+    app_mappings: [
+      { app_identifier: "com.anthropic.claudefordesktop", provider: "Claude" },
+      { app_identifier: "com.openai.codex", provider: "Codex" },
+    ],
+    default_provider: "Claude",
+  });
+  const [runningApps, setRunningApps] = useState<RunningApp[]>([]);
+  const [newMappingApp, setNewMappingApp] = useState("");
+  const [newMappingProvider, setNewMappingProvider] = useState<Provider>("Claude");
 
   useEffect(() => {
     async function loadTrayFormat() {
@@ -36,7 +47,14 @@ export function Settings() {
         setTrayFormat(fmt);
       } catch {}
     }
+    async function loadTrayConfig() {
+      try {
+        const cfg = await invoke<TrayConfig>("get_tray_config");
+        setTrayConfig(cfg);
+      } catch {}
+    }
     loadTrayFormat();
+    loadTrayConfig();
   }, []);
 
   const updateTrayFormat = async (updates: Partial<TrayFormat>) => {
@@ -44,6 +62,21 @@ export function Settings() {
     setTrayFormat(newFormat);
     try {
       await invoke("set_tray_format", { format: newFormat });
+    } catch {}
+  };
+
+  const updateTrayConfig = async (updates: Partial<TrayConfig>) => {
+    const newConfig = { ...trayConfig, ...updates };
+    setTrayConfig(newConfig);
+    try {
+      await invoke("set_tray_config", { config: newConfig });
+    } catch {}
+  };
+
+  const loadRunningApps = async () => {
+    try {
+      const apps = await invoke<RunningApp[]>("get_running_apps");
+      setRunningApps(apps.sort((a, b) => a.name.localeCompare(b.name)));
     } catch {}
   };
 
@@ -119,6 +152,7 @@ export function Settings() {
   const tabs = [
     { id: "credentials", label: "Credentials" },
     { id: "behavior", label: "Behavior" },
+    { id: "tray-source", label: "Source" },
     { id: "notifications", label: "Notifications" },
     { id: "appearance", label: "Appearance" },
   ];
@@ -263,6 +297,163 @@ export function Settings() {
                 Launch at login
               </label>
             </div>
+          </div>
+        )}
+
+        {activeTab === "tray-source" && (
+          <div className="settings-section">
+            <h3 style={{ fontSize: 13, marginBottom: 12 }}>Mode</h3>
+            <div className="form-group toggle-group">
+              <label>
+                <input
+                  type="radio"
+                  name="tray-mode"
+                  checked={typeof trayConfig.mode === "object" && "Static" in trayConfig.mode}
+                  onChange={() => updateTrayConfig({ mode: { Static: trayConfig.default_provider } })}
+                />
+                Static (always show one provider)
+              </label>
+            </div>
+            <div className="form-group toggle-group">
+              <label>
+                <input
+                  type="radio"
+                  name="tray-mode"
+                  checked={trayConfig.mode === "Dynamic"}
+                  onChange={() => {
+                    updateTrayConfig({ mode: "Dynamic" });
+                    loadRunningApps();
+                  }}
+                />
+                Dynamic (switch based on focused app)
+              </label>
+            </div>
+
+            <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
+
+            {typeof trayConfig.mode === "object" && "Static" in trayConfig.mode && (
+              <>
+                <h3 style={{ fontSize: 13, marginBottom: 12 }}>Provider</h3>
+                <div className="form-group">
+                  <select
+                    className="input"
+                    value={trayConfig.mode.Static}
+                    onChange={(e) => updateTrayConfig({ mode: { Static: e.target.value as Provider } })}
+                  >
+                    <option value="Claude">Claude</option>
+                    <option value="Codex">Codex</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            {trayConfig.mode === "Dynamic" && (
+              <>
+                <h3 style={{ fontSize: 13, marginBottom: 12 }}>Default Provider</h3>
+                <div className="form-group">
+                  <label>Shown when no app mapping matches</label>
+                  <select
+                    className="input"
+                    value={trayConfig.default_provider}
+                    onChange={(e) => updateTrayConfig({ default_provider: e.target.value as Provider })}
+                  >
+                    <option value="Claude">Claude</option>
+                    <option value="Codex">Codex</option>
+                  </select>
+                </div>
+
+                <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
+
+                <h3 style={{ fontSize: 13, marginBottom: 12 }}>App Mappings</h3>
+
+                {trayConfig.app_mappings.length > 0 ? (
+                  trayConfig.app_mappings.map((mapping, idx) => (
+                    <div className="form-group" key={mapping.app_identifier} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {mapping.app_identifier}
+                      </span>
+                      <select
+                        className="input"
+                        style={{ width: "auto", flex: "0 0 auto" }}
+                        value={mapping.provider}
+                        onChange={(e) => {
+                          const updated = [...trayConfig.app_mappings];
+                          updated[idx] = { ...mapping, provider: e.target.value as Provider };
+                          updateTrayConfig({ app_mappings: updated });
+                        }}
+                      >
+                        <option value="Claude">Claude</option>
+                        <option value="Codex">Codex</option>
+                      </select>
+                      <button
+                        className="icon-btn"
+                        style={{ fontSize: 16, padding: "2px 6px" }}
+                        onClick={() => {
+                          const updated = trayConfig.app_mappings.filter((_, i) => i !== idx);
+                          updateTrayConfig({ app_mappings: updated });
+                        }}
+                      >
+                        &#215;
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+                    No app mappings configured.
+                  </p>
+                )}
+
+                <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
+
+                <h3 style={{ fontSize: 13, marginBottom: 12 }}>Add Mapping</h3>
+                <div className="form-group" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <select
+                    className="input"
+                    style={{ flex: 1 }}
+                    value={newMappingApp}
+                    onChange={(e) => setNewMappingApp(e.target.value)}
+                    onFocus={() => {
+                      if (runningApps.length === 0) loadRunningApps();
+                    }}
+                  >
+                    <option value="">Select app...</option>
+                    {runningApps
+                      .filter((app) => !trayConfig.app_mappings.some((m) => m.app_identifier === app.bundle_id))
+                      .map((app) => (
+                        <option key={app.bundle_id} value={app.bundle_id}>
+                          {app.name} ({app.bundle_id})
+                        </option>
+                      ))}
+                  </select>
+                  <select
+                    className="input"
+                    style={{ width: "auto", flex: "0 0 auto" }}
+                    value={newMappingProvider}
+                    onChange={(e) => setNewMappingProvider(e.target.value as Provider)}
+                  >
+                    <option value="Claude">Claude</option>
+                    <option value="Codex">Codex</option>
+                  </select>
+                  <button
+                    className="btn primary"
+                    style={{ padding: "4px 10px", fontSize: 16 }}
+                    disabled={!newMappingApp}
+                    onClick={() => {
+                      if (!newMappingApp) return;
+                      const updated = [
+                        ...trayConfig.app_mappings,
+                        { app_identifier: newMappingApp, provider: newMappingProvider },
+                      ];
+                      updateTrayConfig({ app_mappings: updated });
+                      setNewMappingApp("");
+                      setNewMappingProvider("Claude");
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

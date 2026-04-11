@@ -26,19 +26,14 @@ pub fn load_credentials_from_store(app: &AppHandle, cache: &CredentialsCache) {
     match app.store("credentials.json") {
         Ok(store) => {
             if let Some(val) = store.get("session_key") {
-                eprintln!("[credentials] loaded session_key type: {:?}", val);
                 if let Some(s) = val.as_str() {
                     cache.set_session_key(s.to_string());
                 }
-            } else {
-                eprintln!("[credentials] no session_key in store");
             }
             if let Some(val) = store.get("org_id") {
                 if let Some(s) = val.as_str() {
                     cache.set_org_id(s.to_string());
                 }
-            } else {
-                eprintln!("[credentials] no org_id in store");
             }
         }
         Err(e) => {

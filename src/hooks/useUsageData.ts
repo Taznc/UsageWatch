@@ -2,7 +2,7 @@ import { useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../context/AppContext";
-import type { UsageUpdate } from "../types/usage";
+import type { UsageUpdate, CodexUpdate } from "../types/usage";
 
 export function useUsageData() {
   const { state, dispatch } = useApp();
@@ -18,8 +18,18 @@ export function useUsageData() {
       }
     });
 
+    const unlistenCodex = listen<CodexUpdate>('codex-update', (event) => {
+      const update = event.payload;
+      if (update.data) {
+        dispatch({ type: 'SET_CODEX', data: update.data, timestamp: update.timestamp });
+      } else if (update.error) {
+        dispatch({ type: 'SET_CODEX_ERROR', error: update.error, timestamp: update.timestamp });
+      }
+    });
+
     return () => {
       unlisten.then((fn) => fn());
+      unlistenCodex.then((fn) => fn());
     };
   }, [dispatch]);
 

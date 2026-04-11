@@ -272,6 +272,38 @@ body {
   opacity: 0.7;
 }
 
+/* Tabs */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 10px 8px;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+  -webkit-app-region: no-drag;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--blue);
+}
+
 /* Footer */
 .popover-footer {
   margin-top: 14px;
@@ -545,7 +577,7 @@ select.input {
 
 .tab {
   flex: 1;
-  padding: 6px 8px;
+  padding: 6px 4px;
   background: none;
   border: none;
   color: var(--text-muted);

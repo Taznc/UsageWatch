@@ -1,4 +1,5 @@
 #import <AppKit/AppKit.h>
+#include <string.h>
 
 typedef struct {
     const char *text;
@@ -132,9 +133,6 @@ static void setupClickHandling(NSStatusBarButton *button) {
     cachedMenu = cachedStatusItem.menu;
     cachedStatusItem.menu = nil;
 
-    NSLog(@"[UsageWatch] Click fix: detached menu from NSStatusItem (was %@)",
-          cachedMenu ? @"set" : @"nil");
-
     if (!cachedMenu) return;
 
     // Secondary-click monitor: open the menu on mouse-down to match native status item behavior.
@@ -152,12 +150,9 @@ static void setupClickHandling(NSStatusBarButton *button) {
 
         if (!NSPointInRect(screenPt, btnScreen)) return event;
 
-        // Convert cursor screen position into button-local coordinates so the
-        // menu opens at the actual click location, not the button's left edge.
+        // Pop the menu at the cursor's screen position (nil view = screen coords).
         suppressNextSecondaryMouseUp = YES;
-        NSPoint windowPt = [button.window convertPointFromScreen:screenPt];
-        NSPoint buttonPt = [button convertPoint:windowPt fromView:nil];
-        [cachedMenu popUpMenuPositioningItem:nil atLocation:buttonPt inView:button];
+        [cachedMenu popUpMenuPositioningItem:nil atLocation:screenPt inView:nil];
         return nil; // consume so TaoTrayTarget doesn't also try performClick
     }];
 
@@ -247,4 +242,99 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
             }
         }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Focus observation (KVO on NSWorkspace.frontmostApplication)
+// ---------------------------------------------------------------------------
+
+static void (*g_focus_callback)(const char *, const char *) = NULL;
+
+@interface FocusObserver : NSObject
+@end
+
+@implementation FocusObserver
+
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary<NSKeyValueChangeKey,id> *)change
+                       context:(void *)context
+{
+    if (!g_focus_callback) return;
+    NSRunningApplication *app = [[NSWorkspace sharedWorkspace] frontmostApplication];
+    if (!app) return;
+    const char *bid  = app.bundleIdentifier ? [app.bundleIdentifier UTF8String] : "";
+    const char *name = app.localizedName    ? [app.localizedName UTF8String]    : "";
+    g_focus_callback(bid, name);
+}
+
+@end
+
+static FocusObserver *g_observer = nil;
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void register_focus_callback(void (*callback)(const char *, const char *)) {
+    g_focus_callback = callback;
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void start_focus_observation(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (g_observer) return;
+        g_observer = [[FocusObserver alloc] init];
+        [[NSWorkspace sharedWorkspace] addObserver:g_observer
+                                        forKeyPath:@"frontmostApplication"
+                                           options:NSKeyValueObservingOptionNew
+                                           context:NULL];
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Running apps list (for settings UI)
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    const char *bundle_id;
+    const char *name;
+} CRunningApp;
+
+__attribute__((used))
+__attribute__((visibility("default")))
+int get_running_gui_apps(CRunningApp **out_apps) {
+    @autoreleasepool {
+        NSArray<NSRunningApplication *> *apps =
+            [[NSWorkspace sharedWorkspace] runningApplications];
+
+        // Filter to regular GUI apps (activationPolicy == NSApplicationActivationPolicyRegular)
+        NSMutableArray<NSRunningApplication *> *guiApps = [NSMutableArray array];
+        for (NSRunningApplication *app in apps) {
+            if (app.activationPolicy == NSApplicationActivationPolicyRegular) {
+                [guiApps addObject:app];
+            }
+        }
+
+        int count = (int)guiApps.count;
+        CRunningApp *result = (CRunningApp *)malloc(count * sizeof(CRunningApp));
+
+        for (int i = 0; i < count; i++) {
+            NSRunningApplication *app = guiApps[i];
+            result[i].bundle_id = app.bundleIdentifier ? strdup([app.bundleIdentifier UTF8String]) : strdup("");
+            result[i].name = app.localizedName ? strdup([app.localizedName UTF8String]) : strdup("");
+        }
+
+        *out_apps = result;
+        return count;
+    }
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void free_running_apps(CRunningApp *apps, int count) {
+    for (int i = 0; i < count; i++) {
+        free((void *)apps[i].bundle_id);
+        free((void *)apps[i].name);
+    }
+    free(apps);
 }

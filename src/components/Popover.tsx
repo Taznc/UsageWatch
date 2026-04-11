@@ -15,7 +15,10 @@ export function Popover() {
   const { usageData, lastUpdated, error, isLoading, isOffline, refresh } = useUsageData();
   const { state, dispatch } = useApp();
   const { show_remaining } = state.settings;
+  const { codexData, codexError, codexLastUpdated } = state;
+  const [activeTab, setActiveTab] = useState<'claude' | 'codex'>('claude');
   const [showHistory, setShowHistory] = useState(false);
+  const hasCodex = !!(codexData || codexError);
   const [billing, setBilling] = useState<BillingInfo | null>(null);
   const [pinned, setPinned] = useState(true);
 
@@ -71,7 +74,7 @@ export function Popover() {
     <div className="popover">
       <div className="popover-top" onMouseDown={startDrag}>
         <div className="popover-header">
-          <h1 className="popover-title">Claude Usage</h1>
+          <h1 className="popover-title">UsageWatch</h1>
           <div className="popover-actions">
             <button
               className={`icon-btn pin-btn ${pinned ? "active" : ""}`}
@@ -115,156 +118,272 @@ export function Popover() {
         <StatusIndicator />
       </div>
 
-      {isOffline && (
-        <div className="status-banner offline">
-          Offline — showing last known data
+      {/* Tab bar — only rendered when Codex data is available */}
+      {hasCodex && (
+        <div className="tab-bar">
+          <button
+            className={`tab-btn ${activeTab === 'claude' ? 'active' : ''}`}
+            onClick={() => setActiveTab('claude')}
+          >
+            Claude
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'codex' ? 'active' : ''}`}
+            onClick={() => setActiveTab('codex')}
+          >
+            Codex
+          </button>
         </div>
       )}
 
-      {error && !usageData && (
-        <div className="status-banner error">
-          {error}
-        </div>
-      )}
-
-      {showHistory ? (
-        <HistoryChart />
-      ) : (
+      {/* ── Claude tab ──────────────────────────────────────────────────────── */}
+      {activeTab === 'claude' && (
         <>
-          {usageData ? (
-            <div className="usage-list">
-              {usageData.five_hour && (
-                <div className="usage-section">
-                  <h2 className="section-heading">Plan Usage Limits</h2>
-                  <UsageBar
-                    label="Current Session"
-                    percentage={usageData.five_hour.utilization}
-                    resetAt={usageData.five_hour.resets_at}
-                    showRemaining={show_remaining}
-                  />
-                </div>
-              )}
-
-              {(usageData.seven_day || usageData.seven_day_opus || usageData.seven_day_sonnet || usageData.seven_day_oauth_apps || usageData.seven_day_cowork) && (
-                <div className="usage-section">
-                  <h2 className="section-heading">Weekly Limits</h2>
-                  {usageData.seven_day && (
-                    <UsageBar
-                      label="All Models"
-                      percentage={usageData.seven_day.utilization}
-                      resetAt={usageData.seven_day.resets_at}
-                      showRemaining={show_remaining}
-                    />
-                  )}
-                  {usageData.seven_day_opus &&
-                    usageData.seven_day_opus.utilization > 0 && (
-                      <UsageBar
-                        label="Opus Only"
-                        percentage={usageData.seven_day_opus.utilization}
-                        resetAt={usageData.seven_day_opus.resets_at}
-                        showRemaining={show_remaining}
-                      />
-                    )}
-                  {usageData.seven_day_sonnet &&
-                    usageData.seven_day_sonnet.utilization > 0 && (
-                      <UsageBar
-                        label="Sonnet Only"
-                        percentage={usageData.seven_day_sonnet.utilization}
-                        resetAt={usageData.seven_day_sonnet.resets_at}
-                        showRemaining={show_remaining}
-                      />
-                    )}
-                  {usageData.seven_day_oauth_apps &&
-                    usageData.seven_day_oauth_apps.utilization > 0 && (
-                      <UsageBar
-                        label="OAuth Apps"
-                        percentage={usageData.seven_day_oauth_apps.utilization}
-                        resetAt={usageData.seven_day_oauth_apps.resets_at}
-                        showRemaining={show_remaining}
-                      />
-                    )}
-                  {usageData.seven_day_cowork &&
-                    usageData.seven_day_cowork.utilization > 0 && (
-                      <UsageBar
-                        label="Cowork"
-                        percentage={usageData.seven_day_cowork.utilization}
-                        resetAt={usageData.seven_day_cowork.resets_at}
-                        showRemaining={show_remaining}
-                      />
-                    )}
-                </div>
-              )}
-
-              {usageData.extra_usage &&
-                usageData.extra_usage.is_enabled && (
-                  <div className="usage-section">
-                    <h2 className="section-heading">Extra Usage</h2>
-                    <div className="extra-usage">
-                      <div className="usage-bar-header">
-                        <span className="usage-bar-pct" style={{ color: "#8b5cf6" }}>
-                          {usageData.extra_usage.utilization.toFixed(0)}% used
-                        </span>
-                      </div>
-                      <div className="usage-bar-track">
-                        <div
-                          className="usage-bar-fill"
-                          style={{
-                            width: `${Math.min(usageData.extra_usage.utilization, 100)}%`,
-                            backgroundColor: "#8b5cf6",
-                          }}
-                        />
-                      </div>
-                      <div className="extra-usage-details">
-                        <span>${(usageData.extra_usage.used_credits / 100).toFixed(2)} spent</span>
-                        <span>${(usageData.extra_usage.monthly_limit / 100).toFixed(2)} / mo limit</span>
-                      </div>
-                      {billing?.bundles?.purchases_reset_at && (
-                        <div className="extra-usage-reset">
-                          Resets {new Date(billing.bundles.purchases_reset_at).toLocaleDateString([], { month: "short", day: "numeric" })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-              {billing && (billing.prepaid_credits || billing.credit_grant) && (
-                <div className="usage-section">
-                  <h2 className="section-heading">Balance</h2>
-                  <div className="billing-cards">
-                    {billing.prepaid_credits && (
-                      <div className="billing-card">
-                        <span className="billing-value">
-                          ${(billing.prepaid_credits.amount / 100).toFixed(2)}
-                        </span>
-                        <span className="billing-label">Current balance</span>
-                      </div>
-                    )}
-                    {billing.credit_grant && billing.credit_grant.granted && (
-                      <div className="billing-card">
-                        <span className="billing-value credit">
-                          ${(billing.credit_grant.amount_minor_units / 100).toFixed(2)}
-                        </span>
-                        <span className="billing-label">Promotion credit</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+          {isOffline && (
+            <div className="status-banner offline">
+              Offline — showing last known data
             </div>
+          )}
+
+          {error && !usageData && (
+            <div className="status-banner error">
+              {error}
+            </div>
+          )}
+
+          {showHistory ? (
+            <HistoryChart />
           ) : (
-            !error && (
-              <div className="loading-state">
-                <p>Waiting for data...</p>
-              </div>
-            )
+            <>
+              {usageData ? (
+                <div className="usage-list">
+                  {usageData.five_hour && (
+                    <div className="usage-section">
+                      <h2 className="section-heading">Plan Usage Limits</h2>
+                      <UsageBar
+                        label="Current Session"
+                        percentage={usageData.five_hour.utilization}
+                        resetAt={usageData.five_hour.resets_at}
+                        showRemaining={show_remaining}
+                      />
+                    </div>
+                  )}
+
+                  {(usageData.seven_day || usageData.seven_day_opus || usageData.seven_day_sonnet || usageData.seven_day_oauth_apps || usageData.seven_day_cowork) && (
+                    <div className="usage-section">
+                      <h2 className="section-heading">Weekly Limits</h2>
+                      {usageData.seven_day && (
+                        <UsageBar
+                          label="All Models"
+                          percentage={usageData.seven_day.utilization}
+                          resetAt={usageData.seven_day.resets_at}
+                          showRemaining={show_remaining}
+                        />
+                      )}
+                      {usageData.seven_day_opus &&
+                        usageData.seven_day_opus.utilization > 0 && (
+                          <UsageBar
+                            label="Opus Only"
+                            percentage={usageData.seven_day_opus.utilization}
+                            resetAt={usageData.seven_day_opus.resets_at}
+                            showRemaining={show_remaining}
+                          />
+                        )}
+                      {usageData.seven_day_sonnet &&
+                        usageData.seven_day_sonnet.utilization > 0 && (
+                          <UsageBar
+                            label="Sonnet Only"
+                            percentage={usageData.seven_day_sonnet.utilization}
+                            resetAt={usageData.seven_day_sonnet.resets_at}
+                            showRemaining={show_remaining}
+                          />
+                        )}
+                      {usageData.seven_day_oauth_apps &&
+                        usageData.seven_day_oauth_apps.utilization > 0 && (
+                          <UsageBar
+                            label="OAuth Apps"
+                            percentage={usageData.seven_day_oauth_apps.utilization}
+                            resetAt={usageData.seven_day_oauth_apps.resets_at}
+                            showRemaining={show_remaining}
+                          />
+                        )}
+                      {usageData.seven_day_cowork &&
+                        usageData.seven_day_cowork.utilization > 0 && (
+                          <UsageBar
+                            label="Cowork"
+                            percentage={usageData.seven_day_cowork.utilization}
+                            resetAt={usageData.seven_day_cowork.resets_at}
+                            showRemaining={show_remaining}
+                          />
+                        )}
+                    </div>
+                  )}
+
+                  {usageData.extra_usage &&
+                    usageData.extra_usage.is_enabled && (
+                      <div className="usage-section">
+                        <h2 className="section-heading">Extra Usage</h2>
+                        <div className="extra-usage">
+                          <div className="usage-bar-header">
+                            <span className="usage-bar-pct" style={{ color: "#8b5cf6" }}>
+                              {usageData.extra_usage.utilization.toFixed(0)}% used
+                            </span>
+                          </div>
+                          <div className="usage-bar-track">
+                            <div
+                              className="usage-bar-fill"
+                              style={{
+                                width: `${Math.min(usageData.extra_usage.utilization, 100)}%`,
+                                backgroundColor: "#8b5cf6",
+                              }}
+                            />
+                          </div>
+                          <div className="extra-usage-details">
+                            <span>${(usageData.extra_usage.used_credits / 100).toFixed(2)} spent</span>
+                            <span>${(usageData.extra_usage.monthly_limit / 100).toFixed(2)} / mo limit</span>
+                          </div>
+                          {billing?.bundles?.purchases_reset_at && (
+                            <div className="extra-usage-reset">
+                              Resets {new Date(billing.bundles.purchases_reset_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  {billing && (billing.prepaid_credits || billing.credit_grant) && (
+                    <div className="usage-section">
+                      <h2 className="section-heading">Balance</h2>
+                      <div className="billing-cards">
+                        {billing.prepaid_credits && (
+                          <div className="billing-card">
+                            <span className="billing-value">
+                              ${(billing.prepaid_credits.amount / 100).toFixed(2)}
+                            </span>
+                            <span className="billing-label">Current balance</span>
+                          </div>
+                        )}
+                        {billing.credit_grant && billing.credit_grant.granted && (
+                          <div className="billing-card">
+                            <span className="billing-value credit">
+                              ${(billing.credit_grant.amount_minor_units / 100).toFixed(2)}
+                            </span>
+                            <span className="billing-label">Promotion credit</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                !error && (
+                  <div className="loading-state">
+                    <p>Waiting for data...</p>
+                  </div>
+                )
+              )}
+            </>
+          )}
+
+          {lastUpdated && (
+            <div className="popover-footer">
+              Last updated: {formatTimestamp(lastUpdated)}
+            </div>
           )}
         </>
       )}
 
-      {lastUpdated && (
-        <div className="popover-footer">
-          Last updated: {formatTimestamp(lastUpdated)}
-        </div>
+      {/* ── Codex tab ───────────────────────────────────────────────────────── */}
+      {activeTab === 'codex' && (
+        <>
+          {codexData?.limit_reached && (
+            <div className="status-banner error">Rate limit reached</div>
+          )}
+
+          <div className="usage-list">
+            {codexData ? (
+              <>
+                {codexData.session_window && (
+                  <div className="usage-section">
+                    <h2 className="section-heading">
+                      Plan Usage Limits
+                      {codexData.plan_type && (
+                        <span style={{ marginLeft: '6px', fontSize: '10px', opacity: 0.55, fontWeight: 'normal', textTransform: 'capitalize' }}>
+                          {codexData.plan_type}
+                        </span>
+                      )}
+                    </h2>
+                    <UsageBar
+                      label="Current Session"
+                      percentage={codexData.session_window.used_percent}
+                      resetAt={codexData.session_window.resets_at}
+                      showRemaining={show_remaining}
+                    />
+                  </div>
+                )}
+
+                {codexData.weekly_window && (
+                  <div className="usage-section">
+                    <h2 className="section-heading">Weekly Limits</h2>
+                    <UsageBar
+                      label="All Models"
+                      percentage={codexData.weekly_window.used_percent}
+                      resetAt={codexData.weekly_window.resets_at}
+                      showRemaining={show_remaining}
+                    />
+                    {codexData.code_review_window &&
+                      codexData.code_review_window.used_percent > 0 && (
+                        <UsageBar
+                          label="Code Review"
+                          percentage={codexData.code_review_window.used_percent}
+                          resetAt={codexData.code_review_window.resets_at}
+                          showRemaining={show_remaining}
+                        />
+                      )}
+                  </div>
+                )}
+
+                {codexData.credits?.has_credits && (
+                  <div className="usage-section">
+                    <h2 className="section-heading">Credits</h2>
+                    <div className="billing-cards">
+                      <div className="billing-card">
+                        <span className="billing-value">
+                          ${parseFloat(codexData.credits.balance ?? '0').toFixed(2)}
+                        </span>
+                        <span className="billing-label">Available balance</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {codexData.credits?.unlimited && (
+                  <div className="usage-section">
+                    <div className="billing-cards">
+                      <div className="billing-card">
+                        <span className="billing-label">Unlimited plan</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : codexError ? (
+              <div className="loading-state">
+                <p style={{ fontSize: '12px' }}>{codexError}</p>
+              </div>
+            ) : (
+              <div className="loading-state">
+                <p>Waiting for data...</p>
+              </div>
+            )}
+          </div>
+
+          {codexLastUpdated && (
+            <div className="popover-footer">
+              Last updated: {formatTimestamp(codexLastUpdated)}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

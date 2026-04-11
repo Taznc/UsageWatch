@@ -5,22 +5,21 @@ pub use macos::*;
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use std::ffi::CString;
-    use std::ffi::c_void;
+    use std::ffi::{CStr, CString, c_char, c_int, c_void};
 
     #[repr(C)]
     struct CTraySegment {
-        text: *const std::ffi::c_char,
+        text: *const c_char,
         r: f32,
         g: f32,
         b: f32,
         a: f32,
         font_size: f32,
-        is_bold: std::ffi::c_int,
+        is_bold: c_int,
     }
 
     extern "C" {
-        fn set_styled_tray_title(segments: *const CTraySegment, count: std::ffi::c_int);
+        fn set_styled_tray_title(segments: *const CTraySegment, count: c_int);
         fn register_tray_status_item(status_item: *mut c_void);
     }
 
@@ -77,13 +76,42 @@ mod macos {
             .collect();
 
         unsafe {
-            set_styled_tray_title(c_segments.as_ptr(), c_segments.len() as std::ffi::c_int);
+            set_styled_tray_title(c_segments.as_ptr(), c_segments.len() as c_int);
         }
     }
 
     pub fn register_native_status_item(status_item: *mut c_void) {
         unsafe {
             register_tray_status_item(status_item);
+        }
+    }
+
+    // ── Running apps FFI ──────────────────────────────────────────────────
+
+    #[repr(C)]
+    struct CRunningApp {
+        bundle_id: *const c_char,
+        name: *const c_char,
+    }
+
+    extern "C" {
+        fn get_running_gui_apps(out_apps: *mut *mut CRunningApp) -> c_int;
+        fn free_running_apps(apps: *mut CRunningApp, count: c_int);
+    }
+
+    pub fn list_running_apps() -> Vec<crate::models::RunningApp> {
+        unsafe {
+            let mut apps_ptr: *mut CRunningApp = std::ptr::null_mut();
+            let count = get_running_gui_apps(&mut apps_ptr);
+            let mut result = Vec::with_capacity(count as usize);
+            for i in 0..count as isize {
+                let app = &*apps_ptr.offset(i);
+                let bundle_id = CStr::from_ptr(app.bundle_id).to_string_lossy().into_owned();
+                let name = CStr::from_ptr(app.name).to_string_lossy().into_owned();
+                result.push(crate::models::RunningApp { bundle_id, name });
+            }
+            free_running_apps(apps_ptr, count);
+            result
         }
     }
 }
