@@ -2,6 +2,8 @@ mod commands;
 mod credentials_cache;
 mod models;
 mod polling;
+#[cfg(target_os = "macos")]
+mod styled_tray;
 mod tray_renderer;
 
 use std::sync::{Arc, Mutex};

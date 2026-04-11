@@ -102,16 +102,163 @@ pub fn update_tray_title_public(app: &AppHandle, data: &UsageData, format: &Tray
 
 fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
     if let Some(tray) = app.tray_by_id("main-tray") {
-        // Set text title (native macOS menu bar font, always readable)
-        let title = tray_renderer::build_tray_title(data, format);
-        let _ = tray.set_title(Some(&title));
-
-        // Set color-coded dot icon based on session usage
+        // Set color-coded dot icon
         if let Some(png_bytes) = tray_renderer::render_status_icon(data) {
             if let Ok(img) = tauri::image::Image::from_bytes(&png_bytes) {
                 let _ = tray.set_icon(Some(img.to_owned()));
                 let _ = tray.set_icon_as_template(false);
             }
         }
+
+        // On macOS: use native NSAttributedString for colored text
+        #[cfg(target_os = "macos")]
+        {
+            use crate::styled_tray::{StyledSegment, set_attributed_title_on_tray};
+
+            let segments = build_styled_segments(data, format);
+            // First set plain title so the button has content (needed for window detection)
+            let plain = tray_renderer::build_tray_title(data, format);
+            let _ = tray.set_title(Some(&plain));
+            // Then overlay with styled version
+            set_attributed_title_on_tray(&tray, &segments);
+        }
+
+        // On non-macOS: plain text only
+        #[cfg(not(target_os = "macos"))]
+        {
+            let title = tray_renderer::build_tray_title(data, format);
+            let _ = tray.set_title(Some(&title));
+        }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn build_styled_segments(data: &UsageData, format: &TrayFormat) -> Vec<crate::styled_tray::StyledSegment> {
+    use crate::styled_tray::StyledSegment;
+
+    let label_color = (180, 180, 190, 255);
+    let timer_color = (160, 160, 170, 255);
+    let sep_color = (120, 120, 130, 255);
+
+    fn pct_color(pct: f64) -> (u8, u8, u8, u8) {
+        if pct >= 90.0 { (255, 85, 85, 255) }
+        else if pct >= 75.0 { (255, 180, 30, 255) }
+        else { (60, 220, 120, 255) }
+    }
+
+    let mut groups: Vec<Vec<StyledSegment>> = Vec::new();
+
+    // Session group
+    if format.show_session_pct || format.show_session_timer {
+        if let Some(ref fh) = data.five_hour {
+            let mut segs = Vec::new();
+            if format.show_session_pct {
+                let (r, g, b, a) = label_color;
+                segs.push(StyledSegment::from_rgba_u8("S:", r, g, b, a, 12.0, false));
+                let (r, g, b, a) = pct_color(fh.utilization);
+                segs.push(StyledSegment::from_rgba_u8(
+                    &format!("{}%", fh.utilization.round() as i32),
+                    r, g, b, a, 12.0, true,
+                ));
+            }
+            if format.show_session_timer {
+                if let Some(ref reset) = fh.resets_at {
+                    let cd = tray_renderer::format_countdown_public(reset);
+                    if !cd.is_empty() {
+                        let (r, g, b, a) = timer_color;
+                        segs.push(StyledSegment::from_rgba_u8(
+                            &format!(" {}", cd), r, g, b, a, 11.0, false,
+                        ));
+                    }
+                }
+            }
+            if !segs.is_empty() {
+                groups.push(segs);
+            }
+        }
+    }
+
+    // Weekly group
+    if format.show_weekly_pct || format.show_weekly_timer {
+        if let Some(ref sd) = data.seven_day {
+            let mut segs = Vec::new();
+            if format.show_weekly_pct {
+                let (r, g, b, a) = label_color;
+                segs.push(StyledSegment::from_rgba_u8("W:", r, g, b, a, 12.0, false));
+                let (r, g, b, a) = pct_color(sd.utilization);
+                segs.push(StyledSegment::from_rgba_u8(
+                    &format!("{}%", sd.utilization.round() as i32),
+                    r, g, b, a, 12.0, true,
+                ));
+            }
+            if format.show_weekly_timer {
+                if let Some(ref reset) = sd.resets_at {
+                    let cd = tray_renderer::format_countdown_public(reset);
+                    if !cd.is_empty() {
+                        let (r, g, b, a) = timer_color;
+                        segs.push(StyledSegment::from_rgba_u8(
+                            &format!(" {}", cd), r, g, b, a, 11.0, false,
+                        ));
+                    }
+                }
+            }
+            if !segs.is_empty() {
+                groups.push(segs);
+            }
+        }
+    }
+
+    // Sonnet
+    if format.show_sonnet_pct {
+        if let Some(ref ss) = data.seven_day_sonnet {
+            if ss.utilization > 0.0 {
+                let (r, g, b, a) = label_color;
+                let (pr, pg, pb, pa) = pct_color(ss.utilization);
+                groups.push(vec![
+                    StyledSegment::from_rgba_u8("So:", r, g, b, a, 12.0, false),
+                    StyledSegment::from_rgba_u8(&format!("{}%", ss.utilization.round() as i32), pr, pg, pb, pa, 12.0, true),
+                ]);
+            }
+        }
+    }
+
+    // Opus
+    if format.show_opus_pct {
+        if let Some(ref op) = data.seven_day_opus {
+            if op.utilization > 0.0 {
+                let (r, g, b, a) = label_color;
+                let (pr, pg, pb, pa) = pct_color(op.utilization);
+                groups.push(vec![
+                    StyledSegment::from_rgba_u8("Op:", r, g, b, a, 12.0, false),
+                    StyledSegment::from_rgba_u8(&format!("{}%", op.utilization.round() as i32), pr, pg, pb, pa, 12.0, true),
+                ]);
+            }
+        }
+    }
+
+    // Extra usage
+    if format.show_extra_usage {
+        if let Some(ref eu) = data.extra_usage {
+            if eu.is_enabled {
+                groups.push(vec![
+                    StyledSegment::from_rgba_u8(
+                        &format!("${}/{}", (eu.used_credits / 100.0).round() as i32, (eu.monthly_limit / 100.0).round() as i32),
+                        139, 92, 246, 255, 12.0, false,
+                    ),
+                ]);
+            }
+        }
+    }
+
+    // Flatten groups with separators
+    let mut result = Vec::new();
+    for (i, group) in groups.iter().enumerate() {
+        if i > 0 {
+            let (r, g, b, a) = sep_color;
+            result.push(StyledSegment::from_rgba_u8(&format!(" {} ", format.separator.trim()), r, g, b, a, 11.0, false));
+        }
+        result.extend(group.iter().cloned());
+    }
+
+    result
 }

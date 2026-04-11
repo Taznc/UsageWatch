@@ -75,6 +75,10 @@ pub fn render_status_icon(data: &UsageData) -> Option<Vec<u8>> {
     pixmap.encode_png().ok()
 }
 
+pub fn format_countdown_public(resets_at: &str) -> String {
+    format_countdown(resets_at)
+}
+
 fn format_countdown(resets_at: &str) -> String {
     let reset = match chrono::DateTime::parse_from_rfc3339(resets_at) {
         Ok(dt) => dt,
