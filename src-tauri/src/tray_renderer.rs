@@ -1,7 +1,17 @@
 use rusttype::{Font, Scale, point};
-use tiny_skia::{Pixmap, Color, Paint, Rect, Transform};
+use tiny_skia::{Pixmap, Color};
 
 use crate::models::{TrayFormat, UsageData};
+
+fn color_u8(r: u8, g: u8, b: u8, a: u8) -> Color {
+    Color::from_rgba(
+        r as f32 / 255.0,
+        g as f32 / 255.0,
+        b as f32 / 255.0,
+        a as f32 / 255.0,
+    )
+    .unwrap_or(Color::WHITE)
+}
 
 const SCALE: f32 = 2.0; // Retina 2x
 const HEIGHT: f32 = 22.0;
@@ -16,25 +26,25 @@ static FONT_BOLD: &[u8] = include_bytes!("../fonts/Inter-Bold.ttf");
 
 fn usage_color(pct: f64) -> Color {
     if pct >= 90.0 {
-        Color::from_rgba8(239, 68, 68, 255) // red
+        color_u8(239, 68, 68, 255) // red
     } else if pct >= 75.0 {
-        Color::from_rgba8(245, 158, 11, 255) // orange
+        color_u8(245, 158, 11, 255) // orange
     } else {
-        Color::from_rgba8(34, 197, 94, 255) // green
+        color_u8(34, 197, 94, 255) // green
     }
 }
 
 fn label_color() -> Color {
     // Light gray for labels — works on dark menu bar
-    Color::from_rgba8(160, 160, 170, 255)
+    color_u8(160, 160, 170, 255)
 }
 
 fn timer_color() -> Color {
-    Color::from_rgba8(140, 140, 150, 255)
+    color_u8(140, 140, 150, 255)
 }
 
 fn sep_color() -> Color {
-    Color::from_rgba8(100, 100, 110, 120)
+    color_u8(100, 100, 110, 120)
 }
 
 struct TextSegment {
@@ -175,7 +185,7 @@ fn build_segments(data: &UsageData, format: &TrayFormat) -> Vec<Vec<TextSegment>
                 groups.push(vec![
                     TextSegment {
                         text: format!("${}/{}", (eu.used_credits / 100.0).round() as i32, (eu.monthly_limit / 100.0).round() as i32),
-                        color: Color::from_rgba8(139, 92, 246, 255), // purple
+                        color: color_u8(139, 92, 246, 255), // purple
                         size: VALUE_SIZE,
                         bold: false,
                     },
@@ -231,15 +241,29 @@ pub fn render_tray_image(data: &UsageData, format: &TrayFormat) -> Option<Vec<u8
         // Draw separator line before each group (except first)
         if i > 0 {
             x += SEP_MARGIN * SCALE;
-            let mut paint = Paint::default();
-            paint.set_color(sep_color());
-            paint.anti_alias = true;
-            let sep_top = 4.0 * SCALE;
-            let sep_bottom = (HEIGHT - 4.0) * SCALE;
-            if let Some(rect) = Rect::from_xywh(x, sep_top, 1.0, sep_bottom - sep_top) {
-                pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+            // Draw separator line manually (fill_rect crashes on hairlines)
+            let sep_x = x.round() as u32;
+            let sep_top = (4.0 * SCALE) as u32;
+            let sep_bottom = ((HEIGHT - 4.0) * SCALE) as u32;
+            let sc = sep_color();
+            let sr = (sc.red() * 255.0) as u8;
+            let sg = (sc.green() * 255.0) as u8;
+            let sb = (sc.blue() * 255.0) as u8;
+            let sa = (sc.alpha() * 255.0) as u8;
+            let data = pixmap.data_mut();
+            for py in sep_top..sep_bottom {
+                if sep_x < pixel_width && py < pixel_height {
+                    let idx = (py * pixel_width + sep_x) as usize * 4;
+                    if idx + 3 < data.len() {
+                        let a = sa as f32 / 255.0;
+                        data[idx] = (sr as f32 * a) as u8;
+                        data[idx + 1] = (sg as f32 * a) as u8;
+                        data[idx + 2] = (sb as f32 * a) as u8;
+                        data[idx + 3] = sa;
+                    }
+                }
             }
-            x += 1.0 + SEP_MARGIN * SCALE;
+            x += 2.0 + SEP_MARGIN * SCALE;
         }
 
         for seg in group {
@@ -247,26 +271,22 @@ pub fn render_tray_image(data: &UsageData, format: &TrayFormat) -> Option<Vec<u8
             let scale = Scale::uniform(seg.size * SCALE);
             let glyphs = font.layout(&seg.text, scale, point(x, baseline_y));
 
-            let mut paint = Paint::default();
-            paint.set_color(seg.color);
-            paint.anti_alias = true;
-
             for glyph in glyphs {
                 if let Some(bb) = glyph.pixel_bounding_box() {
                     glyph.draw(|gx, gy, v| {
                         let px = (bb.min.x + gx as i32) as u32;
                         let py = (bb.min.y + gy as i32) as u32;
                         if px < pixel_width && py < pixel_height {
-                            let alpha = (v * seg.color.alpha() as f32 * 255.0) as u8;
+                            let alpha = (v * seg.color.alpha() * 255.0) as u8;
                             if alpha > 0 {
                                 let idx = (py * pixel_width + px) as usize * 4;
                                 let data = pixmap.data_mut();
                                 if idx + 3 < data.len() {
-                                    // Premultiplied alpha blending
+                                    // Premultiplied alpha
                                     let a = alpha as f32 / 255.0;
-                                    data[idx] = (seg.color.red() as f32 * a) as u8;
-                                    data[idx + 1] = (seg.color.green() as f32 * a) as u8;
-                                    data[idx + 2] = (seg.color.blue() as f32 * a) as u8;
+                                    data[idx] = (seg.color.red() * 255.0 * a) as u8;
+                                    data[idx + 1] = (seg.color.green() * 255.0 * a) as u8;
+                                    data[idx + 2] = (seg.color.blue() * 255.0 * a) as u8;
                                     data[idx + 3] = alpha;
                                 }
                             }
