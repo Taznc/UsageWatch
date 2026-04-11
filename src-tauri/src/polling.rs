@@ -102,10 +102,6 @@ pub fn update_tray_title_public(app: &AppHandle, data: &UsageData, format: &Tray
 
 fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
     if let Some(tray) = app.tray_by_id("main-tray") {
-        // Set a 1x1 transparent icon (invisible but keeps click target active)
-        let transparent = tauri::image::Image::new_owned(vec![0, 0, 0, 0], 1, 1);
-        let _ = tray.set_icon(Some(transparent));
-        let _ = tray.set_icon_as_template(false);
 
         // On macOS: set plain title first (needed for clickable area),
         // then overlay with styled version via native ObjC (dispatched to main thread)
