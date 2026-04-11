@@ -329,6 +329,17 @@ body {
 .setup-header {
   text-align: center;
   margin-bottom: 24px;
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+.setup-header:active {
+  cursor: grabbing;
+}
+
+.setup-header button,
+.setup-header a {
+  -webkit-app-region: no-drag;
 }
 
 .setup-header h1 {
@@ -421,6 +432,22 @@ body {
   text-align: left;
 }
 
+.debug-info {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 4px 0 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.4;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-app-region: no-drag;
+  cursor: text;
+}
+
 .divider {
   display: flex;
   align-items: center;
@@ -478,6 +505,10 @@ select.input {
   padding: 8px;
   background: rgba(239, 68, 68, 0.1);
   border-radius: var(--radius);
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-app-region: no-drag;
+  cursor: text;
 }
 
 .form-success {

@@ -6,6 +6,7 @@ import type { Organization } from "../types/usage";
 interface BrowserResult {
   browser: string;
   session_key: string | null;
+  debug: string | null;
 }
 
 export function SetupWizard() {
@@ -19,18 +20,18 @@ export function SetupWizard() {
   const [browserResults, setBrowserResults] = useState<BrowserResult[]>([]);
   const [error, setError] = useState("");
 
+  const [selectedBrowser, setSelectedBrowser] = useState("");
+
   const scanBrowsers = async () => {
     setScanning(true);
     setError("");
     setBrowserResults([]);
+    setSelectedBrowser("");
     try {
       const results = await invoke<BrowserResult[]>("pull_session_from_browsers");
       setBrowserResults(results);
       if (results.length === 0) {
         setError("No session found. Make sure you're logged into claude.ai in your browser.");
-      } else if (results.length === 1 && results[0].session_key) {
-        // Auto-fill if only one browser found
-        setSessionKey(results[0].session_key);
       }
     } catch (e: any) {
       setError(String(e));
@@ -39,9 +40,9 @@ export function SetupWizard() {
     }
   };
 
-  const selectBrowserKey = (key: string) => {
+  const selectBrowserKey = (browser: string, key: string) => {
     setSessionKey(key);
-    setBrowserResults([]);
+    setSelectedBrowser(browser);
   };
 
   const testConnection = async () => {
@@ -114,24 +115,37 @@ export function SetupWizard() {
             {scanning ? "Scanning browsers..." : "Auto-detect from Browser"}
           </button>
 
-          {browserResults.length > 1 && (
+          {browserResults.length > 0 && (
             <div className="browser-results">
-              <p className="form-hint">Found in multiple browsers — select one:</p>
+              <p className="form-hint">
+                {browserResults.length === 1
+                  ? "Found a session — click to use it:"
+                  : "Found sessions in multiple browsers — select one:"}
+              </p>
               {browserResults.map((r) => (
-                <button
-                  key={r.browser}
-                  className="btn secondary full-width browser-option"
-                  onClick={() => selectBrowserKey(r.session_key!)}
-                >
-                  {r.browser}
-                </button>
+                <div key={r.browser}>
+                  <button
+                    className={`btn full-width browser-option ${
+                      selectedBrowser === r.browser ? "primary" : "secondary"
+                    }`}
+                    onClick={() => r.session_key && selectBrowserKey(r.browser, r.session_key)}
+                    disabled={!r.session_key}
+                  >
+                    {r.browser}
+                    {r.session_key ? "" : " (no session key)"}
+                    {selectedBrowser === r.browser && " ✓"}
+                  </button>
+                  {r.debug && (
+                    <pre className="debug-info">{r.debug}</pre>
+                  )}
+                </div>
               ))}
             </div>
           )}
 
-          {sessionKey && (
+          {sessionKey && selectedBrowser && (
             <div className="form-success">
-              Session key detected! Click Test Connection to continue.
+              Using session from {selectedBrowser}. Click Test Connection to continue.
             </div>
           )}
 

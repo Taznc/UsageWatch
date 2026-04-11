@@ -20,6 +20,9 @@ use tauri::{
 use objc2::rc::Retained;
 
 use credentials_cache::CredentialsCache;
+
+/// Browser-like User-Agent to avoid Cloudflare challenges when calling claude.ai APIs.
+pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 use models::{TrayConfig, TrayFormat};
 use polling::{CodexUpdate, UsageUpdate};
 
@@ -175,10 +178,11 @@ pub fn run() {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
-                                // Tray rect is in physical pixels; scale window_width
-                                // (logical pts) to physical so centering is correct on Retina.
+                                // Tray rect is in physical pixels; scale window dimensions
+                                // (logical pts) to physical so centering is correct on HiDPI.
                                 let scale = window.scale_factor().unwrap_or(1.0);
                                 let window_width_px = 380.0_f64 * scale;
+                                let window_height_px = 800.0_f64 * scale;
                                 let (icon_w, icon_h) = match rect.size {
                                     tauri::Size::Physical(s) => {
                                         (s.width as f64, s.height as f64)
@@ -193,7 +197,14 @@ pub fn run() {
                                 };
                                 let icon_center_x = icon_x + icon_w / 2.0;
                                 let x = icon_center_x - window_width_px / 2.0;
-                                let y = icon_y + icon_h + 4.0;
+
+                                // On macOS the tray is at the top — open below it.
+                                // On Windows the tray is at the bottom — open above it.
+                                let y = if cfg!(target_os = "macos") {
+                                    icon_y + icon_h + 4.0
+                                } else {
+                                    icon_y - window_height_px - 4.0
+                                };
 
                                 let _ = window.set_position(
                                     tauri::PhysicalPosition::new(x as i32, y as i32),

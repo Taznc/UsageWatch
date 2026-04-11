@@ -9,7 +9,7 @@ pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageDat
         .get(&url)
         .header("cookie", format!("sessionKey={}", session_key))
         .header("content-type", "application/json")
-        .header("user-agent", "Claude Usage Tracker/0.1.0")
+        .header("user-agent", crate::USER_AGENT)
         .send()
         .await
         .map_err(|e| format!("Request failed: {}", e))?;
@@ -44,7 +44,7 @@ pub async fn fetch_usage_raw(session_key: String, org_id: String) -> Result<Stri
         .get(&url)
         .header("cookie", format!("sessionKey={}", session_key))
         .header("content-type", "application/json")
-        .header("user-agent", "Claude Usage Tracker/0.1.0")
+        .header("user-agent", crate::USER_AGENT)
         .send()
         .await
         .map_err(|e| format!("Request failed: {}", e))?;
@@ -61,7 +61,7 @@ pub async fn fetch_billing(session_key: String, org_id: String) -> Result<Billin
     let headers = |req: reqwest::RequestBuilder| {
         req.header("cookie", format!("sessionKey={}", session_key))
             .header("content-type", "application/json")
-            .header("user-agent", "Claude Usage Tracker/0.1.0")
+            .header("user-agent", crate::USER_AGENT)
     };
 
     // Fetch prepaid credits
@@ -106,7 +106,7 @@ pub async fn fetch_status() -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
     let response = client
         .get("https://status.anthropic.com/api/v2/status.json")
-        .header("user-agent", "Claude Usage Tracker/0.1.0")
+        .header("user-agent", crate::USER_AGENT)
         .send()
         .await
         .map_err(|e| format!("Status fetch failed: {}", e))?;

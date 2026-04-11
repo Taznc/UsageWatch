@@ -90,7 +90,7 @@ async fn fetch_usage_internal(session_key: &str, org_id: &str) -> Result<UsageDa
         .get(&url)
         .header("cookie", format!("sessionKey={}", session_key))
         .header("content-type", "application/json")
-        .header("user-agent", "Claude Usage Tracker/0.1.0")
+        .header("user-agent", crate::USER_AGENT)
         .send()
         .await
         .map_err(|e| format!("Request failed: {}", e))?;

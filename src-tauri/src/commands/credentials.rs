@@ -91,15 +91,19 @@ pub async fn test_connection(session_key: String) -> Result<Vec<Organization>, S
         .get("https://claude.ai/api/organizations")
         .header("cookie", format!("sessionKey={}", session_key))
         .header("content-type", "application/json")
-        .header("user-agent", "Claude Usage Tracker/0.1.0")
+        .header("user-agent", crate::USER_AGENT)
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
 
     if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
         return Err(format!(
-            "API returned status {}: Invalid session key or expired session",
-            response.status()
+            "API returned status {}: {}\nResponse: {}",
+            status,
+            if status.as_u16() == 403 { "Forbidden" } else { "Error" },
+            if body.len() > 500 { format!("{}...", &body[..500]) } else { body },
         ));
     }
 
