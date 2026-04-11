@@ -105,10 +105,12 @@ fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
         // Remove icon — show text only
         let _ = tray.set_icon(None::<tauri::image::Image<'_>>);
 
-        // On macOS: set styled attributed title via native Objective-C
-        // Do NOT call set_title() — it overwrites the attributedTitle
+        // On macOS: set plain title first (needed for clickable area),
+        // then overlay with styled version via native ObjC (dispatched to main thread)
         #[cfg(target_os = "macos")]
         {
+            let plain = tray_renderer::build_tray_title(data, format);
+            let _ = tray.set_title(Some(&plain));
             let segments = build_styled_segments(data, format);
             crate::styled_tray::set_native_styled_title(&segments);
         }
