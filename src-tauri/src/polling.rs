@@ -102,16 +102,31 @@ pub fn update_tray_title_public(app: &AppHandle, data: &UsageData, format: &Tray
 
 fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
     if let Some(tray) = app.tray_by_id("main-tray") {
-        // Clear the text title
-        let _ = tray.set_title(Some(""));
+        // Try styled image rendering, fall back to plain text on failure
+        let data_clone = data.clone();
+        let format_clone = format.clone();
+        let rendered = std::panic::catch_unwind(|| {
+            tray_renderer::render_tray_image(&data_clone, &format_clone)
+        });
 
-        // Render styled image
-        if let Some(png_bytes) = tray_renderer::render_tray_image(data, format) {
-            if let Ok(img) = tauri::image::Image::from_bytes(&png_bytes) {
-                let owned = img.to_owned();
-                let _ = tray.set_icon(Some(owned));
-                let _ = tray.set_icon_as_template(false);
+        match rendered {
+            Ok(Some(png_bytes)) => {
+                if let Ok(img) = tauri::image::Image::from_bytes(&png_bytes) {
+                    let _ = tray.set_title(Some(""));
+                    let owned = img.to_owned();
+                    let _ = tray.set_icon(Some(owned));
+                    let _ = tray.set_icon_as_template(false);
+                    return;
+                }
             }
+            Err(e) => {
+                eprintln!("[tray] renderer panicked: {:?}", e);
+            }
+            _ => {}
         }
+
+        // Fallback: plain text
+        let pct = data.five_hour.as_ref().map(|f| f.utilization.round() as i32).unwrap_or(0);
+        let _ = tray.set_title(Some(&format!("{}%", pct)));
     }
 }

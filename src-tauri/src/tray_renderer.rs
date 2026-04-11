@@ -229,9 +229,9 @@ pub fn render_tray_image(data: &UsageData, format: &TrayFormat) -> Option<Vec<u8
     total_width += PADDING * SCALE;
 
     let pixel_height = (HEIGHT * SCALE) as u32;
-    let pixel_width = total_width.ceil() as u32;
+    let pixel_width = total_width.ceil().max(1.0) as u32;
 
-    let mut pixmap = Pixmap::new(pixel_width, pixel_height)?;
+    let mut pixmap = Pixmap::new(pixel_width.max(1), pixel_height.max(1))?;
     // Transparent background
 
     let mut x = PADDING * SCALE;
@@ -274,15 +274,17 @@ pub fn render_tray_image(data: &UsageData, format: &TrayFormat) -> Option<Vec<u8
             for glyph in glyphs {
                 if let Some(bb) = glyph.pixel_bounding_box() {
                     glyph.draw(|gx, gy, v| {
-                        let px = (bb.min.x + gx as i32) as u32;
-                        let py = (bb.min.y + gy as i32) as u32;
+                        let px_i = bb.min.x + gx as i32;
+                        let py_i = bb.min.y + gy as i32;
+                        if px_i < 0 || py_i < 0 { return; }
+                        let px = px_i as u32;
+                        let py = py_i as u32;
                         if px < pixel_width && py < pixel_height {
                             let alpha = (v * seg.color.alpha() * 255.0) as u8;
                             if alpha > 0 {
                                 let idx = (py * pixel_width + px) as usize * 4;
                                 let data = pixmap.data_mut();
                                 if idx + 3 < data.len() {
-                                    // Premultiplied alpha
                                     let a = alpha as f32 / 255.0;
                                     data[idx] = (seg.color.red() * 255.0 * a) as u8;
                                     data[idx + 1] = (seg.color.green() * 255.0 * a) as u8;
