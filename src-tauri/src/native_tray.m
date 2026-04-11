@@ -7,6 +7,29 @@ typedef struct {
     int is_bold;
 } TraySegment;
 
+// Cache the button pointer after first successful find
+static NSStatusBarButton *cachedButton = nil;
+
+static NSStatusBarButton *findOurButton(void) {
+    if (cachedButton) return cachedButton;
+
+    for (NSWindow *window in [NSApp windows]) {
+        if (![NSStringFromClass([window class]) isEqualToString:@"NSStatusBarWindow"])
+            continue;
+
+        @try {
+            NSStatusItem *statusItem = [window valueForKey:@"_statusItem"];
+            if (statusItem && statusItem.button) {
+                cachedButton = statusItem.button;
+                return cachedButton;
+            }
+        } @catch (NSException *e) {
+            // Try next window
+        }
+    }
+    return nil;
+}
+
 void set_styled_tray_title(const TraySegment *segments, int count) {
     // Build the attributed string on the calling thread (data is valid here)
     NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
@@ -39,47 +62,13 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
 
     if (result.length == 0) return;
 
-    // Apply on main thread (AppKit requirement)
-    NSMutableAttributedString *captured = [result copy];
+    NSAttributedString *captured = [result copy];
     dispatch_async(dispatch_get_main_queue(), ^{
         @autoreleasepool {
             @try {
-                for (NSWindow *window in [NSApp windows]) {
-                    if (![NSStringFromClass([window class]) isEqualToString:@"NSStatusBarWindow"])
-                        continue;
-
-                    // The contentView is NSStatusBarContentView.
-                    // The button is a subview of it, or accessible via the
-                    // window's private _statusItem property.
-                    NSView *contentView = [window contentView];
-                    if (!contentView) continue;
-
-                    // Try to get the status item from the window
-                    NSStatusItem *statusItem = nil;
-                    @try {
-                        statusItem = [window valueForKey:@"_statusItem"];
-                    } @catch (NSException *e) {
-                        // Fall through to subview search
-                    }
-
-                    if (statusItem) {
-                        NSStatusBarButton *button = statusItem.button;
-                        if (button && button.title.length > 0) {
-                            [button setAttributedTitle:captured];
-                            return;
-                        }
-                    }
-
-                    // Fallback: search subviews for NSStatusBarButton
-                    for (NSView *subview in contentView.subviews) {
-                        if ([subview isKindOfClass:[NSButton class]]) {
-                            NSButton *button = (NSButton *)subview;
-                            if (button.title.length > 0) {
-                                [button setAttributedTitle:captured];
-                                return;
-                            }
-                        }
-                    }
+                NSStatusBarButton *button = findOurButton();
+                if (button) {
+                    [button setAttributedTitle:captured];
                 }
             } @catch (NSException *e) {
                 NSLog(@"[styled_tray] Exception: %@", e);

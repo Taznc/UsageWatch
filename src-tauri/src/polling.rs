@@ -111,12 +111,9 @@ fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
         }
 
         // On macOS: set styled attributed title via native Objective-C
+        // Do NOT call set_title() — it overwrites the attributedTitle
         #[cfg(target_os = "macos")]
         {
-            // Set plain title first (needed for button detection)
-            let plain = tray_renderer::build_tray_title(data, format);
-            let _ = tray.set_title(Some(&plain));
-            // Overlay with styled version
             let segments = build_styled_segments(data, format);
             crate::styled_tray::set_native_styled_title(&segments);
         }
@@ -134,14 +131,14 @@ fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
 fn build_styled_segments(data: &UsageData, format: &TrayFormat) -> Vec<crate::styled_tray::StyledSegment> {
     use crate::styled_tray::StyledSegment;
 
-    let label_color = (180, 180, 190, 255);
-    let timer_color = (160, 160, 170, 255);
-    let sep_color = (120, 120, 130, 255);
+    let label_color = (220, 220, 230, 255);
+    let timer_color = (190, 190, 200, 255);
+    let sep_color = (150, 150, 160, 255);
 
     fn pct_color(pct: f64) -> (u8, u8, u8, u8) {
-        if pct >= 90.0 { (255, 85, 85, 255) }
-        else if pct >= 75.0 { (255, 180, 30, 255) }
-        else { (60, 220, 120, 255) }
+        if pct >= 90.0 { (255, 100, 100, 255) }
+        else if pct >= 75.0 { (255, 200, 50, 255) }
+        else { (80, 240, 140, 255) }
     }
 
     let mut groups: Vec<Vec<StyledSegment>> = Vec::new();
@@ -152,11 +149,11 @@ fn build_styled_segments(data: &UsageData, format: &TrayFormat) -> Vec<crate::st
             let mut segs = Vec::new();
             if format.show_session_pct {
                 let (r, g, b, a) = label_color;
-                segs.push(StyledSegment::from_rgba_u8("S:", r, g, b, a, 12.0, false));
+                segs.push(StyledSegment::from_rgba_u8("S:", r, g, b, a, 14.0, false));
                 let (r, g, b, a) = pct_color(fh.utilization);
                 segs.push(StyledSegment::from_rgba_u8(
                     &format!("{}%", fh.utilization.round() as i32),
-                    r, g, b, a, 12.0, true,
+                    r, g, b, a, 14.0, true,
                 ));
             }
             if format.show_session_timer {
@@ -182,11 +179,11 @@ fn build_styled_segments(data: &UsageData, format: &TrayFormat) -> Vec<crate::st
             let mut segs = Vec::new();
             if format.show_weekly_pct {
                 let (r, g, b, a) = label_color;
-                segs.push(StyledSegment::from_rgba_u8("W:", r, g, b, a, 12.0, false));
+                segs.push(StyledSegment::from_rgba_u8("W:", r, g, b, a, 14.0, false));
                 let (r, g, b, a) = pct_color(sd.utilization);
                 segs.push(StyledSegment::from_rgba_u8(
                     &format!("{}%", sd.utilization.round() as i32),
-                    r, g, b, a, 12.0, true,
+                    r, g, b, a, 14.0, true,
                 ));
             }
             if format.show_weekly_timer {
@@ -213,8 +210,8 @@ fn build_styled_segments(data: &UsageData, format: &TrayFormat) -> Vec<crate::st
                 let (r, g, b, a) = label_color;
                 let (pr, pg, pb, pa) = pct_color(ss.utilization);
                 groups.push(vec![
-                    StyledSegment::from_rgba_u8("So:", r, g, b, a, 12.0, false),
-                    StyledSegment::from_rgba_u8(&format!("{}%", ss.utilization.round() as i32), pr, pg, pb, pa, 12.0, true),
+                    StyledSegment::from_rgba_u8("So:", r, g, b, a, 14.0, false),
+                    StyledSegment::from_rgba_u8(&format!("{}%", ss.utilization.round() as i32), pr, pg, pb, pa, 14.0, true),
                 ]);
             }
         }
@@ -227,8 +224,8 @@ fn build_styled_segments(data: &UsageData, format: &TrayFormat) -> Vec<crate::st
                 let (r, g, b, a) = label_color;
                 let (pr, pg, pb, pa) = pct_color(op.utilization);
                 groups.push(vec![
-                    StyledSegment::from_rgba_u8("Op:", r, g, b, a, 12.0, false),
-                    StyledSegment::from_rgba_u8(&format!("{}%", op.utilization.round() as i32), pr, pg, pb, pa, 12.0, true),
+                    StyledSegment::from_rgba_u8("Op:", r, g, b, a, 14.0, false),
+                    StyledSegment::from_rgba_u8(&format!("{}%", op.utilization.round() as i32), pr, pg, pb, pa, 14.0, true),
                 ]);
             }
         }
@@ -253,7 +250,7 @@ fn build_styled_segments(data: &UsageData, format: &TrayFormat) -> Vec<crate::st
     for (i, group) in groups.iter().enumerate() {
         if i > 0 {
             let (r, g, b, a) = sep_color;
-            result.push(StyledSegment::from_rgba_u8(&format!(" {} ", format.separator.trim()), r, g, b, a, 11.0, false));
+            result.push(StyledSegment::from_rgba_u8(&format!(" {} ", format.separator.trim()), r, g, b, a, 13.0, false));
         }
         result.extend(group.iter().cloned());
     }
