@@ -18,6 +18,7 @@ pub fn start_polling(
     poll_interval: Arc<Mutex<u64>>,
     cache: Arc<CredentialsCache>,
     tray_format: Arc<Mutex<TrayFormat>>,
+    latest_usage: Arc<Mutex<Option<UsageUpdate>>>,
 ) {
     let app_handle = app.clone();
 
@@ -64,6 +65,9 @@ pub fn start_polling(
                 },
             };
 
+            // Update the shared cache so the HTTP server can serve latest data
+            *latest_usage.lock().unwrap() = Some(update.clone());
+
             let _ = app_handle.emit("usage-update", &update);
 
             let mut tick = interval(Duration::from_secs(secs));
@@ -103,12 +107,11 @@ pub fn update_tray_title_public(app: &AppHandle, data: &UsageData, format: &Tray
 fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
     if let Some(tray) = app.tray_by_id("main-tray") {
 
-        // On macOS: set plain title first (needed for clickable area),
-        // then overlay with styled version via native ObjC (dispatched to main thread)
+        // On macOS: render colored text as NSImage — this avoids setAttributedTitle:
+        // and its side effects on TaoTrayTarget event routing. The image size determines
+        // button width (via NSVariableStatusItemLength). No plain set_title needed.
         #[cfg(target_os = "macos")]
         {
-            let plain = tray_renderer::build_tray_title(data, format);
-            let _ = tray.set_title(Some(&plain));
             let segments = build_styled_segments(data, format);
             crate::styled_tray::set_native_styled_title(&segments);
         }

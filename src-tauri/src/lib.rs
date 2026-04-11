@@ -1,5 +1,6 @@
 mod commands;
 mod credentials_cache;
+mod http_server;
 mod models;
 mod polling;
 #[cfg(target_os = "macos")]
@@ -15,6 +16,7 @@ use tauri::{
 
 use credentials_cache::CredentialsCache;
 use models::{TrayFormat, UsageData};
+use polling::UsageUpdate;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,6 +28,10 @@ pub fn run() {
 
     let tray_format = Arc::new(Mutex::new(TrayFormat::default()));
     let tray_format_for_polling = tray_format.clone();
+
+    let latest_usage: Arc<Mutex<Option<UsageUpdate>>> = Arc::new(Mutex::new(None));
+    let latest_usage_for_polling = latest_usage.clone();
+    let latest_usage_for_server = latest_usage.clone();
 
     tauri::Builder::default()
         .plugin(
@@ -124,6 +130,7 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
+                    eprintln!("[tray] event: {:?}", event);
                     match &event {
                         tauri::tray::TrayIconEvent::Click {
                             button: tauri::tray::MouseButton::Left,
@@ -168,8 +175,11 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Start Stream Deck HTTP API server
+            http_server::start(handle.clone(), latest_usage_for_server);
+
             // Start background polling
-            polling::start_polling(handle, poll_interval_clone, cache_for_polling, tray_format_for_polling);
+            polling::start_polling(handle, poll_interval_clone, cache_for_polling, tray_format_for_polling, latest_usage_for_polling);
 
             Ok(())
         })
