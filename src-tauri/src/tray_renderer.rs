@@ -1,7 +1,8 @@
-use rusttype::{Font, Scale, point};
 use tiny_skia::{Pixmap, Color};
 
 use crate::models::{TrayFormat, UsageData};
+
+const ICON_SIZE: u32 = 22;
 
 fn color_u8(r: u8, g: u8, b: u8, a: u8) -> Color {
     Color::from_rgba(
@@ -13,44 +14,65 @@ fn color_u8(r: u8, g: u8, b: u8, a: u8) -> Color {
     .unwrap_or(Color::WHITE)
 }
 
-const SCALE: f32 = 1.0; // Render at 1x — macOS handles HiDPI scaling
-const HEIGHT: f32 = 22.0;
-const LABEL_SIZE: f32 = 14.0;
-const VALUE_SIZE: f32 = 16.0;
-const TIMER_SIZE: f32 = 13.0;
-const PADDING: f32 = 4.0;
-const SEP_MARGIN: f32 = 6.0;
-
-static FONT_MEDIUM: &[u8] = include_bytes!("../fonts/Inter-Medium.ttf");
-static FONT_BOLD: &[u8] = include_bytes!("../fonts/Inter-Bold.ttf");
-
 fn usage_color(pct: f64) -> Color {
     if pct >= 90.0 {
-        color_u8(255, 85, 85, 255) // bright red
+        color_u8(255, 85, 85, 255)
     } else if pct >= 75.0 {
-        color_u8(255, 180, 30, 255) // bright orange
+        color_u8(255, 180, 30, 255)
     } else {
-        color_u8(60, 220, 120, 255) // bright green
+        color_u8(60, 220, 120, 255)
     }
 }
 
-fn label_color() -> Color {
-    color_u8(200, 200, 210, 255) // brighter gray
-}
+/// Renders a small color-coded dot icon for the tray.
+/// The dot color reflects the session usage level.
+pub fn render_status_icon(data: &UsageData) -> Option<Vec<u8>> {
+    let pct = data.five_hour.as_ref().map(|f| f.utilization).unwrap_or(0.0);
+    let color = usage_color(pct);
 
-fn timer_color() -> Color {
-    color_u8(180, 180, 190, 255) // brighter gray
-}
+    let size = ICON_SIZE;
+    let mut pixmap = Pixmap::new(size, size)?;
 
-fn sep_color() -> Color {
-    color_u8(100, 100, 110, 120)
-}
+    // Draw a filled circle in the center
+    let cx = size as f32 / 2.0;
+    let cy = size as f32 / 2.0;
+    let radius = 5.0_f32;
 
-struct TextSegment {
-    text: String,
-    color: Color,
-    size: f32,
-    bold: bool,
+    let r = (color.red() * 255.0) as u8;
+    let g = (color.green() * 255.0) as u8;
+    let b = (color.blue() * 255.0) as u8;
+
+    let data = pixmap.data_mut();
+    for py in 0..size {
+        for px in 0..size {
+            let dx = px as f32 - cx;
+            let dy = py as f32 - cy;
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            if dist <= radius {
+                // Solid inside
+                let idx = (py * size + px) as usize * 4;
+                let a = 255u8;
+                let af = a as f32 / 255.0;
+                data[idx] = (r as f32 * af) as u8;
+                data[idx + 1] = (g as f32 * af) as u8;
+                data[idx + 2] = (b as f32 * af) as u8;
+                data[idx + 3] = a;
+            } else if dist <= radius + 1.0 {
+                // Anti-aliased edge
+                let edge = 1.0 - (dist - radius);
+                let a = (edge * 255.0) as u8;
+                let af = a as f32 / 255.0;
+                let idx = (py * size + px) as usize * 4;
+                data[idx] = (r as f32 * af) as u8;
+                data[idx + 1] = (g as f32 * af) as u8;
+                data[idx + 2] = (b as f32 * af) as u8;
+                data[idx + 3] = a;
+            }
+        }
+    }
+
+    pixmap.encode_png().ok()
 }
 
 fn format_countdown(resets_at: &str) -> String {
@@ -66,9 +88,7 @@ fn format_countdown(resets_at: &str) -> String {
     let hours = diff.num_hours();
     let minutes = diff.num_minutes() % 60;
     if hours >= 48 {
-        let days = hours / 24;
-        let rem = hours % 24;
-        format!("{}d{}h", days, rem)
+        format!("{}d{}h", hours / 24, hours % 24)
     } else if hours > 0 {
         format!("{}h{}m", hours, minutes)
     } else {
@@ -76,42 +96,27 @@ fn format_countdown(resets_at: &str) -> String {
     }
 }
 
-fn build_segments(data: &UsageData, format: &TrayFormat) -> Vec<Vec<TextSegment>> {
-    let mut groups: Vec<Vec<TextSegment>> = Vec::new();
+/// Builds the plain text title string for the menu bar.
+pub fn build_tray_title(data: &UsageData, format: &TrayFormat) -> String {
+    let mut groups: Vec<String> = Vec::new();
 
     // Session group
     if format.show_session_pct || format.show_session_timer {
         if let Some(ref fh) = data.five_hour {
-            let mut segs = Vec::new();
+            let mut parts: Vec<String> = Vec::new();
             if format.show_session_pct {
-                segs.push(TextSegment {
-                    text: "S ".to_string(),
-                    color: label_color(),
-                    size: LABEL_SIZE,
-                    bold: false,
-                });
-                segs.push(TextSegment {
-                    text: format!("{}%", fh.utilization.round() as i32),
-                    color: usage_color(fh.utilization),
-                    size: VALUE_SIZE,
-                    bold: true,
-                });
+                parts.push(format!("S:{}%", fh.utilization.round() as i32));
             }
             if format.show_session_timer {
                 if let Some(ref reset) = fh.resets_at {
                     let cd = format_countdown(reset);
                     if !cd.is_empty() {
-                        segs.push(TextSegment {
-                            text: format!(" {}", cd),
-                            color: timer_color(),
-                            size: TIMER_SIZE,
-                            bold: false,
-                        });
+                        parts.push(cd);
                     }
                 }
             }
-            if !segs.is_empty() {
-                groups.push(segs);
+            if !parts.is_empty() {
+                groups.push(parts.join(" "));
             }
         }
     }
@@ -119,36 +124,20 @@ fn build_segments(data: &UsageData, format: &TrayFormat) -> Vec<Vec<TextSegment>
     // Weekly group
     if format.show_weekly_pct || format.show_weekly_timer {
         if let Some(ref sd) = data.seven_day {
-            let mut segs = Vec::new();
+            let mut parts: Vec<String> = Vec::new();
             if format.show_weekly_pct {
-                segs.push(TextSegment {
-                    text: "W ".to_string(),
-                    color: label_color(),
-                    size: LABEL_SIZE,
-                    bold: false,
-                });
-                segs.push(TextSegment {
-                    text: format!("{}%", sd.utilization.round() as i32),
-                    color: usage_color(sd.utilization),
-                    size: VALUE_SIZE,
-                    bold: true,
-                });
+                parts.push(format!("W:{}%", sd.utilization.round() as i32));
             }
             if format.show_weekly_timer {
                 if let Some(ref reset) = sd.resets_at {
                     let cd = format_countdown(reset);
                     if !cd.is_empty() {
-                        segs.push(TextSegment {
-                            text: format!(" {}", cd),
-                            color: timer_color(),
-                            size: TIMER_SIZE,
-                            bold: false,
-                        });
+                        parts.push(cd);
                     }
                 }
             }
-            if !segs.is_empty() {
-                groups.push(segs);
+            if !parts.is_empty() {
+                groups.push(parts.join(" "));
             }
         }
     }
@@ -157,10 +146,7 @@ fn build_segments(data: &UsageData, format: &TrayFormat) -> Vec<Vec<TextSegment>
     if format.show_sonnet_pct {
         if let Some(ref ss) = data.seven_day_sonnet {
             if ss.utilization > 0.0 {
-                groups.push(vec![
-                    TextSegment { text: "So ".to_string(), color: label_color(), size: LABEL_SIZE, bold: false },
-                    TextSegment { text: format!("{}%", ss.utilization.round() as i32), color: usage_color(ss.utilization), size: VALUE_SIZE, bold: true },
-                ]);
+                groups.push(format!("So:{}%", ss.utilization.round() as i32));
             }
         }
     }
@@ -169,10 +155,7 @@ fn build_segments(data: &UsageData, format: &TrayFormat) -> Vec<Vec<TextSegment>
     if format.show_opus_pct {
         if let Some(ref op) = data.seven_day_opus {
             if op.utilization > 0.0 {
-                groups.push(vec![
-                    TextSegment { text: "Op ".to_string(), color: label_color(), size: LABEL_SIZE, bold: false },
-                    TextSegment { text: format!("{}%", op.utilization.round() as i32), color: usage_color(op.utilization), size: VALUE_SIZE, bold: true },
-                ]);
+                groups.push(format!("Op:{}%", op.utilization.round() as i32));
             }
         }
     }
@@ -181,124 +164,18 @@ fn build_segments(data: &UsageData, format: &TrayFormat) -> Vec<Vec<TextSegment>
     if format.show_extra_usage {
         if let Some(ref eu) = data.extra_usage {
             if eu.is_enabled {
-                groups.push(vec![
-                    TextSegment {
-                        text: format!("${}/{}", (eu.used_credits / 100.0).round() as i32, (eu.monthly_limit / 100.0).round() as i32),
-                        color: color_u8(139, 92, 246, 255), // purple
-                        size: VALUE_SIZE,
-                        bold: false,
-                    },
-                ]);
+                groups.push(format!(
+                    "${}/{}",
+                    (eu.used_credits / 100.0).round() as i32,
+                    (eu.monthly_limit / 100.0).round() as i32
+                ));
             }
         }
     }
 
-    groups
-}
-
-fn measure_segment_width(seg: &TextSegment, font_medium: &Font, font_bold: &Font) -> f32 {
-    let font = if seg.bold { font_bold } else { font_medium };
-    let scale = Scale::uniform(seg.size * SCALE);
-    let glyphs: Vec<_> = font.layout(&seg.text, scale, point(0.0, 0.0)).collect();
-    glyphs.last().map(|g| {
-        let pos = g.position();
-        pos.x + g.unpositioned().h_metrics().advance_width
-    }).unwrap_or(0.0)
-}
-
-pub fn render_tray_image(data: &UsageData, format: &TrayFormat) -> Option<Vec<u8>> {
-    let font_medium = Font::try_from_bytes(FONT_MEDIUM)?;
-    let font_bold = Font::try_from_bytes(FONT_BOLD)?;
-
-    let groups = build_segments(data, format);
     if groups.is_empty() {
-        return None;
+        "--".to_string()
+    } else {
+        groups.join(&format.separator)
     }
-
-    // Calculate total width
-    let mut total_width: f32 = PADDING * SCALE;
-    for (i, group) in groups.iter().enumerate() {
-        if i > 0 {
-            total_width += SEP_MARGIN * 2.0 * SCALE + 1.0; // separator + margins
-        }
-        for seg in group {
-            total_width += measure_segment_width(seg, &font_medium, &font_bold);
-        }
-    }
-    total_width += PADDING * SCALE;
-
-    let pixel_height = (HEIGHT * SCALE) as u32;
-    let pixel_width = total_width.ceil().max(1.0) as u32;
-
-    let mut pixmap = Pixmap::new(pixel_width.max(1), pixel_height.max(1))?;
-    // Transparent background
-
-    let mut x = PADDING * SCALE;
-    let baseline_y = HEIGHT * SCALE * 0.72; // approximate baseline
-
-    for (i, group) in groups.iter().enumerate() {
-        // Draw separator line before each group (except first)
-        if i > 0 {
-            x += SEP_MARGIN * SCALE;
-            // Draw separator line manually (fill_rect crashes on hairlines)
-            let sep_x = x.round() as u32;
-            let sep_top = (4.0 * SCALE) as u32;
-            let sep_bottom = ((HEIGHT - 4.0) * SCALE) as u32;
-            let sc = sep_color();
-            let sr = (sc.red() * 255.0) as u8;
-            let sg = (sc.green() * 255.0) as u8;
-            let sb = (sc.blue() * 255.0) as u8;
-            let sa = (sc.alpha() * 255.0) as u8;
-            let data = pixmap.data_mut();
-            for py in sep_top..sep_bottom {
-                if sep_x < pixel_width && py < pixel_height {
-                    let idx = (py * pixel_width + sep_x) as usize * 4;
-                    if idx + 3 < data.len() {
-                        let a = sa as f32 / 255.0;
-                        data[idx] = (sr as f32 * a) as u8;
-                        data[idx + 1] = (sg as f32 * a) as u8;
-                        data[idx + 2] = (sb as f32 * a) as u8;
-                        data[idx + 3] = sa;
-                    }
-                }
-            }
-            x += 2.0 + SEP_MARGIN * SCALE;
-        }
-
-        for seg in group {
-            let font = if seg.bold { &font_bold } else { &font_medium };
-            let scale = Scale::uniform(seg.size * SCALE);
-            let glyphs = font.layout(&seg.text, scale, point(x, baseline_y));
-
-            for glyph in glyphs {
-                if let Some(bb) = glyph.pixel_bounding_box() {
-                    glyph.draw(|gx, gy, v| {
-                        let px_i = bb.min.x + gx as i32;
-                        let py_i = bb.min.y + gy as i32;
-                        if px_i < 0 || py_i < 0 { return; }
-                        let px = px_i as u32;
-                        let py = py_i as u32;
-                        if px < pixel_width && py < pixel_height {
-                            let alpha = (v * seg.color.alpha() * 255.0) as u8;
-                            if alpha > 0 {
-                                let idx = (py * pixel_width + px) as usize * 4;
-                                let data = pixmap.data_mut();
-                                if idx + 3 < data.len() {
-                                    let a = alpha as f32 / 255.0;
-                                    data[idx] = (seg.color.red() * 255.0 * a) as u8;
-                                    data[idx + 1] = (seg.color.green() * 255.0 * a) as u8;
-                                    data[idx + 2] = (seg.color.blue() * 255.0 * a) as u8;
-                                    data[idx + 3] = alpha;
-                                }
-                            }
-                        }
-                    });
-                }
-            }
-
-            x += measure_segment_width(seg, &font_medium, &font_bold);
-        }
-    }
-
-    pixmap.encode_png().ok()
 }
