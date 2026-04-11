@@ -110,25 +110,9 @@ fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
             }
         }
 
-        // On macOS: use native NSAttributedString for colored text
-        #[cfg(target_os = "macos")]
-        {
-            use crate::styled_tray::{StyledSegment, set_attributed_title_on_tray};
-
-            let segments = build_styled_segments(data, format);
-            // First set plain title so the button has content (needed for window detection)
-            let plain = tray_renderer::build_tray_title(data, format);
-            let _ = tray.set_title(Some(&plain));
-            // Then overlay with styled version
-            set_attributed_title_on_tray(&tray, &segments);
-        }
-
-        // On non-macOS: plain text only
-        #[cfg(not(target_os = "macos"))]
-        {
-            let title = tray_renderer::build_tray_title(data, format);
-            let _ = tray.set_title(Some(&title));
-        }
+        // Set plain text title (works on all platforms)
+        let title = tray_renderer::build_tray_title(data, format);
+        let _ = tray.set_title(Some(&title));
     }
 }
 
