@@ -29,6 +29,27 @@ static NSStatusBarButton *findOurButton(void) {
     return nil;
 }
 
+/// Sync the TrayTarget overlay subview to match the button's current bounds.
+/// This must be called after any change to the button's title/attributedTitle
+/// because the tray-icon crate's TrayTarget only gets resized by its own
+/// set_title/set_icon methods (via update_dimensions).
+static void syncTrayTargetFrame(NSStatusBarButton *button) {
+    NSRect bounds = button.bounds;
+    for (NSView *subview in button.subviews) {
+        [subview setFrame:bounds];
+        // Rebuild tracking areas to match new bounds
+        for (NSTrackingArea *area in [subview.trackingAreas copy]) {
+            [subview removeTrackingArea:area];
+            NSTrackingArea *newArea = [[NSTrackingArea alloc]
+                initWithRect:bounds
+                     options:area.options
+                       owner:area.owner
+                    userInfo:area.userInfo];
+            [subview addTrackingArea:newArea];
+        }
+    }
+}
+
 void set_styled_tray_title(const TraySegment *segments, int count) {
     NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
 
@@ -61,36 +82,24 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
     if (result.length == 0) return;
 
     NSAttributedString *captured = [result copy];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(100 * NSEC_PER_MSEC)),
+
+    // Delay to let Tauri's set_title() and update_dimensions() complete first
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(50 * NSEC_PER_MSEC)),
                    dispatch_get_main_queue(), ^{
         @autoreleasepool {
             @try {
                 NSStatusBarButton *button = findOurButton();
                 if (!button) return;
 
-                // Save the current button frame (set by Tauri's set_title)
-                NSRect savedFrame = button.frame;
-
-                // Set the styled title
+                // Set the styled title — this may resize the button
                 [button setAttributedTitle:captured];
 
-                // Restore the original frame so the TrayTarget overlay stays valid
-                [button setFrame:savedFrame];
+                // Let the button settle its layout
+                [button sizeToFit];
 
-                // Also resize all subviews (TrayTarget overlay) to match
-                for (NSView *subview in button.subviews) {
-                    [subview setFrame:button.bounds];
-                    // Update tracking areas
-                    for (NSTrackingArea *area in [subview.trackingAreas copy]) {
-                        [subview removeTrackingArea:area];
-                        NSTrackingArea *newArea = [[NSTrackingArea alloc]
-                            initWithRect:button.bounds
-                                 options:area.options
-                                   owner:area.owner
-                                userInfo:area.userInfo];
-                        [subview addTrackingArea:newArea];
-                    }
-                }
+                // Now sync the TrayTarget overlay to match the new size
+                syncTrayTargetFrame(button);
+
             } @catch (NSException *e) {
                 NSLog(@"[styled_tray] Exception: %@", e);
             }
