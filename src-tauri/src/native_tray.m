@@ -152,9 +152,12 @@ static void setupClickHandling(NSStatusBarButton *button) {
 
         if (!NSPointInRect(screenPt, btnScreen)) return event;
 
-        // Use AppKit's contextual menu API so the menu opens at the native click location.
+        // Convert cursor screen position into button-local coordinates so the
+        // menu opens at the actual click location, not the button's left edge.
         suppressNextSecondaryMouseUp = YES;
-        [NSMenu popUpContextMenu:cachedMenu withEvent:event forView:button];
+        NSPoint windowPt = [button.window convertPointFromScreen:screenPt];
+        NSPoint buttonPt = [button convertPoint:windowPt fromView:nil];
+        [cachedMenu popUpMenuPositioningItem:nil atLocation:buttonPt inView:button];
         return nil; // consume so TaoTrayTarget doesn't also try performClick
     }];
 

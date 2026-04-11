@@ -18,12 +18,13 @@ use objc2::rc::Retained;
 
 use credentials_cache::CredentialsCache;
 use models::{TrayFormat, UsageData};
-use polling::UsageUpdate;
+use polling::{CodexUpdate, UsageUpdate};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let poll_interval = Arc::new(Mutex::new(60u64));
     let poll_interval_clone = poll_interval.clone();
+    let poll_interval_clone2 = poll_interval.clone();
 
     let cache = Arc::new(CredentialsCache::new());
     let cache_for_polling = cache.clone();
@@ -34,6 +35,9 @@ pub fn run() {
     let latest_usage: Arc<Mutex<Option<UsageUpdate>>> = Arc::new(Mutex::new(None));
     let latest_usage_for_polling = latest_usage.clone();
     let latest_usage_for_server = latest_usage.clone();
+
+    let latest_codex: Arc<Mutex<Option<CodexUpdate>>> = Arc::new(Mutex::new(None));
+    let latest_codex_for_polling = latest_codex.clone();
 
     tauri::Builder::default()
         .plugin(
@@ -81,6 +85,7 @@ pub fn run() {
             commands::browser::pull_session_from_browsers,
             commands::usage::fetch_billing,
             commands::usage::fetch_status,
+            commands::codex::check_codex_auth,
             set_poll_interval,
             get_tray_format,
             set_tray_format,
@@ -146,19 +151,24 @@ pub fn run() {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
-                                let window_width = 380.0_f64;
+                                // Tray rect is in physical pixels; scale window_width
+                                // (logical pts) to physical so centering is correct on Retina.
+                                let scale = window.scale_factor().unwrap_or(1.0);
+                                let window_width_px = 380.0_f64 * scale;
                                 let (icon_w, icon_h) = match rect.size {
                                     tauri::Size::Physical(s) => {
                                         (s.width as f64, s.height as f64)
                                     }
-                                    tauri::Size::Logical(s) => (s.width, s.height),
+                                    tauri::Size::Logical(s) => {
+                                        (s.width * scale, s.height * scale)
+                                    }
                                 };
                                 let (icon_x, icon_y) = match rect.position {
                                     tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
-                                    tauri::Position::Logical(p) => (p.x, p.y),
+                                    tauri::Position::Logical(p) => (p.x * scale, p.y * scale),
                                 };
                                 let icon_center_x = icon_x + icon_w / 2.0;
-                                let x = icon_center_x - window_width / 2.0;
+                                let x = icon_center_x - window_width_px / 2.0;
                                 let y = icon_y + icon_h + 4.0;
 
                                 let _ = window.set_position(
@@ -190,6 +200,7 @@ pub fn run() {
 
             // Start background polling
             polling::start_polling(handle, poll_interval_clone, cache_for_polling, tray_format_for_polling, latest_usage_for_polling);
+            polling::start_codex_polling(handle, poll_interval_clone2, latest_codex_for_polling);
 
             Ok(())
         })
