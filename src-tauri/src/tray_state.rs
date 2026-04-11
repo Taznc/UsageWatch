@@ -8,6 +8,7 @@ use tauri::AppHandle;
 
 use crate::models::{CodexUsageData, Provider, TrayConfig, TrayFormat, UsageData};
 use crate::polling::{CodexUpdate, UsageUpdate};
+#[cfg(target_os = "macos")]
 use crate::tray_renderer;
 
 pub struct TrayState {

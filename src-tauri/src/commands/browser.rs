@@ -150,7 +150,7 @@ pub fn pull_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
                 osx_key_user: None,
             };
 
-            match rookie::chromium_based(&config, cookies_path, domains.clone()) {
+            match rookie::chromium_based(cookies_path, &config, domains.clone()) {
                 Ok(cookies) => {
                     let session_key = cookies
                         .iter()
@@ -161,6 +161,7 @@ pub fn pull_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
                         results.push(BrowserResult {
                             browser: "Claude Desktop".to_string(),
                             session_key,
+                            debug: None,
                         });
                     }
                 }
