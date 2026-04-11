@@ -69,6 +69,13 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
                 NSStatusBarButton *button = findOurButton();
                 if (button) {
                     [button setAttributedTitle:captured];
+                    // Resize the TrayTarget overlay subview to match
+                    // the button's new bounds (tray-icon crate adds this
+                    // overlay for click detection but doesn't update it
+                    // when we modify the title externally)
+                    for (NSView *subview in button.subviews) {
+                        [subview setFrame:button.bounds];
+                    }
                 }
             } @catch (NSException *e) {
                 NSLog(@"[styled_tray] Exception: %@", e);
