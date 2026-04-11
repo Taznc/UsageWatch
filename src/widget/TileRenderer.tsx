@@ -125,6 +125,7 @@ export function TileRenderer({ tileId, editMode, onRemove }: Props) {
       );
     }
     case "api_status": {
+      // Status spans full width — set on the wrapper div, not the tile itself
       return (
         <StatusTile
           indicator={status?.indicator ?? "none"}

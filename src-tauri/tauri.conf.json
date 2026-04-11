@@ -28,10 +28,9 @@
         "url": "widget/index.html",
         "width": 380,
         "height": 300,
-        "resizable": false,
+        "resizable": true,
         "visible": false,
         "decorations": false,
-        "transparent": true,
         "skipTaskbar": true,
         "alwaysOnTop": true
       }

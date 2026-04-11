@@ -1,44 +1,54 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useWidget } from "../context/WidgetContext";
 
-interface Props {
-  visible: boolean;
-}
-
-export function WidgetHeader({ visible }: Props) {
-  const { dispatch } = useWidget();
+export function WidgetHeader() {
+  const { state, dispatch } = useWidget();
+  const { isEditMode, layout } = state;
+  const { columns } = layout;
 
   function handleMouseDown(e: React.MouseEvent) {
+    // Buttons handle their own clicks; drag from any other part of the header
     if ((e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
     getCurrentWindow().startDragging();
   }
 
-  function handleClose() {
-    getCurrentWindow().hide();
-  }
-
-  function handleEditToggle() {
-    dispatch({ type: "TOGGLE_EDIT" });
+  function toggleColumns() {
+    dispatch({ type: "SET_COLUMNS", columns: columns === 2 ? 1 : 2 });
   }
 
   return (
     <div
-      className={`widget-header ${visible ? "visible" : ""}`}
+      className={`widget-header ${isEditMode ? "edit-active" : ""}`}
       onMouseDown={handleMouseDown}
     >
-      <div className="widget-header-drag-hint" />
+      {/* Grip icon — visual drag hint */}
+      <span className="widget-header-grip">⠿</span>
+
+      {/* Title fills center — largest draggable surface */}
+      <span className="widget-header-title">UsageWatch</span>
+
+      {/* Actions — must opt out of -webkit-app-region so they remain clickable */}
       <div className="widget-header-actions">
+        {isEditMode && (
+          <button
+            className="widget-header-btn"
+            onClick={toggleColumns}
+            title={columns === 2 ? "Switch to 1 column" : "Switch to 2 columns"}
+          >
+            {columns === 2 ? "1 col" : "2 col"}
+          </button>
+        )}
         <button
-          className="widget-header-btn"
-          onClick={handleEditToggle}
-          title="Edit layout"
+          className={`widget-header-btn ${isEditMode ? "active" : ""}`}
+          onClick={() => dispatch({ type: "TOGGLE_EDIT" })}
+          title={isEditMode ? "Exit edit mode" : "Customize layout"}
         >
-          ✎
+          {isEditMode ? "Done" : "Edit"}
         </button>
         <button
           className="widget-header-btn widget-header-close"
-          onClick={handleClose}
+          onClick={() => getCurrentWindow().hide()}
           title="Close widget"
         >
           ×

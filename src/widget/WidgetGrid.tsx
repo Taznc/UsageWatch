@@ -22,21 +22,26 @@ import type { TileId } from "../types/widget";
 
 function SortableTile({
   tileId,
+  columns,
   editMode,
   onRemove,
 }: {
   tileId: TileId;
+  columns: 1 | 2;
   editMode: boolean;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: tileId, disabled: !editMode });
 
+  // api_status spans full width in 2-col mode; in 1-col mode everything is full width
+  const spanFull = tileId === "api_status" && columns === 2;
+
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.35 : 1,
-    gridColumn: tileId === "api_status" ? "span 2" : undefined,
+    gridColumn: spanFull ? "1 / -1" : undefined,
   };
 
   return (
@@ -58,7 +63,7 @@ interface Props {
 export function WidgetGrid({ onDropFromPalette }: Props) {
   const { state, dispatch } = useWidget();
   const { isEditMode, layout } = state;
-  const { placedTiles } = layout;
+  const { placedTiles, columns } = layout;
   const [activeId, setActiveId] = useState<TileId | null>(null);
 
   const sensors = useSensors(
@@ -101,18 +106,22 @@ export function WidgetGrid({ onDropFromPalette }: Props) {
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={placedTiles} strategy={rectSortingStrategy}>
-        <div className={`widget-grid ${isEditMode ? "edit-mode" : ""}`}>
+        <div
+          className={`widget-grid ${isEditMode ? "edit-mode" : ""}`}
+          style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}
+        >
           {placedTiles.map((tileId) => (
             <SortableTile
               key={tileId}
               tileId={tileId}
+              columns={columns}
               editMode={isEditMode}
               onRemove={() => removeTile(tileId)}
             />
           ))}
           {placedTiles.length === 0 && isEditMode && (
-            <div className="grid-empty-hint">
-              Click tiles above to add them here
+            <div className="grid-empty-hint" style={{ gridColumn: "1 / -1" }}>
+              Tap tiles above to add them
             </div>
           )}
         </div>

@@ -19,6 +19,7 @@ type WidgetAction =
   | { type: "SET_STATUS"; data: APIStatus }
   | { type: "SET_LAYOUT"; layout: WidgetLayout }
   | { type: "SET_PLACED_TILES"; tiles: TileId[] }
+  | { type: "SET_COLUMNS"; columns: 1 | 2 }
   | { type: "TOGGLE_EDIT" }
   | { type: "EXIT_EDIT" };
 
@@ -26,6 +27,7 @@ const defaultLayout: WidgetLayout = {
   version: 1,
   placedTiles: DEFAULT_TILES,
   position: { x: 200, y: 100 },
+  columns: 2,
 };
 
 const initialState: WidgetState = {
@@ -51,6 +53,8 @@ function reducer(state: WidgetState, action: WidgetAction): WidgetState {
       return { ...state, layout: action.layout };
     case "SET_PLACED_TILES":
       return { ...state, layout: { ...state.layout, placedTiles: action.tiles } };
+    case "SET_COLUMNS":
+      return { ...state, layout: { ...state.layout, columns: action.columns } };
     case "TOGGLE_EDIT":
       return { ...state, isEditMode: !state.isEditMode };
     case "EXIT_EDIT":

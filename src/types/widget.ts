@@ -55,6 +55,7 @@ export interface WidgetLayout {
   version: number;
   placedTiles: TileId[];
   position: { x: number; y: number };
+  columns: 1 | 2;
 }
 
 // Matches Rust's fetch_status response: { status: { indicator, description }, page: {...} }

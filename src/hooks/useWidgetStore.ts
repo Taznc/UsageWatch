@@ -30,7 +30,14 @@ export function useWidgetStore() {
       storeRef.current = store;
       const saved = await store.get<WidgetLayout>(STORE_KEY);
       if (saved && Array.isArray(saved.placedTiles) && saved.placedTiles.length > 0) {
-        dispatch({ type: "SET_LAYOUT", layout: { ...saved, version: 1 } });
+        dispatch({
+          type: "SET_LAYOUT",
+          layout: {
+            ...saved,
+            version: 1,
+            columns: saved.columns === 1 ? 1 : 2, // normalise
+          },
+        });
       }
     }
     init();
