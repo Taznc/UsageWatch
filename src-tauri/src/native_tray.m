@@ -8,20 +8,66 @@ typedef struct {
 } TraySegment;
 
 static NSStatusBarButton *cachedButton = nil;
-static NSStatusItem *cachedStatusItem = nil;
-static BOOL frameObserverRegistered = NO;
+static NSStatusItem      *cachedStatusItem = nil;
+static NSMenu            *cachedMenu = nil;
+static BOOL               clickHandlingSetup = NO;
+static BOOL               frameObserverRegistered = NO;
+static BOOL               suppressNextSecondaryMouseUp = NO;
+
+static BOOL isOurTrayButton(NSStatusBarButton *button) {
+    if (!button) return NO;
+    if (!button.window) return NO;
+
+    NSString *tooltip = button.toolTip;
+    if ([tooltip isEqualToString:@"Claude Usage Tracker"]) {
+        return YES;
+    }
+
+    for (NSView *subview in button.subviews) {
+        if ([NSStringFromClass([subview class]) isEqualToString:@"TaoTrayTarget"]) {
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void register_tray_status_item(void *statusItemPtr) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            NSStatusItem *statusItem = (__bridge NSStatusItem *)statusItemPtr;
+            if (!statusItem) return;
+
+            cachedStatusItem = statusItem;
+            cachedButton = statusItem.button;
+            cachedMenu = nil;
+            clickHandlingSetup = NO;
+            frameObserverRegistered = NO;
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Button discovery
+// ---------------------------------------------------------------------------
 
 static NSStatusBarButton *findOurButton(void) {
-    if (cachedButton) return cachedButton;
+    if (isOurTrayButton(cachedButton)) {
+        return cachedButton;
+    }
+
+    cachedButton = nil;
+    cachedStatusItem = nil;
 
     for (NSWindow *window in [NSApp windows]) {
         if (![NSStringFromClass([window class]) isEqualToString:@"NSStatusBarWindow"])
             continue;
-
         @try {
             NSStatusItem *statusItem = [window valueForKey:@"_statusItem"];
-            if (statusItem && statusItem.button) {
-                cachedButton = statusItem.button;
+            if (statusItem && isOurTrayButton(statusItem.button)) {
+                cachedButton    = statusItem.button;
                 cachedStatusItem = statusItem;
                 return cachedButton;
             }
@@ -30,24 +76,26 @@ static NSStatusBarButton *findOurButton(void) {
     return nil;
 }
 
-// Keeps TaoTrayTarget (tray-icon's event-handling subview) covering the full button.
-// autoresizingMask ensures it tracks future automatic resizes.
+// ---------------------------------------------------------------------------
+// TaoTrayTarget frame sync
+// ---------------------------------------------------------------------------
+
 static void ensureSubviewCoverage(NSStatusBarButton *button) {
     NSRect bounds = button.bounds;
-    NSArray *subviews = button.subviews;
-    NSLog(@"[UsageWatch] ensureSubviewCoverage: bounds=(%g,%g,%g,%g) subviews=%lu",
-          bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height,
-          (unsigned long)subviews.count);
-    for (NSView *subview in subviews) {
-        NSLog(@"[UsageWatch]   subview class=%@ frame=(%g,%g,%g,%g) hidden=%d",
-              NSStringFromClass([subview class]),
-              subview.frame.origin.x, subview.frame.origin.y,
-              subview.frame.size.width, subview.frame.size.height,
-              (int)subview.isHidden);
+    NSView *trayTarget = nil;
+    for (NSView *subview in button.subviews) {
         subview.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         if (!NSEqualRects(subview.frame, bounds)) {
             [subview setFrame:bounds];
         }
+        if ([NSStringFromClass([subview class]) isEqualToString:@"TaoTrayTarget"]) {
+            trayTarget = subview;
+        }
+    }
+
+    if (trayTarget) {
+        [trayTarget removeFromSuperview];
+        [button addSubview:trayTarget positioned:NSWindowAbove relativeTo:nil];
     }
 }
 
@@ -57,21 +105,82 @@ static void registerFrameObserverIfNeeded(NSStatusBarButton *button) {
     button.postsFrameChangedNotifications = YES;
     [[NSNotificationCenter defaultCenter]
         addObserverForName:NSViewFrameDidChangeNotification
-        object:button
-        queue:[NSOperationQueue mainQueue]
-        usingBlock:^(NSNotification *note) {
-            NSStatusBarButton *btn = (NSStatusBarButton *)note.object;
-            NSLog(@"[UsageWatch] Button frame changed: (%g,%g,%g,%g)",
-                  btn.bounds.origin.x, btn.bounds.origin.y,
-                  btn.bounds.size.width, btn.bounds.size.height);
-            ensureSubviewCoverage(btn);
-        }];
+                    object:button
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *note) {
+        ensureSubviewCoverage((NSStatusBarButton *)note.object);
+    }];
 }
 
+// ---------------------------------------------------------------------------
+// Click handling fix
+//
+// On macOS 14+, [NSStatusItem setMenu:] causes the status bar system to
+// intercept ALL mouse events before they reach NSView hit-testing, so
+// TaoTrayTarget.mouseDown: is never called.  We fix this by:
+//   1. Detaching the NSMenu from the NSStatusItem (kills the interception).
+//   2. Registering a local event monitor for right-click that pops the menu
+//      manually.  Left-click now flows through normal NSView routing to
+//      TaoTrayTarget → mouseUp: → Rust on_tray_icon_event.
+// ---------------------------------------------------------------------------
+
+static void setupClickHandling(NSStatusBarButton *button) {
+    if (clickHandlingSetup) return;
+    clickHandlingSetup = YES;
+
+    // Grab and detach the menu.
+    cachedMenu = cachedStatusItem.menu;
+    cachedStatusItem.menu = nil;
+
+    NSLog(@"[UsageWatch] Click fix: detached menu from NSStatusItem (was %@)",
+          cachedMenu ? @"set" : @"nil");
+
+    if (!cachedMenu) return;
+
+    // Secondary-click monitor: open the menu on mouse-down to match native status item behavior.
+    [NSEvent addLocalMonitorForEventsMatchingMask:(NSEventMaskRightMouseDown | NSEventMaskLeftMouseDown)
+                                          handler:^NSEvent *(NSEvent *event) {
+        BOOL isRightClick = event.type == NSEventTypeRightMouseDown;
+        BOOL isControlClick = event.type == NSEventTypeLeftMouseDown
+            && (event.modifierFlags & NSEventModifierFlagControl) == NSEventModifierFlagControl;
+        if (!isRightClick && !isControlClick) return event;
+
+        NSPoint screenPt = [NSEvent mouseLocation];
+        if (!button.window) return event;
+        NSRect btnScreen = [button.window
+            convertRectToScreen:[button convertRect:button.bounds toView:nil]];
+
+        if (!NSPointInRect(screenPt, btnScreen)) return event;
+
+        // Use AppKit's contextual menu API so the menu opens at the native click location.
+        suppressNextSecondaryMouseUp = YES;
+        [NSMenu popUpContextMenu:cachedMenu withEvent:event forView:button];
+        return nil; // consume so TaoTrayTarget doesn't also try performClick
+    }];
+
+    [NSEvent addLocalMonitorForEventsMatchingMask:(NSEventMaskRightMouseUp | NSEventMaskLeftMouseUp)
+                                          handler:^NSEvent *(NSEvent *event) {
+        if (!suppressNextSecondaryMouseUp) return event;
+
+        BOOL isRightClick = event.type == NSEventTypeRightMouseUp;
+        BOOL isControlClick = event.type == NSEventTypeLeftMouseUp
+            && (event.modifierFlags & NSEventModifierFlagControl) == NSEventModifierFlagControl;
+        if (!isRightClick && !isControlClick) return event;
+
+        suppressNextSecondaryMouseUp = NO;
+        return nil;
+    }];
+}
+
+// ---------------------------------------------------------------------------
+// Styled tray rendering (NSImage, retina-aware)
+// ---------------------------------------------------------------------------
+
+__attribute__((used))
+__attribute__((visibility("default")))
 void set_styled_tray_title(const TraySegment *segments, int count) {
     if (count == 0) return;
 
-    // Build attributed string using system font (same metrics as plain title).
     NSMutableAttributedString *attrStr = [[NSMutableAttributedString alloc] init];
     CGFloat fontSize = [NSFont systemFontSize];
 
@@ -90,10 +199,8 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
 
         [attrStr appendAttributedString:[[NSAttributedString alloc]
             initWithString:text
-                attributes:@{
-                    NSFontAttributeName: font,
-                    NSForegroundColorAttributeName: color,
-                }]];
+                attributes:@{NSFontAttributeName: font,
+                             NSForegroundColorAttributeName: color}]];
     }
 
     if (attrStr.length == 0) return;
@@ -103,50 +210,33 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
         @autoreleasepool {
             @try {
                 NSStatusBarButton *button = findOurButton();
-                if (!button) {
-                    NSLog(@"[UsageWatch] set_styled_tray_title: button not found");
-                    return;
-                }
+                if (!button) return;
 
+                // One-time setup: detach menu + register right-click monitor.
+                setupClickHandling(button);
                 registerFrameObserverIfNeeded(button);
 
-                // Render colored text into an NSImage (avoids setAttributedTitle:
-                // which can disrupt button internals and TaoTrayTarget event routing).
+                // Render colored text into an NSImage (retina-aware).
                 CGFloat barHeight = [[NSStatusBar systemStatusBar] thickness];
-                NSSize textSize = [captured size];
-                CGFloat hPad = 4.0;
-                NSSize imageSize = NSMakeSize(textSize.width + hPad * 2.0, barHeight);
+                NSSize  textSize  = [captured size];
+                CGFloat hPad      = 4.0;
+                NSSize  imgSize   = NSMakeSize(textSize.width + hPad * 2.0, barHeight);
 
-                NSLog(@"[UsageWatch] Rendering image: text=(%g,%g) bar=%g imageSize=(%g,%g)",
-                      textSize.width, textSize.height, barHeight,
-                      imageSize.width, imageSize.height);
-
-                // imageWithSize:flipped:drawingHandler: renders at screen scale (retina-aware).
-                NSImage *image = [NSImage imageWithSize:imageSize
+                NSImage *image = [NSImage imageWithSize:imgSize
                                                flipped:NO
                                         drawingHandler:^BOOL(NSRect dstRect) {
-                    // Vertically center the text within the bar height.
                     CGFloat yOff = (dstRect.size.height - textSize.height) / 2.0;
                     [captured drawInRect:NSMakeRect(hPad, yOff,
                                                     dstRect.size.width - hPad * 2.0,
                                                     textSize.height)];
                     return YES;
                 }];
-                // Do NOT set template: we want our custom colors preserved.
-                image.template = NO;
+                image.template = NO; // preserve our custom colors
 
-                // Replace the button's visual with our rendered image.
-                // imagePosition = NSImageOnly: show image only, no title text.
                 [button setImage:image];
                 [button setImagePosition:NSImageOnly];
                 [button setTitle:@""];
 
-                // Log state before sync
-                NSLog(@"[UsageWatch] After image set: button bounds=(%g,%g,%g,%g)",
-                      button.bounds.origin.x, button.bounds.origin.y,
-                      button.bounds.size.width, button.bounds.size.height);
-
-                // Sync TaoTrayTarget to button's current bounds.
                 ensureSubviewCoverage(button);
 
             } @catch (NSException *e) {

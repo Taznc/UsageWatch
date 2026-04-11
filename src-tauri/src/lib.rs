@@ -13,6 +13,8 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
+#[cfg(target_os = "macos")]
+use objc2::rc::Retained;
 
 use credentials_cache::CredentialsCache;
 use models::{TrayFormat, UsageData};
@@ -106,7 +108,7 @@ pub fn run() {
 
             // Build tray icon
             let tray_menu = menu;
-            TrayIconBuilder::with_id("main-tray")
+            let tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
                 .title("--")
@@ -135,11 +137,9 @@ pub fn run() {
                         tauri::tray::TrayIconEvent::Click {
                             button: tauri::tray::MouseButton::Left,
                             button_state: tauri::tray::MouseButtonState::Up,
-                            position,
                             rect,
                             ..
                         } => {
-                        let position = *position;
                         let rect = rect.clone();
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
@@ -153,11 +153,11 @@ pub fn run() {
                                     }
                                     tauri::Size::Logical(s) => (s.width, s.height),
                                 };
-                                let icon_y = match rect.position {
-                                    tauri::Position::Physical(p) => p.y as f64,
-                                    tauri::Position::Logical(p) => p.y,
+                                let (icon_x, icon_y) = match rect.position {
+                                    tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+                                    tauri::Position::Logical(p) => (p.x, p.y),
                                 };
-                                let icon_center_x = position.x + icon_w / 2.0;
+                                let icon_center_x = icon_x + icon_w / 2.0;
                                 let x = icon_center_x - window_width / 2.0;
                                 let y = icon_y + icon_h + 4.0;
 
@@ -174,6 +174,16 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            #[cfg(target_os = "macos")]
+            {
+                let _ = tray.with_inner_tray_icon(|inner| {
+                    if let Some(status_item) = inner.ns_status_item() {
+                        let ptr = Retained::as_ptr(&status_item) as *mut std::ffi::c_void;
+                        crate::styled_tray::register_native_status_item(ptr);
+                    }
+                });
+            }
 
             // Start Stream Deck HTTP API server
             http_server::start(handle.clone(), latest_usage_for_server);

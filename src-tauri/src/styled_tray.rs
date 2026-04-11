@@ -6,6 +6,7 @@ pub use macos::*;
 #[cfg(target_os = "macos")]
 mod macos {
     use std::ffi::CString;
+    use std::ffi::c_void;
 
     #[repr(C)]
     struct CTraySegment {
@@ -20,6 +21,7 @@ mod macos {
 
     extern "C" {
         fn set_styled_tray_title(segments: *const CTraySegment, count: std::ffi::c_int);
+        fn register_tray_status_item(status_item: *mut c_void);
     }
 
     #[derive(Debug, Clone)]
@@ -76,6 +78,12 @@ mod macos {
 
         unsafe {
             set_styled_tray_title(c_segments.as_ptr(), c_segments.len() as std::ffi::c_int);
+        }
+    }
+
+    pub fn register_native_status_item(status_item: *mut c_void) {
+        unsafe {
+            register_tray_status_item(status_item);
         }
     }
 }
