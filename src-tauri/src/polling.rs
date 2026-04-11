@@ -4,6 +4,7 @@ use tokio::time::{interval, Duration};
 
 use crate::credentials_cache::CredentialsCache;
 use crate::models::{TrayFormat, UsageData};
+use crate::tray_renderer;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct UsageUpdate {
@@ -49,7 +50,7 @@ pub fn start_polling(
             let update = match fetch_usage_internal(&session_key, &org_id).await {
                 Ok(data) => {
                     let format = tray_format.lock().unwrap().clone();
-                    update_tray_title(&app_handle, &data, &format);
+                    update_tray_display(&app_handle, &data, &format);
                     UsageUpdate {
                         data: Some(data),
                         error: None,
@@ -95,119 +96,22 @@ async fn fetch_usage_internal(session_key: &str, org_id: &str) -> Result<UsageDa
         .map_err(|e| format!("Failed to parse usage data: {}", e))
 }
 
-fn format_countdown(resets_at: &str) -> String {
-    let reset = match chrono::DateTime::parse_from_rfc3339(resets_at) {
-        Ok(dt) => dt,
-        Err(_) => return String::new(),
-    };
-    let now = chrono::Utc::now();
-    let diff = reset.signed_duration_since(now);
-
-    if diff.num_seconds() <= 0 {
-        return "now".to_string();
-    }
-
-    let hours = diff.num_hours();
-    let minutes = diff.num_minutes() % 60;
-
-    if hours >= 48 {
-        let days = hours / 24;
-        let rem_hours = hours % 24;
-        return format!("{}d{}h", days, rem_hours);
-    }
-    if hours > 0 {
-        return format!("{}h{}m", hours, minutes);
-    }
-    format!("{}m", minutes)
-}
-
 pub fn update_tray_title_public(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
-    update_tray_title(app, data, format);
+    update_tray_display(app, data, format);
 }
 
-fn update_tray_title(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
-    let mut segments: Vec<String> = Vec::new();
-
-    // Session segment
-    if format.show_session_pct || format.show_session_timer {
-        if let Some(ref fh) = data.five_hour {
-            let mut parts: Vec<String> = Vec::new();
-            if format.show_session_pct {
-                parts.push(format!("S:{}%", fh.utilization.round() as i32));
-            }
-            if format.show_session_timer {
-                if let Some(ref reset) = fh.resets_at {
-                    let countdown = format_countdown(reset);
-                    if !countdown.is_empty() {
-                        parts.push(countdown);
-                    }
-                }
-            }
-            if !parts.is_empty() {
-                segments.push(parts.join(" "));
-            }
-        }
-    }
-
-    // Weekly segment
-    if format.show_weekly_pct || format.show_weekly_timer {
-        if let Some(ref sd) = data.seven_day {
-            let mut parts: Vec<String> = Vec::new();
-            if format.show_weekly_pct {
-                parts.push(format!("W:{}%", sd.utilization.round() as i32));
-            }
-            if format.show_weekly_timer {
-                if let Some(ref reset) = sd.resets_at {
-                    let countdown = format_countdown(reset);
-                    if !countdown.is_empty() {
-                        parts.push(countdown);
-                    }
-                }
-            }
-            if !parts.is_empty() {
-                segments.push(parts.join(" "));
-            }
-        }
-    }
-
-    // Sonnet segment
-    if format.show_sonnet_pct {
-        if let Some(ref ss) = data.seven_day_sonnet {
-            if ss.utilization > 0.0 {
-                segments.push(format!("So:{}%", ss.utilization.round() as i32));
-            }
-        }
-    }
-
-    // Opus segment
-    if format.show_opus_pct {
-        if let Some(ref op) = data.seven_day_opus {
-            if op.utilization > 0.0 {
-                segments.push(format!("Op:{}%", op.utilization.round() as i32));
-            }
-        }
-    }
-
-    // Extra usage segment
-    if format.show_extra_usage {
-        if let Some(ref eu) = data.extra_usage {
-            if eu.is_enabled {
-                segments.push(format!(
-                    "${}/{}",
-                    (eu.used_credits / 100.0).round() as i32,
-                    (eu.monthly_limit / 100.0).round() as i32
-                ));
-            }
-        }
-    }
-
-    let title = if segments.is_empty() {
-        "--".to_string()
-    } else {
-        segments.join(&format.separator)
-    };
-
+fn update_tray_display(app: &AppHandle, data: &UsageData, format: &TrayFormat) {
     if let Some(tray) = app.tray_by_id("main-tray") {
-        let _ = tray.set_title(Some(&title));
+        // Clear the text title
+        let _ = tray.set_title(Some(""));
+
+        // Render styled image
+        if let Some(png_bytes) = tray_renderer::render_tray_image(data, format) {
+            if let Ok(img) = tauri::image::Image::from_bytes(&png_bytes) {
+                let owned = img.to_owned();
+                let _ = tray.set_icon(Some(owned));
+                let _ = tray.set_icon_as_template(false);
+            }
+        }
     }
 }

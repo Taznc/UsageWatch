@@ -2,6 +2,7 @@ mod commands;
 mod credentials_cache;
 mod models;
 mod polling;
+mod tray_renderer;
 
 use std::sync::{Arc, Mutex};
 use tauri::{
