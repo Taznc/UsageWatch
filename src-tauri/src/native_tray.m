@@ -7,7 +7,6 @@ typedef struct {
     int is_bold;
 } TraySegment;
 
-// Cache the button pointer after first successful find
 static NSStatusBarButton *cachedButton = nil;
 
 static NSStatusBarButton *findOurButton(void) {
@@ -62,20 +61,18 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
 
     if (result.length == 0) return;
 
+    // Dispatch to main thread with a small delay so Tauri's set_title
+    // (which also dispatches to main) completes first and updates
+    // the TrayTarget dimensions. We then only change the colors/styling
+    // without changing the text content or button width.
     NSAttributedString *captured = [result copy];
-    dispatch_async(dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(50 * NSEC_PER_MSEC)),
+                   dispatch_get_main_queue(), ^{
         @autoreleasepool {
             @try {
                 NSStatusBarButton *button = findOurButton();
                 if (button) {
                     [button setAttributedTitle:captured];
-                    // Resize the TrayTarget overlay subview to match
-                    // the button's new bounds (tray-icon crate adds this
-                    // overlay for click detection but doesn't update it
-                    // when we modify the title externally)
-                    for (NSView *subview in button.subviews) {
-                        [subview setFrame:button.bounds];
-                    }
                 }
             } @catch (NSException *e) {
                 NSLog(@"[styled_tray] Exception: %@", e);
