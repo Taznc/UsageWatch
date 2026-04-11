@@ -29,15 +29,10 @@ static NSStatusBarButton *findOurButton(void) {
     return nil;
 }
 
-/// Sync the TrayTarget overlay subview to match the button's current bounds.
-/// This must be called after any change to the button's title/attributedTitle
-/// because the tray-icon crate's TrayTarget only gets resized by its own
-/// set_title/set_icon methods (via update_dimensions).
 static void syncTrayTargetFrame(NSStatusBarButton *button) {
     NSRect bounds = button.bounds;
     for (NSView *subview in button.subviews) {
         [subview setFrame:bounds];
-        // Rebuild tracking areas to match new bounds
         for (NSTrackingArea *area in [subview.trackingAreas copy]) {
             [subview removeTrackingArea:area];
             NSTrackingArea *newArea = [[NSTrackingArea alloc]
@@ -53,16 +48,17 @@ static void syncTrayTargetFrame(NSStatusBarButton *button) {
 void set_styled_tray_title(const TraySegment *segments, int count) {
     NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
 
+    // Use the menu bar system font at the default size for ALL segments
+    // This matches what setTitle: uses, so the button width stays the same
+    CGFloat menuBarFontSize = [NSFont systemFontSize];
+    NSFont *regularFont = [NSFont systemFontOfSize:menuBarFontSize];
+    NSFont *boldFont = [NSFont boldSystemFontOfSize:menuBarFontSize];
+
     for (int i = 0; i < count; i++) {
         NSString *text = [NSString stringWithUTF8String:segments[i].text];
         if (!text) continue;
 
-        NSFont *font;
-        if (segments[i].is_bold) {
-            font = [NSFont boldSystemFontOfSize:segments[i].font_size];
-        } else {
-            font = [NSFont systemFontOfSize:segments[i].font_size];
-        }
+        NSFont *font = segments[i].is_bold ? boldFont : regularFont;
 
         NSColor *color = [NSColor colorWithSRGBRed:segments[i].r
                                              green:segments[i].g
@@ -83,7 +79,6 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
 
     NSAttributedString *captured = [result copy];
 
-    // Delay to let Tauri's set_title() and update_dimensions() complete first
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(50 * NSEC_PER_MSEC)),
                    dispatch_get_main_queue(), ^{
         @autoreleasepool {
@@ -91,13 +86,8 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
                 NSStatusBarButton *button = findOurButton();
                 if (!button) return;
 
-                // Set the styled title — this may resize the button
                 [button setAttributedTitle:captured];
-
-                // Let the button settle its layout
                 [button sizeToFit];
-
-                // Now sync the TrayTarget overlay to match the new size
                 syncTrayTargetFrame(button);
 
             } @catch (NSException *e) {
