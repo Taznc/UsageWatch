@@ -67,5 +67,8 @@ export function renderUsageKey(label: string, pct: number | null): string {
 }
 
 function svgToDataUri(svg: string): string {
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  // Use base64 encoding — encodeURIComponent SVG data URIs don't render
+  // text reliably on Windows Stream Deck.
+  const b64 = Buffer.from(svg).toString("base64");
+  return `data:image/svg+xml;base64,${b64}`;
 }

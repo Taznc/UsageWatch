@@ -7,6 +7,10 @@
     {
       "Platform": "mac",
       "MinimumVersion": "10.15"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
     }
   ],
   "Version": "1.0.0",

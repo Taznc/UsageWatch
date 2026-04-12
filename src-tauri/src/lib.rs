@@ -1,6 +1,6 @@
 mod commands;
 mod credentials_cache;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod focus_monitor;
 mod http_server;
 mod models;
@@ -24,13 +24,14 @@ use credentials_cache::CredentialsCache;
 /// Browser-like User-Agent to avoid Cloudflare challenges when calling claude.ai APIs.
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 use models::{AlertConfig, TrayConfig, TrayFormat};
-use polling::{CodexUpdate, UsageUpdate};
+use polling::{CodexUpdate, CursorUpdate, UsageUpdate};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let poll_interval = Arc::new(Mutex::new(60u64));
     let poll_interval_clone = poll_interval.clone();
     let poll_interval_clone2 = poll_interval.clone();
+    let poll_interval_clone3 = poll_interval.clone();
 
     let cache = Arc::new(CredentialsCache::new());
     let cache_for_polling = cache.clone();
@@ -49,9 +50,13 @@ pub fn run() {
     let latest_codex: Arc<Mutex<Option<CodexUpdate>>> = Arc::new(Mutex::new(None));
     let latest_codex_for_polling = latest_codex.clone();
 
+    let latest_cursor: Arc<Mutex<Option<CursorUpdate>>> = Arc::new(Mutex::new(None));
+    let latest_cursor_for_polling = latest_cursor.clone();
+
     let tray_format_for_state = tray_format.clone();
     let latest_usage_for_state = latest_usage.clone();
     let latest_codex_for_state = latest_codex.clone();
+    let latest_cursor_for_state = latest_cursor.clone();
 
     tauri::Builder::default()
         .plugin(
@@ -89,6 +94,9 @@ pub fn run() {
         .manage(tray_format.clone())
         .manage(tray_config.clone())
         .manage(alert_config.clone())
+        .manage(latest_usage.clone())
+        .manage(latest_codex.clone())
+        .manage(latest_cursor.clone())
         .invoke_handler(tauri::generate_handler![
             commands::credentials::save_session_key,
             commands::credentials::get_session_key,
@@ -102,7 +110,9 @@ pub fn run() {
             commands::usage::fetch_billing,
             commands::usage::fetch_status,
             commands::codex::check_codex_auth,
+            commands::codex::fetch_codex_usage,
             commands::cursor::check_cursor_auth,
+            commands::cursor::fetch_cursor_usage,
             commands::cursor::get_cursor_email,
             commands::cursor::get_cursor_auth_path,
             set_poll_interval,
@@ -113,6 +123,10 @@ pub fn run() {
             get_running_apps,
             get_alert_config,
             set_alert_config,
+            get_latest_usage_update,
+            get_latest_codex_update,
+            get_latest_cursor_update,
+            get_active_provider,
         ])
         .setup(move |app| {
             // Hide dock icon on macOS (agent/accessory app)
@@ -246,10 +260,11 @@ pub fn run() {
                 tray_format: tray_format_for_state,
                 latest_usage: latest_usage_for_state,
                 latest_codex: latest_codex_for_state,
+                latest_cursor: latest_cursor_for_state,
             });
 
-            // Start focus observation (macOS KVO on frontmostApplication)
-            #[cfg(target_os = "macos")]
+            // Start focused-app observation for provider-aware tray/widget switching.
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             focus_monitor::start();
 
             // Start Stream Deck HTTP API server
@@ -258,6 +273,7 @@ pub fn run() {
             // Start background polling
             polling::start_polling(handle, poll_interval_clone, cache_for_polling, latest_usage_for_polling);
             polling::start_codex_polling(handle, poll_interval_clone2, latest_codex_for_polling);
+            polling::start_cursor_polling(handle, poll_interval_clone3, latest_cursor_for_polling);
 
             Ok(())
         })
@@ -353,6 +369,35 @@ fn set_alert_config(
     }
     save_alert_config_to_store(&app, &config);
     Ok(())
+}
+
+#[tauri::command]
+fn get_latest_usage_update(
+    state: tauri::State<'_, Arc<Mutex<Option<UsageUpdate>>>>,
+) -> Result<Option<UsageUpdate>, String> {
+    let lock = state.lock().map_err(|e| e.to_string())?;
+    Ok(lock.clone())
+}
+
+#[tauri::command]
+fn get_latest_codex_update(
+    state: tauri::State<'_, Arc<Mutex<Option<CodexUpdate>>>>,
+) -> Result<Option<CodexUpdate>, String> {
+    let lock = state.lock().map_err(|e| e.to_string())?;
+    Ok(lock.clone())
+}
+
+#[tauri::command]
+fn get_latest_cursor_update(
+    state: tauri::State<'_, Arc<Mutex<Option<CursorUpdate>>>>,
+) -> Result<Option<CursorUpdate>, String> {
+    let lock = state.lock().map_err(|e| e.to_string())?;
+    Ok(lock.clone())
+}
+
+#[tauri::command]
+fn get_active_provider() -> Result<models::Provider, String> {
+    crate::tray_state::current_provider().ok_or_else(|| "provider unavailable".to_string())
 }
 
 fn load_tray_format_from_store(app: &tauri::AppHandle, tray_format: &Arc<Mutex<TrayFormat>>) {

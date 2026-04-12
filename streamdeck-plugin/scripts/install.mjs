@@ -17,10 +17,10 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dir, "..");
 const pluginId = "com.usagewatch.sdPlugin";
 
-const sdPluginsDir = resolve(
-  homedir(),
-  "Library/Application Support/com.elgato.StreamDeck/Plugins"
-);
+const sdPluginsDir =
+  process.platform === "win32"
+    ? resolve(process.env.APPDATA, "Elgato/StreamDeck/Plugins")
+    : resolve(homedir(), "Library/Application Support/com.elgato.StreamDeck/Plugins");
 const destDir = resolve(sdPluginsDir, pluginId);
 
 // Build first

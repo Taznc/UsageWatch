@@ -37,6 +37,15 @@ export function formatTimestamp(iso: string): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+export function formatCurrencyFromCents(cents: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
 export function formatResetDate(resetAt: string | null): string {
   if (!resetAt) return "";
   const date = new Date(resetAt);

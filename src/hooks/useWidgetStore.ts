@@ -1,13 +1,9 @@
-/**
- * Handles loading/saving the widget layout from tauri-plugin-store.
- * Call this ONCE from WidgetWindow. Child components dispatch actions
- * to WidgetContext directly; this hook observes state changes and persists them.
- */
 import { useEffect, useRef } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import type { Store } from "@tauri-apps/plugin-store";
 import { useWidget } from "../context/WidgetContext";
-import type { WidgetLayout } from "../types/widget";
+import { DEFAULT_WIDGET_PREFERENCES, type WidgetLayout } from "../types/widget";
+import { isTauriRuntime } from "../widget/preview";
 
 const STORE_KEY = "widget_layout";
 
@@ -19,31 +15,57 @@ function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
   }) as T;
 }
 
+function normalizeLayout(saved: unknown): WidgetLayout | null {
+  if (!saved || typeof saved !== "object") return null;
+  const candidate = saved as {
+    version?: unknown;
+    position?: { x?: unknown; y?: unknown };
+    preferences?: WidgetLayout["preferences"];
+  };
+
+  const x = typeof candidate.position?.x === "number" ? candidate.position.x : 200;
+  const y = typeof candidate.position?.y === "number" ? candidate.position.y : 100;
+
+  return {
+    version: typeof candidate.version === "number" ? candidate.version : 1,
+    position: { x, y },
+    preferences: {
+      ...DEFAULT_WIDGET_PREFERENCES,
+      ...candidate.preferences,
+      claude: {
+        ...DEFAULT_WIDGET_PREFERENCES.claude,
+        ...candidate.preferences?.claude,
+      },
+      codex: {
+        ...DEFAULT_WIDGET_PREFERENCES.codex,
+        ...candidate.preferences?.codex,
+      },
+      cursor: {
+        ...DEFAULT_WIDGET_PREFERENCES.cursor,
+        ...candidate.preferences?.cursor,
+      },
+    },
+  };
+}
+
 export function useWidgetStore() {
   const { state, dispatch } = useWidget();
   const storeRef = useRef<Store | null>(null);
+  const tauri = isTauriRuntime();
 
-  // Load saved layout once on mount
   useEffect(() => {
+    if (!tauri) return;
     async function init() {
       const store = await load("credentials.json", { autoSave: false, defaults: {} });
       storeRef.current = store;
-      const saved = await store.get<WidgetLayout>(STORE_KEY);
-      if (saved && Array.isArray(saved.placedTiles) && saved.placedTiles.length > 0) {
-        dispatch({
-          type: "SET_LAYOUT",
-          layout: {
-            ...saved,
-            version: 1,
-            columns: saved.columns === 1 ? 1 : 2, // normalise
-          },
-        });
+      const saved = normalizeLayout(await store.get(STORE_KEY));
+      if (saved) {
+        dispatch({ type: "SET_LAYOUT", layout: saved });
       }
     }
     init();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dispatch, tauri]);
 
-  // Persist whenever layout changes (debounced to avoid hammering disk)
   const saveRef = useRef(
     debounce(async (layout: WidgetLayout, store: Store | null) => {
       if (!store) return;
@@ -53,10 +75,10 @@ export function useWidgetStore() {
   );
 
   useEffect(() => {
+    if (!tauri) return;
     saveRef.current(state.layout, storeRef.current);
-  }, [state.layout]);
+  }, [state.layout, tauri]);
 
-  // Position is saved from WidgetWindow's onMoved event
   function savePosition(x: number, y: number) {
     dispatch({
       type: "SET_LAYOUT",

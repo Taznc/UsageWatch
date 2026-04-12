@@ -177,3 +177,8 @@ pub async fn check_codex_auth() -> Result<bool, String> {
         Err(_) => Ok(false),
     }
 }
+
+#[tauri::command]
+pub async fn fetch_codex_usage() -> Result<CodexUsageData, String> {
+    fetch_codex_usage_internal().await
+}

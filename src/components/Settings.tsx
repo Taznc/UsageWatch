@@ -1,22 +1,25 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { load } from "@tauri-apps/plugin-store";
 import { useApp } from "../context/AppContext";
 import { formatPollInterval } from "../utils/format";
 import { DebugPanel } from "./DebugPanel";
 import type { Organization, TrayFormat, TrayConfig, RunningApp, Provider, AlertConfig } from "../types/usage";
+import { DEFAULT_WIDGET_PREFERENCES, type WidgetLayout, type WidgetPreferences } from "../types/widget";
 
 interface BrowserResult {
   browser: string;
   session_key: string | null;
 }
 
-type NavId = "account" | "menu-bar" | "provider" | "alerts" | "general" | "debug";
+type NavId = "account" | "menu-bar" | "provider" | "widget" | "alerts" | "general" | "debug";
 
 const NAV_ITEMS: { id: NavId; label: string; sub: string }[] = [
   { id: "account",   label: "Account",   sub: "Session key & org" },
   { id: "menu-bar",  label: "Menu Bar",  sub: "Tray display" },
   { id: "provider",  label: "Provider",  sub: "Active AI service" },
+  { id: "widget",    label: "Widget",    sub: "Compact dashboards" },
   { id: "alerts",    label: "Alerts",    sub: "Notifications" },
   { id: "general",   label: "General",   sub: "Polling & startup" },
   { id: "debug",     label: "Debug",     sub: "Diagnostics" },
@@ -63,12 +66,14 @@ export function Settings() {
     app_mappings: [
       { app_identifier: "com.anthropic.claudefordesktop", provider: "Claude" },
       { app_identifier: "com.openai.codex", provider: "Codex" },
+      { app_identifier: "Cursor.exe", provider: "Cursor" },
     ],
     default_provider: "Claude",
   });
   const [runningApps, setRunningApps] = useState<RunningApp[]>([]);
   const [newMappingApp, setNewMappingApp] = useState("");
   const [newMappingProvider, setNewMappingProvider] = useState<Provider>("Claude");
+  const [widgetPreferences, setWidgetPreferences] = useState<WidgetPreferences>(DEFAULT_WIDGET_PREFERENCES);
 
   // ── Alert config state ────────────────────────────────────────────────────
   const [alertConfig, setAlertConfig] = useState<AlertConfig>({
@@ -98,9 +103,26 @@ export function Settings() {
         setAlertConfig(cfg);
       } catch {}
     }
+    async function loadWidgetPreferences() {
+      try {
+        const store = await load("credentials.json", { autoSave: false, defaults: {} });
+        const saved = await store.get<WidgetLayout>("widget_layout");
+        const prefs = saved?.preferences;
+        if (prefs) {
+          setWidgetPreferences({
+            ...DEFAULT_WIDGET_PREFERENCES,
+            ...prefs,
+            claude: { ...DEFAULT_WIDGET_PREFERENCES.claude, ...prefs.claude },
+            codex: { ...DEFAULT_WIDGET_PREFERENCES.codex, ...prefs.codex },
+            cursor: { ...DEFAULT_WIDGET_PREFERENCES.cursor, ...prefs.cursor },
+          });
+        }
+      } catch {}
+    }
     loadTrayFormat();
     loadTrayConfig();
     loadAlertConfig();
+    loadWidgetPreferences();
   }, []);
 
   const updateTrayFormat = async (updates: Partial<TrayFormat>) => {
@@ -124,6 +146,27 @@ export function Settings() {
     setAlertConfig(newConfig);
     try {
       await invoke("set_alert_config", { config: newConfig });
+    } catch {}
+  };
+
+  const updateWidgetPreferences = async (updates: Partial<WidgetPreferences>) => {
+    const next: WidgetPreferences = {
+      ...widgetPreferences,
+      ...updates,
+      claude: { ...widgetPreferences.claude, ...updates.claude },
+      codex: { ...widgetPreferences.codex, ...updates.codex },
+      cursor: { ...widgetPreferences.cursor, ...updates.cursor },
+    };
+    setWidgetPreferences(next);
+    try {
+      const store = await load("credentials.json", { autoSave: false, defaults: {} });
+      const saved = await store.get<WidgetLayout>("widget_layout");
+      await store.set("widget_layout", {
+        version: saved?.version ?? 1,
+        position: saved?.position ?? { x: 200, y: 100 },
+        preferences: next,
+      } satisfies WidgetLayout);
+      await store.save();
     } catch {}
   };
 
@@ -705,6 +748,7 @@ export function Settings() {
                     >
                       <option value="Claude">Claude</option>
                       <option value="Codex">Codex</option>
+                      <option value="Cursor">Cursor</option>
                     </select>
                   </div>
 
@@ -725,6 +769,7 @@ export function Settings() {
                           >
                             <option value="Claude">Claude</option>
                             <option value="Codex">Codex</option>
+                            <option value="Cursor">Cursor</option>
                           </select>
                           <button
                             className="icon-btn mapping-remove"
@@ -744,7 +789,7 @@ export function Settings() {
                     )}
 
                     <div className="mapping-row" style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-                      <select
+                      <input
                         className="input"
                         style={{ flex: 1 }}
                         value={newMappingApp}
@@ -752,8 +797,10 @@ export function Settings() {
                         onFocus={() => {
                           if (runningApps.length === 0) loadRunningApps();
                         }}
-                      >
-                        <option value="">Add app...</option>
+                        placeholder="Add app name or process (e.g. Cursor.exe)"
+                        list="widget-running-apps"
+                      />
+                      <datalist id="widget-running-apps">
                         {runningApps
                           .filter(
                             (app) =>
@@ -766,7 +813,7 @@ export function Settings() {
                               {app.name}
                             </option>
                           ))}
-                      </select>
+                      </datalist>
                       <select
                         className="input mapping-select"
                         value={newMappingProvider}
@@ -774,6 +821,7 @@ export function Settings() {
                       >
                         <option value="Claude">Claude</option>
                         <option value="Codex">Codex</option>
+                        <option value="Cursor">Cursor</option>
                       </select>
                       <button
                         className="icon-btn"
@@ -796,6 +844,96 @@ export function Settings() {
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {activeTab === "widget" && (
+            <div className="settings-section">
+              <p className="section-hint">Compact provider-specific dashboards shown in the floating widget window.</p>
+
+              <div className="form-group">
+                <label>Density</label>
+                <select
+                  className="input"
+                  value={widgetPreferences.density}
+                  onChange={(e) => updateWidgetPreferences({ density: e.target.value as WidgetPreferences["density"] })}
+                >
+                  <option value="compact">Compact</option>
+                  <option value="comfortable">Comfortable</option>
+                </select>
+              </div>
+
+              <div className="settings-card" style={{ marginTop: 10 }}>
+                <p className="card-label">Claude dashboard</p>
+                <div className="toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={widgetPreferences.claude.showExtra ?? false}
+                      onChange={(e) => updateWidgetPreferences({ claude: { showExtra: e.target.checked } })}
+                    />
+                    Show extra usage
+                  </label>
+                </div>
+                <div className="toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={widgetPreferences.claude.showBalance ?? false}
+                      onChange={(e) => updateWidgetPreferences({ claude: { showBalance: e.target.checked } })}
+                    />
+                    Show prepaid balance
+                  </label>
+                </div>
+                <div className="toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={widgetPreferences.claude.showStatus ?? false}
+                      onChange={(e) => updateWidgetPreferences({ claude: { showStatus: e.target.checked } })}
+                    />
+                    Show API status
+                  </label>
+                </div>
+              </div>
+
+              <div className="settings-card" style={{ marginTop: 10 }}>
+                <p className="card-label">Codex dashboard</p>
+                <div className="toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={widgetPreferences.codex.showCredits ?? false}
+                      onChange={(e) => updateWidgetPreferences({ codex: { showCredits: e.target.checked } })}
+                    />
+                    Show credits
+                  </label>
+                </div>
+                <div className="toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={widgetPreferences.codex.showStatus ?? false}
+                      onChange={(e) => updateWidgetPreferences({ codex: { showStatus: e.target.checked } })}
+                    />
+                    Show API status
+                  </label>
+                </div>
+              </div>
+
+              <div className="settings-card" style={{ marginTop: 10 }}>
+                <p className="card-label">Cursor dashboard</p>
+                <div className="toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={widgetPreferences.cursor.showStatus ?? false}
+                      onChange={(e) => updateWidgetPreferences({ cursor: { showStatus: e.target.checked } })}
+                    />
+                    Show API status
+                  </label>
+                </div>
+              </div>
             </div>
           )}
 

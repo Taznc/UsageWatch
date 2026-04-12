@@ -49,10 +49,10 @@ export function useAlertEngine(
       isFirstRun.current = false;
       // Still record initial values for reset detection
       const sessionPct = usageData.five_hour
-        ? Math.round(usageData.five_hour.utilization * 100)
+        ? Math.round(usageData.five_hour.utilization)
         : null;
       const weeklyPct = usageData.seven_day
-        ? Math.round(usageData.seven_day.utilization * 100)
+        ? Math.round(usageData.seven_day.utilization)
         : null;
       cooldown.current.lastSessionPct = sessionPct;
       cooldown.current.lastWeeklyPct = weeklyPct;
@@ -72,10 +72,10 @@ export function useAlertEngine(
       const cd = cooldown.current;
 
       const sessionPct = usageData!.five_hour
-        ? Math.round(usageData!.five_hour.utilization * 100)
+        ? Math.round(usageData!.five_hour.utilization)
         : null;
       const weeklyPct = usageData!.seven_day
-        ? Math.round(usageData!.seven_day.utilization * 100)
+        ? Math.round(usageData!.seven_day.utilization)
         : null;
 
       // ── Reset detection ──────────────────────────────────────────────

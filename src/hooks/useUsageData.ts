@@ -2,7 +2,7 @@ import { useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../context/AppContext";
-import type { UsageUpdate, CodexUpdate } from "../types/usage";
+import type { UsageUpdate, CodexUpdate, CursorUpdate } from "../types/usage";
 
 export function useUsageData() {
   const { state, dispatch } = useApp();
@@ -27,9 +27,19 @@ export function useUsageData() {
       }
     });
 
+    const unlistenCursor = listen<CursorUpdate>('cursor-update', (event) => {
+      const update = event.payload;
+      if (update.data) {
+        dispatch({ type: 'SET_CURSOR', data: update.data, timestamp: update.timestamp });
+      } else if (update.error) {
+        dispatch({ type: 'SET_CURSOR_ERROR', error: update.error, timestamp: update.timestamp });
+      }
+    });
+
     return () => {
       unlisten.then((fn) => fn());
       unlistenCodex.then((fn) => fn());
+      unlistenCursor.then((fn) => fn());
     };
   }, [dispatch]);
 

@@ -4,10 +4,10 @@
 //! can trigger an immediate tray re-render for the current provider.
 
 use std::sync::{Arc, Mutex, OnceLock};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
-use crate::models::{CodexUsageData, Provider, TrayConfig, TrayFormat, UsageData};
-use crate::polling::{CodexUpdate, UsageUpdate};
+use crate::models::{CodexUsageData, CursorUsageData, Provider, TrayConfig, TrayFormat, UsageData};
+use crate::polling::{CodexUpdate, CursorUpdate, UsageUpdate};
 #[cfg(target_os = "macos")]
 use crate::tray_renderer;
 
@@ -17,9 +17,11 @@ pub struct TrayState {
     pub tray_format: Arc<Mutex<TrayFormat>>,
     pub latest_usage: Arc<Mutex<Option<UsageUpdate>>>,
     pub latest_codex: Arc<Mutex<Option<CodexUpdate>>>,
+    pub latest_cursor: Arc<Mutex<Option<CursorUpdate>>>,
 }
 
 static TRAY_STATE: OnceLock<TrayState> = OnceLock::new();
+static LAST_PROVIDER: OnceLock<Mutex<Option<Provider>>> = OnceLock::new();
 
 /// Initialize global tray state. Call once during app setup.
 pub fn init(state: TrayState) {
@@ -39,6 +41,7 @@ pub fn refresh_tray() {
     let format = state.tray_format.lock().unwrap().clone();
 
     let provider = resolve_current_provider(&config);
+    emit_provider_change_if_needed(&state.app_handle, provider);
 
     let display = match provider {
         Provider::Claude => {
@@ -53,8 +56,12 @@ pub fn refresh_tray() {
                 .and_then(|u| u.data.as_ref())
                 .map(TrayDisplayData::from_codex)
         }
-        // Cursor polling not yet implemented — tray shows nothing when Cursor is active
-        Provider::Cursor => None,
+        Provider::Cursor => {
+            let lock = state.latest_cursor.lock().unwrap();
+            lock.as_ref()
+                .and_then(|u| u.data.as_ref())
+                .map(TrayDisplayData::from_cursor)
+        }
     };
 
     if let Some(dd) = display {
@@ -62,20 +69,34 @@ pub fn refresh_tray() {
     }
 }
 
+fn emit_provider_change_if_needed(app: &AppHandle, provider: Provider) {
+    let state = LAST_PROVIDER.get_or_init(|| Mutex::new(None));
+    let mut lock = state.lock().unwrap();
+    if *lock != Some(provider) {
+        *lock = Some(provider);
+        let _ = app.emit("provider-changed", provider);
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn resolve_current_provider(config: &TrayConfig) -> Provider {
-    #[cfg(target_os = "macos")]
-    {
-        let bid = crate::focus_monitor::current_bundle_id();
-        let name = crate::focus_monitor::current_app_name();
-        config.resolve_provider(bid.as_deref(), name.as_deref())
+    let bid = crate::focus_monitor::current_bundle_id();
+    let name = crate::focus_monitor::current_app_name();
+    config.resolve_provider(bid.as_deref(), name.as_deref())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn resolve_current_provider(config: &TrayConfig) -> Provider {
+    match &config.mode {
+        crate::models::TrayMode::Static(p) => *p,
+        crate::models::TrayMode::Dynamic => config.default_provider,
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        match &config.mode {
-            crate::models::TrayMode::Static(p) => *p,
-            crate::models::TrayMode::Dynamic => config.default_provider,
-        }
-    }
+}
+
+pub fn current_provider() -> Option<Provider> {
+    let state = TRAY_STATE.get()?;
+    let config = state.tray_config.lock().ok()?.clone();
+    Some(resolve_current_provider(&config))
 }
 
 // ── Provider-agnostic tray data ─────────────────────────────────────────────
@@ -108,6 +129,20 @@ impl TrayDisplayData {
                 .unwrap_or(false),
             extra_used: data.extra_usage.as_ref().map(|e| e.used_credits),
             extra_limit: data.extra_usage.as_ref().map(|e| e.monthly_limit),
+        }
+    }
+
+    pub fn from_cursor(data: &CursorUsageData) -> Self {
+        Self {
+            session_pct: Some(data.spend_pct),
+            session_reset: data.cycle_resets_at.clone(),
+            weekly_pct: None,
+            weekly_reset: None,
+            sonnet_pct: None,
+            opus_pct: None,
+            extra_usage_enabled: true,
+            extra_used: Some(data.current_spend_cents),
+            extra_limit: Some(data.hard_limit_cents),
         }
     }
 

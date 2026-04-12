@@ -111,6 +111,24 @@ export interface CodexUpdate {
   timestamp: string;
 }
 
+// ── Cursor ───────────────────────────────────────────────────────────────────
+
+export interface CursorUsageData {
+  plan_name: string | null;
+  current_spend_cents: number;
+  hard_limit_cents: number;
+  spend_pct: number;
+  cycle_resets_at: string | null;
+  email: string | null;
+  raw_usage: unknown;
+}
+
+export interface CursorUpdate {
+  data: CursorUsageData | null;
+  error: string | null;
+  timestamp: string;
+}
+
 // ── Alert configuration ─────────────────────────────────────────────────────
 
 export interface AlertConfig {

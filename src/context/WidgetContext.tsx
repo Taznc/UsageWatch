@@ -1,42 +1,49 @@
-import { createContext, useContext, useReducer, ReactNode } from "react";
-import type { UsageData, CodexUsageData, BillingInfo } from "../types/usage";
-import type { WidgetLayout, APIStatus, TileId } from "../types/widget";
-import { DEFAULT_TILES } from "../types/widget";
+import { createContext, useContext, useReducer, type ReactNode } from "react";
+import type { BillingInfo, CodexUsageData, CursorUsageData, Provider, UsageData } from "../types/usage";
+import type { APIStatus, WidgetLayout } from "../types/widget";
+import { DEFAULT_WIDGET_PREFERENCES } from "../types/widget";
+import {
+  isTauriRuntime,
+  previewBillingData,
+  previewCodexData,
+  previewCursorData,
+  previewStatus,
+  previewUsageData,
+} from "../widget/preview";
 
 interface WidgetState {
   usageData: UsageData | null;
   codexData: CodexUsageData | null;
+  cursorData: CursorUsageData | null;
   billingData: BillingInfo | null;
   status: APIStatus | null;
+  activeProvider: Provider;
   layout: WidgetLayout;
-  isEditMode: boolean;
 }
 
 type WidgetAction =
   | { type: "SET_USAGE"; data: UsageData }
   | { type: "SET_CODEX"; data: CodexUsageData }
+  | { type: "SET_CURSOR"; data: CursorUsageData }
   | { type: "SET_BILLING"; data: BillingInfo }
   | { type: "SET_STATUS"; data: APIStatus }
-  | { type: "SET_LAYOUT"; layout: WidgetLayout }
-  | { type: "SET_PLACED_TILES"; tiles: TileId[] }
-  | { type: "SET_COLUMNS"; columns: 1 | 2 }
-  | { type: "TOGGLE_EDIT" }
-  | { type: "EXIT_EDIT" };
+  | { type: "SET_ACTIVE_PROVIDER"; provider: Provider }
+  | { type: "SET_LAYOUT"; layout: WidgetLayout };
 
 const defaultLayout: WidgetLayout = {
   version: 1,
-  placedTiles: DEFAULT_TILES,
   position: { x: 200, y: 100 },
-  columns: 2,
+  preferences: DEFAULT_WIDGET_PREFERENCES,
 };
 
 const initialState: WidgetState = {
-  usageData: null,
-  codexData: null,
-  billingData: null,
-  status: null,
+  usageData: isTauriRuntime() ? null : previewUsageData,
+  codexData: isTauriRuntime() ? null : previewCodexData,
+  cursorData: isTauriRuntime() ? null : previewCursorData,
+  billingData: isTauriRuntime() ? null : previewBillingData,
+  status: isTauriRuntime() ? null : previewStatus,
+  activeProvider: "Claude",
   layout: defaultLayout,
-  isEditMode: false,
 };
 
 function reducer(state: WidgetState, action: WidgetAction): WidgetState {
@@ -45,20 +52,16 @@ function reducer(state: WidgetState, action: WidgetAction): WidgetState {
       return { ...state, usageData: action.data };
     case "SET_CODEX":
       return { ...state, codexData: action.data };
+    case "SET_CURSOR":
+      return { ...state, cursorData: action.data };
     case "SET_BILLING":
       return { ...state, billingData: action.data };
     case "SET_STATUS":
       return { ...state, status: action.data };
+    case "SET_ACTIVE_PROVIDER":
+      return { ...state, activeProvider: action.provider };
     case "SET_LAYOUT":
       return { ...state, layout: action.layout };
-    case "SET_PLACED_TILES":
-      return { ...state, layout: { ...state.layout, placedTiles: action.tiles } };
-    case "SET_COLUMNS":
-      return { ...state, layout: { ...state.layout, columns: action.columns } };
-    case "TOGGLE_EDIT":
-      return { ...state, isEditMode: !state.isEditMode };
-    case "EXIT_EDIT":
-      return { ...state, isEditMode: false };
     default:
       return state;
   }

@@ -136,21 +136,15 @@ pub fn pull_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
     // Claude Desktop on Windows — stored in %APPDATA%\Claude\Cookies
     #[cfg(target_os = "windows")]
     {
-        let cookies_path = std::env::var("APPDATA")
+        let claude_dir = std::env::var("APPDATA")
             .map(std::path::PathBuf::from)
             .unwrap_or_default()
-            .join("Claude/Cookies");
+            .join("Claude");
+        let cookies_path = claude_dir.join("Cookies");
+        let key_path = claude_dir.join("Local State");
 
-        if cookies_path.exists() {
-            let config = rookie::config::Browser {
-                paths: vec![],
-                channels: None,
-                unix_crypt_name: None,
-                osx_key_service: None,
-                osx_key_user: None,
-            };
-
-            match rookie::chromium_based(cookies_path, &config, domains.clone()) {
+        if cookies_path.exists() && key_path.exists() {
+            match rookie::chromium_based(key_path, cookies_path, domains.clone()) {
                 Ok(cookies) => {
                     let session_key = cookies
                         .iter()

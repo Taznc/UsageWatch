@@ -1,73 +1,62 @@
-export type TileId =
-  | "session_window"
-  | "weekly_window"
-  | "opus_window"
-  | "sonnet_window"
-  | "oauth_window"
-  | "cowork_window"
-  | "extra_usage"
-  | "prepaid_balance"
-  | "promo_credit"
-  | "api_status"
-  | "codex_session"
-  | "codex_weekly"
-  | "codex_credits";
+import type { Provider } from "./usage";
 
-export const ALL_TILES: TileId[] = [
-  "session_window",
-  "weekly_window",
-  "opus_window",
-  "sonnet_window",
-  "oauth_window",
-  "cowork_window",
-  "extra_usage",
-  "prepaid_balance",
-  "promo_credit",
-  "api_status",
-  "codex_session",
-  "codex_weekly",
-  "codex_credits",
-];
-
-export const TILE_LABELS: Record<TileId, string> = {
-  session_window: "Session",
-  weekly_window: "Weekly",
-  opus_window: "Opus",
-  sonnet_window: "Sonnet",
-  oauth_window: "OAuth Apps",
-  cowork_window: "Cowork",
-  extra_usage: "Extra Usage",
-  prepaid_balance: "Balance",
-  promo_credit: "Promo Credit",
-  api_status: "API Status",
-  codex_session: "Codex Session",
-  codex_weekly: "Codex Weekly",
-  codex_credits: "Codex Credits",
-};
-
-export const DEFAULT_TILES: TileId[] = [
-  "session_window",
-  "weekly_window",
-  "api_status",
-];
-
-export interface WidgetLayout {
-  version: number;
-  placedTiles: TileId[];
-  position: { x: number; y: number };
-  columns: 1 | 2;
-}
-
-// Matches Rust's fetch_status response: { status: { indicator, description }, page: {...} }
 export interface APIStatusResponse {
   status: {
-    indicator: string; // "none" | "minor" | "major" | "critical"
+    indicator: string;
     description: string;
   };
 }
 
-// Flattened form stored in WidgetContext
 export interface APIStatus {
   indicator: string;
   description: string;
+}
+
+export interface ProviderWidgetPreferences {
+  showExtra?: boolean;
+  showBalance?: boolean;
+  showCredits?: boolean;
+  showStatus?: boolean;
+}
+
+export interface WidgetPreferences {
+  density: "compact" | "comfortable";
+  claude: ProviderWidgetPreferences;
+  codex: ProviderWidgetPreferences;
+  cursor: ProviderWidgetPreferences;
+}
+
+export const DEFAULT_WIDGET_PREFERENCES: WidgetPreferences = {
+  density: "compact",
+  claude: {
+    showExtra: true,
+    showBalance: false,
+    showStatus: false,
+  },
+  codex: {
+    showCredits: true,
+    showStatus: false,
+  },
+  cursor: {
+    showStatus: false,
+  },
+};
+
+export interface WidgetLayout {
+  version: number;
+  position: { x: number; y: number };
+  preferences: WidgetPreferences;
+}
+
+export interface CompactWidgetCard {
+  id: string;
+  provider: Provider;
+  accent: string;
+  badgeText: string;
+  title: string;
+  primary: string;
+  secondary?: string;
+  progress?: number | null;
+  span?: 1 | 2;
+  tone?: "default" | "muted";
 }

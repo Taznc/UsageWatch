@@ -1,399 +1,172 @@
-/* ─── CSS Variables (matching App.css) ─────────────────────────────────────── */
 :root {
-  --bg: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-card: #1e2a45;
-  --text: #e0e0e0;
-  --text-muted: #8892a4;
-  --border: #2a3a5c;
-  --green: #22c55e;
-  --orange: #f59e0b;
-  --red: #ef4444;
-  --purple: #8b5cf6;
-  --blue: #3b82f6;
-  --radius: 8px;
+  color-scheme: dark;
 }
 
 * {
-  margin: 0;
-  padding: 0;
   box-sizing: border-box;
 }
 
-html, body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  /* Dark background fills the entire window — eliminates white flash */
-  background: var(--bg);
-  color: var(--text);
-  font-size: 12px;
-  -webkit-user-select: none;
-  user-select: none;
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: #f3f7fb;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body.widget-preview-body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top center, rgba(175, 215, 255, 0.16), transparent 20%),
+    linear-gradient(180deg, rgba(8, 20, 31, 0.58), rgba(4, 10, 18, 0.82)),
+    linear-gradient(90deg, #071019, #0b1a25 50%, #050d14);
 }
 
 #widget-root {
-  /* Shrink to content height so ResizeObserver can measure the true size */
   display: inline-block;
-  width: 380px;
+  width: auto;
+  background: transparent;
 }
 
-/* ─── Widget Root ───────────────────────────────────────────────────────────── */
 .widget-window {
-  width: 380px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  position: relative;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-/* ─── Header ────────────────────────────────────────────────────────────────── */
-/*
- * The header is always in the DOM and takes up 32px.
- * It's dimmed when idle and becomes fully visible on hover.
- * -webkit-app-region: drag makes the bar a native drag target (same as Popover.tsx).
- * pointer-events: auto always so startDragging() and button clicks fire.
- */
-.widget-header {
-  height: 32px;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  cursor: grab;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-  /* Dimmed when idle — subtle hint that it's there */
-  opacity: 0.35;
-  transition: opacity 0.2s ease;
-}
-
-/* Fully visible on widget hover or while in edit mode */
-.widget-window:hover .widget-header,
-.widget-header.edit-active {
-  opacity: 1;
-}
-
-.widget-header:active {
-  cursor: grabbing;
-}
-
-.widget-header-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 500;
-  height: 20px;
-  padding: 0 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-  white-space: nowrap;
-  font-family: inherit;
-}
-
-.widget-header-btn:hover {
-  background: var(--bg);
-  color: var(--text);
-  border-color: var(--blue);
-}
-
-.widget-header-btn.active {
-  background: var(--blue);
-  color: white;
-  border-color: var(--blue);
-}
-
-.widget-header-close {
-  width: 20px;
+  display: inline-flex;
+  width: auto;
   padding: 0;
-  font-size: 16px;
-  line-height: 1;
+  background: transparent;
 }
 
-.widget-header-close:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--red);
-  border-color: var(--red);
-}
-
-.widget-header-grip {
-  color: var(--text-muted);
-  font-size: 13px;
-  letter-spacing: 1px;
-  flex-shrink: 0;
-  margin-right: 6px;
-}
-
-.widget-header-title {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  flex: 1; /* fills center — largest drag surface */
-}
-
-.widget-header-actions {
+.reference-widget {
+  width: 220px;
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
 }
 
-/* ─── Grid ─────────────────────────────────────────────────────────────────── */
-.widget-grid {
+.reference-widget--comfortable {
+  width: 246px;
+}
+
+.reference-widget__identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 2px;
+}
+
+.reference-widget__identity-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.reference-widget__identity-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.reference-widget__identity-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(247, 250, 253, 0.94);
+}
+
+.reference-widget__identity-sub {
+  font-size: 10px;
+  color: rgba(224, 233, 240, 0.7);
+}
+
+.reference-widget__grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  padding: 10px;
 }
 
-.sortable-tile-wrapper {
-  touch-action: none;
-  cursor: default;
+.reference-card {
+  min-width: 0;
+  min-height: 76px;
+  padding: 9px 10px 8px;
+  background:
+    linear-gradient(180deg, rgba(124, 140, 154, 0.82), rgba(86, 101, 116, 0.76)),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.14), transparent 58%);
+  border: 1px solid rgba(234, 241, 247, 0.18);
+  backdrop-filter: blur(16px) saturate(1.04);
+  -webkit-backdrop-filter: blur(16px) saturate(1.04);
 }
 
-.sortable-tile-wrapper.edit-mode {
-  cursor: grab;
+.reference-card.is-muted {
+  background:
+    linear-gradient(180deg, rgba(114, 129, 143, 0.78), rgba(77, 92, 107, 0.72)),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.1), transparent 58%);
 }
 
-.sortable-tile-wrapper.edit-mode:active {
-  cursor: grabbing;
-}
-
-.grid-empty-hint {
+.reference-card--span-2 {
   grid-column: span 2;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 11px;
-  padding: 24px 0;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
 }
 
-/* ─── Tile Base ─────────────────────────────────────────────────────────────── */
-.widget-tile {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 10px 10px;
+.reference-card__badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100px;
-  position: relative;
-  transition: border-color 0.15s;
-}
-
-.widget-window.edit-mode .widget-tile {
-  border-color: rgba(59, 130, 246, 0.4);
-}
-
-.tile-label {
+  color: rgba(255, 255, 255, 0.96);
   font-size: 10px;
-  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 7px;
+}
+
+.reference-card__title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
+  color: rgba(241, 247, 252, 0.88);
+}
+
+.reference-card__primary {
   margin-top: 5px;
-  text-align: center;
-}
-
-.tile-sub {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-align: center;
-  margin-top: 2px;
-}
-
-.tile-remove-btn {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 16px;
-  height: 16px;
-  background: rgba(239, 68, 68, 0.15);
-  border: none;
-  border-radius: 50%;
-  color: var(--red);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.12s;
-  z-index: 10;
-  font-family: inherit;
-}
-
-.tile-remove-btn:hover {
-  background: rgba(239, 68, 68, 0.35);
-}
-
-.tile-drag-overlay {
-  opacity: 0.8;
-  transform: scale(1.04);
-  pointer-events: none;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  border-radius: var(--radius);
-}
-
-/* ─── GaugeTile ─────────────────────────────────────────────────────────────── */
-.gauge-svg {
-  display: block;
-  overflow: visible;
-}
-
-/* ─── MoneyTile ─────────────────────────────────────────────────────────────── */
-.money-amount {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.5px;
-}
-
-.money-limit {
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-top: 1px;
-}
-
-.money-bar-track {
-  width: calc(100% - 20px);
-  height: 3px;
-  background: var(--border);
-  border-radius: 2px;
-  margin-top: 8px;
-  overflow: hidden;
-}
-
-.money-bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.4s ease;
-}
-
-/* ─── StatusTile ────────────────────────────────────────────────────────────── */
-.status-tile {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  min-height: 60px;
-  padding: 10px 14px;
-}
-
-.status-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.status-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.status-desc {
-  font-size: 12px;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 21px;
+  line-height: 1.04;
+  letter-spacing: -0.8px;
   font-weight: 500;
+  color: rgba(255, 255, 255, 0.98);
 }
 
-.status-tile .tile-label {
-  margin-top: 0;
+.reference-widget--compact .reference-card__primary {
+  font-size: 18px;
 }
 
-/* ─── CreditsTile ───────────────────────────────────────────────────────────── */
-.credits-display {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.5px;
-}
-
-.credits-unlimited {
-  font-size: 14px;
-  color: var(--green);
-  background: rgba(34, 197, 94, 0.1);
-  border-radius: 6px;
-  padding: 4px 12px;
-  letter-spacing: 0;
-  font-weight: 600;
-}
-
-/* ─── Tile Palette ──────────────────────────────────────────────────────────── */
-.tile-palette {
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
-  padding: 6px 10px 8px;
-}
-
-.tile-palette-empty {
-  text-align: center;
-  color: var(--text-muted);
+.reference-card__secondary {
+  margin-top: 4px;
   font-size: 11px;
-  padding: 12px 10px;
+  line-height: 1.2;
+  color: rgba(246, 249, 252, 0.94);
+  word-break: break-word;
 }
 
-.palette-label {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  margin-bottom: 6px;
+.reference-card__progress {
+  width: 100%;
+  height: 3px;
+  margin-top: 7px;
+  background: rgba(243, 248, 251, 0.2);
+  overflow: hidden;
 }
 
-.palette-scroll {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-bottom: 2px;
-}
-
-.palette-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-.palette-tile {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 9px;
-  cursor: pointer;
-  white-space: nowrap;
-  color: var(--text-muted);
-  font-size: 11px;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
-  touch-action: none;
-  font-family: inherit;
-}
-
-.palette-tile:hover {
-  background: var(--bg);
-  border-color: var(--blue);
-  color: var(--blue);
-}
-
-.palette-tile.dragging {
-  opacity: 0.3;
-}
-
-.palette-tile-icon {
-  font-size: 12px;
-  color: var(--green);
-  font-weight: 700;
+.reference-card__progress-fill {
+  height: 100%;
 }

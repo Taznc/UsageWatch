@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UsageWatch Widget Concepts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Outfit:wght@200;300;400;500;600&family=DM+Sans:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: #0a0a12;
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 40px 60px;
+  }
+
+  .page-title {
+    font-size: 14px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #555;
+    margin-bottom: 60px;
+    font-weight: 300;
+  }
+
+  .concept {
+    margin-bottom: 80px;
+  }
+
+  .concept-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #444;
+    margin-bottom: 16px;
+    font-weight: 400;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .concept-desc {
+    font-size: 12px;
+    color: #555;
+    margin-bottom: 24px;
+    max-width: 500px;
+    line-height: 1.6;
+  }
+
+  .canvas {
+    position: relative;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     CONCEPT 1 — Glass Arc
+     Circular progress rings, frosted glass, ultra-compact
+  ═══════════════════════════════════════════════════════════════════ */
+
+  .glass-arc {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 18px 12px 14px;
+    background: rgba(255,255,255,0.04);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    user-select: none;
+  }
+
+  .arc-ring {
+    position: relative;
+    width: 44px;
+    height: 44px;
+  }
+
+  .arc-ring svg {
+    transform: rotate(-90deg);
+    width: 44px;
+    height: 44px;
+  }
+
+  .arc-ring .track {
+    fill: none;
+    stroke: rgba(255,255,255,0.06);
+    stroke-width: 3;
+  }
+
+  .arc-ring .fill {
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .arc-ring .label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: #ddd;
+  }
+
+  .arc-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .arc-meta .provider {
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+    font-weight: 400;
+  }
+
+  .arc-meta .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.7);
+  }
+
+  .arc-divider {
+    width: 1px;
+    height: 28px;
+    background: rgba(255,255,255,0.06);
+  }
+
+  .arc-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     CONCEPT 2 — Neon Strip
+     Ultra-thin horizontal bar, edge-of-screen aesthetic
+  ═══════════════════════════════════════════════════════════════════ */
+
+  .neon-strip {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    padding: 0;
+    width: 420px;
+    height: 28px;
+    overflow: hidden;
+    border-radius: 4px;
+  }
+
+  .neon-segment {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    height: 100%;
+    border-right: 1px solid rgba(255,255,255,0.04);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    position: relative;
+  }
+
+  .neon-segment::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+  }
+
+  .neon-segment.session::after {
+    background: linear-gradient(90deg, transparent, #ff5555, transparent);
+  }
+
+  .neon-segment.weekly::after {
+    background: linear-gradient(90deg, transparent, #55cc77, transparent);
+  }
+
+  .neon-segment.cursor::after {
+    background: linear-gradient(90deg, transparent, #5588ff, transparent);
+  }
+
+  .neon-tag {
+    font-size: 8px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.25);
+    font-weight: 400;
+  }
+
+  .neon-val {
+    font-weight: 500;
+    font-size: 11px;
+  }
+
+  .neon-val.hot { color: #ff6b6b; }
+  .neon-val.warm { color: #ffd93d; }
+  .neon-val.cool { color: #55cc77; }
+  .neon-val.blue { color: #6ba3ff; }
+
+  .neon-bar {
+    flex: 1;
+    height: 2px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+
+  .neon-bar-fill {
+    height: 100%;
+    border-radius: 1px;
+    transition: width 1s ease;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     CONCEPT 3 — Floating Pill
+     Tiny, hoverable, expandable on hover
+  ═══════════════════════════════════════════════════════════════════ */
+
+  .pill-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    align-items: flex-start;
+  }
+
+  .pill-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .floating-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: rgba(255,255,255,0.03);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: default;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .floating-pill:hover {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+    padding-right: 14px;
+  }
+
+  .pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .pill-dot.hot { background: #ff5555; box-shadow: 0 0 6px rgba(255,85,85,0.4); }
+  .pill-dot.warm { background: #ffd93d; box-shadow: 0 0 6px rgba(255,217,61,0.3); }
+  .pill-dot.cool { background: #55cc77; box-shadow: 0 0 6px rgba(85,204,119,0.3); }
+  .pill-dot.blue { background: #5588ff; box-shadow: 0 0 6px rgba(85,136,255,0.3); }
+
+  .pill-label {
+    color: rgba(255,255,255,0.3);
+    font-size: 9px;
+    letter-spacing: 0.5px;
+  }
+
+  .pill-value {
+    color: rgba(255,255,255,0.8);
+    font-weight: 500;
+    font-size: 11px;
+  }
+
+  .pill-extra {
+    color: rgba(255,255,255,0.25);
+    font-size: 9px;
+    max-width: 0;
+    opacity: 0;
+    transition: all 0.3s ease;
+    overflow: hidden;
+  }
+
+  .floating-pill:hover .pill-extra {
+    max-width: 100px;
+    opacity: 1;
+    margin-left: 4px;
+  }
+
+  /* Expanded pill — shows all in one */
+  .pill-combo {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 4px 6px;
+    background: rgba(255,255,255,0.03);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: default;
+  }
+
+  .pill-combo-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+  }
+
+  .pill-combo-item + .pill-combo-item {
+    border-left: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .pill-combo-item .pill-label { font-size: 8px; }
+  .pill-combo-item .pill-value { font-size: 10px; }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     CONCEPT 4 — HUD Readout
+     Sci-fi heads-up display, scan lines, angular
+  ═══════════════════════════════════════════════════════════════════ */
+
+  .hud {
+    position: relative;
+    padding: 14px 20px;
+    background: rgba(0, 20, 40, 0.5);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(80, 200, 255, 0.1);
+    border-radius: 2px;
+    font-family: 'Space Mono', monospace;
+    min-width: 260px;
+    overflow: hidden;
+  }
+
+  .hud::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(80, 200, 255, 0.015) 2px,
+      rgba(80, 200, 255, 0.015) 4px
+    );
+    pointer-events: none;
+  }
+
+  .hud::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(80, 200, 255, 0.3), transparent);
+  }
+
+  .hud-corner {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-color: rgba(80, 200, 255, 0.2);
+    border-style: solid;
+  }
+  .hud-corner.tl { top: 2px; left: 2px; border-width: 1px 0 0 1px; }
+  .hud-corner.tr { top: 2px; right: 2px; border-width: 1px 1px 0 0; }
+  .hud-corner.bl { bottom: 2px; left: 2px; border-width: 0 0 1px 1px; }
+  .hud-corner.br { bottom: 2px; right: 2px; border-width: 0 1px 1px 0; }
+
+  .hud-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0;
+  }
+
+  .hud-row + .hud-row {
+    border-top: 1px solid rgba(80, 200, 255, 0.05);
+    margin-top: 3px;
+    padding-top: 6px;
+  }
+
+  .hud-label {
+    font-size: 9px;
+    color: rgba(80, 200, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .hud-value {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .hud-value.hot { color: #ff6b6b; }
+  .hud-value.cool { color: #50e89a; }
+  .hud-value.blue { color: #50c8ff; }
+
+  .hud-bar {
+    flex: 1;
+    height: 3px;
+    background: rgba(80, 200, 255, 0.06);
+    position: relative;
+    margin: 0 8px;
+  }
+
+  .hud-bar-fill {
+    height: 100%;
+    position: absolute;
+    left: 0;
+    top: 0;
+    transition: width 1s ease;
+  }
+
+  .hud-bar-fill.hot { background: rgba(255,100,100,0.6); }
+  .hud-bar-fill.cool { background: rgba(80,232,154,0.4); }
+  .hud-bar-fill.blue { background: rgba(80,200,255,0.4); }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     CONCEPT 5 — Ghost Text
+     Just floating numbers, no container, pure typography
+  ═══════════════════════════════════════════════════════════════════ */
+
+  .ghost {
+    font-family: 'Outfit', sans-serif;
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    user-select: none;
+  }
+
+  .ghost-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+
+  .ghost-label {
+    font-size: 8px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.15);
+    font-weight: 300;
+  }
+
+  .ghost-value {
+    font-size: 22px;
+    font-weight: 200;
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+
+  .ghost-value.hot { color: rgba(255,100,100,0.7); }
+  .ghost-value.warm { color: rgba(255,200,60,0.6); }
+  .ghost-value.cool { color: rgba(80,220,130,0.5); }
+  .ghost-value.blue { color: rgba(100,160,255,0.5); }
+
+  .ghost-unit {
+    font-size: 10px;
+    font-weight: 300;
+    opacity: 0.3;
+  }
+
+  .ghost-sub {
+    font-size: 9px;
+    color: rgba(255,255,255,0.12);
+    font-weight: 300;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     CONCEPT 6 — Vertical Edge
+     Thin vertical strip that sits on screen edge
+  ═══════════════════════════════════════════════════════════════════ */
+
+  .vedge {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 48px;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 8px;
+    overflow: hidden;
+    padding: 6px 0;
+  }
+
+  .vedge-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 4px;
+    position: relative;
+  }
+
+  .vedge-item + .vedge-item {
+    border-top: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .vedge-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+  }
+
+  .vedge-ring {
+    position: relative;
+    width: 30px;
+    height: 30px;
+  }
+
+  .vedge-ring svg {
+    transform: rotate(-90deg);
+    width: 30px;
+    height: 30px;
+  }
+
+  .vedge-ring .track {
+    fill: none;
+    stroke: rgba(255,255,255,0.04);
+    stroke-width: 2.5;
+  }
+
+  .vedge-ring .fill {
+    fill: none;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s ease;
+  }
+
+  .vedge-pct {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.7);
+  }
+
+  /* Animations */
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .concept { animation: fadeSlideIn 0.6s ease both; }
+  .concept:nth-child(2) { animation-delay: 0.1s; }
+  .concept:nth-child(3) { animation-delay: 0.2s; }
+  .concept:nth-child(4) { animation-delay: 0.3s; }
+  .concept:nth-child(5) { animation-delay: 0.4s; }
+  .concept:nth-child(6) { animation-delay: 0.5s; }
+  .concept:nth-child(7) { animation-delay: 0.6s; }
+</style>
+</head>
+<body>
+  <div class="page-title">UsageWatch &mdash; Widget Concepts</div>
+
+  <!-- ═══ CONCEPT 1 — Glass Arc ═══ -->
+  <div class="concept">
+    <div class="concept-label">01 &mdash; Glass Arc</div>
+    <div class="concept-desc">Frosted glass with circular progress rings. Compact, all providers in one row.</div>
+    <div class="canvas">
+      <div class="glass-arc">
+        <div class="arc-group">
+          <div class="arc-ring">
+            <svg viewBox="0 0 44 44">
+              <circle class="track" cx="22" cy="22" r="18"/>
+              <circle class="fill" cx="22" cy="22" r="18" stroke="#ff5555"
+                stroke-dasharray="113.1" stroke-dashoffset="10.2"/>
+            </svg>
+            <span class="label">91</span>
+          </div>
+          <div class="arc-meta">
+            <span class="provider">Session</span>
+            <span class="value">91% &middot; 2h</span>
+          </div>
+        </div>
+
+        <div class="arc-divider"></div>
+
+        <div class="arc-group">
+          <div class="arc-ring">
+            <svg viewBox="0 0 44 44">
+              <circle class="track" cx="22" cy="22" r="18"/>
+              <circle class="fill" cx="22" cy="22" r="18" stroke="#55cc77"
+                stroke-dasharray="113.1" stroke-dashoffset="49.8"/>
+            </svg>
+            <span class="label">56</span>
+          </div>
+          <div class="arc-meta">
+            <span class="provider">Weekly</span>
+            <span class="value">56% &middot; 3d</span>
+          </div>
+        </div>
+
+        <div class="arc-divider"></div>
+
+        <div class="arc-group">
+          <div class="arc-ring">
+            <svg viewBox="0 0 44 44">
+              <circle class="track" cx="22" cy="22" r="18"/>
+              <circle class="fill" cx="22" cy="22" r="18" stroke="#5588ff"
+                stroke-dasharray="113.1" stroke-dashoffset="37.5"/>
+            </svg>
+            <span class="label">67</span>
+          </div>
+          <div class="arc-meta">
+            <span class="provider">Cursor</span>
+            <span class="value">$73 / $110</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CONCEPT 2 — Neon Strip ═══ -->
+  <div class="concept">
+    <div class="concept-label">02 &mdash; Neon Strip</div>
+    <div class="concept-desc">Ultra-thin horizontal bar. Sits at a screen edge. Glowing accent lines per provider.</div>
+    <div class="canvas">
+      <div class="neon-strip">
+        <div class="neon-segment session">
+          <span class="neon-tag">S</span>
+          <span class="neon-val hot">91%</span>
+          <div class="neon-bar"><div class="neon-bar-fill" style="width:91%;background:#ff5555"></div></div>
+        </div>
+        <div class="neon-segment weekly">
+          <span class="neon-tag">W</span>
+          <span class="neon-val cool">56%</span>
+          <div class="neon-bar"><div class="neon-bar-fill" style="width:56%;background:#55cc77"></div></div>
+        </div>
+        <div class="neon-segment cursor">
+          <span class="neon-tag">$</span>
+          <span class="neon-val blue">$73</span>
+          <span style="color:rgba(255,255,255,0.15);font-size:10px">/ $110</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CONCEPT 3 — Floating Pills ═══ -->
+  <div class="concept">
+    <div class="concept-label">03 &mdash; Floating Pills</div>
+    <div class="concept-desc">Tiny pill capsules, individually or combined. Expand details on hover. Almost invisible until needed.</div>
+    <div class="canvas">
+      <div class="pill-wrapper">
+        <div class="pill-row">
+          <div class="floating-pill">
+            <div class="pill-dot hot"></div>
+            <span class="pill-label">S</span>
+            <span class="pill-value" style="color:#ff6b6b">91%</span>
+            <span class="pill-extra">2h 9m</span>
+          </div>
+          <div class="floating-pill">
+            <div class="pill-dot cool"></div>
+            <span class="pill-label">W</span>
+            <span class="pill-value" style="color:#55cc77">56%</span>
+            <span class="pill-extra">3d 15h</span>
+          </div>
+          <div class="floating-pill">
+            <div class="pill-dot blue"></div>
+            <span class="pill-label">$</span>
+            <span class="pill-value" style="color:#6ba3ff">$73</span>
+            <span class="pill-extra">/ $110</span>
+          </div>
+        </div>
+
+        <div class="pill-combo">
+          <div class="pill-combo-item">
+            <div class="pill-dot hot"></div>
+            <span class="pill-value" style="color:#ff6b6b;font-size:10px">91%</span>
+          </div>
+          <div class="pill-combo-item">
+            <div class="pill-dot cool"></div>
+            <span class="pill-value" style="color:#55cc77;font-size:10px">56%</span>
+          </div>
+          <div class="pill-combo-item">
+            <div class="pill-dot blue"></div>
+            <span class="pill-value" style="color:#6ba3ff;font-size:10px">$73</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CONCEPT 4 — HUD Readout ═══ -->
+  <div class="concept">
+    <div class="concept-label">04 &mdash; HUD Readout</div>
+    <div class="concept-desc">Sci-fi heads-up display. Scan lines, angular corners, monospace data. Think EVA cockpit.</div>
+    <div class="canvas">
+      <div class="hud">
+        <div class="hud-corner tl"></div>
+        <div class="hud-corner tr"></div>
+        <div class="hud-corner bl"></div>
+        <div class="hud-corner br"></div>
+
+        <div class="hud-row">
+          <span class="hud-label">Session</span>
+          <div class="hud-bar"><div class="hud-bar-fill hot" style="width:91%"></div></div>
+          <span class="hud-value hot">91%</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Weekly</span>
+          <div class="hud-bar"><div class="hud-bar-fill cool" style="width:56%"></div></div>
+          <span class="hud-value cool">56%</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Cursor</span>
+          <div class="hud-bar"><div class="hud-bar-fill blue" style="width:67%"></div></div>
+          <span class="hud-value blue">$73</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CONCEPT 5 — Ghost Text ═══ -->
+  <div class="concept">
+    <div class="concept-label">05 &mdash; Ghost Text</div>
+    <div class="concept-desc">No container at all. Just floating translucent numbers. Barely there until you look.</div>
+    <div class="canvas">
+      <div class="ghost">
+        <div class="ghost-item">
+          <span class="ghost-label">Session</span>
+          <span class="ghost-value hot">91<span class="ghost-unit">%</span></span>
+          <span class="ghost-sub">2h 9m</span>
+        </div>
+        <div class="ghost-item">
+          <span class="ghost-label">Weekly</span>
+          <span class="ghost-value cool">56<span class="ghost-unit">%</span></span>
+          <span class="ghost-sub">3d 15h</span>
+        </div>
+        <div class="ghost-item">
+          <span class="ghost-label">Cursor</span>
+          <span class="ghost-value blue">$73<span class="ghost-unit"> / 110</span></span>
+          <span class="ghost-sub">resets may 1</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CONCEPT 6 — Vertical Edge ═══ -->
+  <div class="concept">
+    <div class="concept-label">06 &mdash; Vertical Edge</div>
+    <div class="concept-desc">Thin vertical strip for screen edge. Stacked rings, takes almost no horizontal space.</div>
+    <div class="canvas">
+      <div class="vedge">
+        <div class="vedge-item">
+          <span class="vedge-label">S</span>
+          <div class="vedge-ring">
+            <svg viewBox="0 0 30 30">
+              <circle class="track" cx="15" cy="15" r="12"/>
+              <circle class="fill" cx="15" cy="15" r="12" stroke="#ff5555"
+                stroke-dasharray="75.4" stroke-dashoffset="6.8"/>
+            </svg>
+            <span class="vedge-pct">91</span>
+          </div>
+        </div>
+        <div class="vedge-item">
+          <span class="vedge-label">W</span>
+          <div class="vedge-ring">
+            <svg viewBox="0 0 30 30">
+              <circle class="track" cx="15" cy="15" r="12"/>
+              <circle class="fill" cx="15" cy="15" r="12" stroke="#55cc77"
+                stroke-dasharray="75.4" stroke-dashoffset="33.2"/>
+            </svg>
+            <span class="vedge-pct">56</span>
+          </div>
+        </div>
+        <div class="vedge-item">
+          <span class="vedge-label">$</span>
+          <div class="vedge-ring">
+            <svg viewBox="0 0 30 30">
+              <circle class="track" cx="15" cy="15" r="12"/>
+              <circle class="fill" cx="15" cy="15" r="12" stroke="#5588ff"
+                stroke-dasharray="75.4" stroke-dashoffset="24.9"/>
+            </svg>
+            <span class="vedge-pct">67</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
