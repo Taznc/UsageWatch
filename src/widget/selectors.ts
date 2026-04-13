@@ -154,7 +154,7 @@ function buildCursorCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] 
       shortTitle: "SPD",
       accent: "#28d07c",
       title: "Spend",
-      primary: `${formatCurrencyFromCents(snapshot.cursorData?.current_spend_cents ?? 0)} / ${formatCurrencyFromCents(snapshot.cursorData?.hard_limit_cents ?? 0)}`,
+      primary: `${formatCurrencyFromCents(snapshot.cursorData?.current_spend_cents ?? 0)} / ${formatCurrencyFromCents(snapshot.cursorData?.limit_cents ?? 0)}`,
       secondary: `Resets ${formatResetDate(snapshot.cursorData?.cycle_resets_at ?? null) || "--"}`,
       progress: spendPct,
     },

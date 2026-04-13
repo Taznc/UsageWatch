@@ -158,149 +158,151 @@ fn scan_cursor_browsers() -> Vec<BrowserResult> {
     results
 }
 
-enum CursorAuth {
-    Cookie(String),
-    Bearer(String),
-}
+// ── Cookie bearer extraction ──────────────────────────────────────────────
+//
+// Browser session cookies carry the bearer token inside them:
+//   WorkosCursorSessionToken=<userId>%3A%3A<access_token>
+// URL-decoding and splitting on "::" gives us the bearer we need for
+// the Connect RPC endpoints (api2.cursor.sh), which only accept Bearer auth.
 
-fn classify_manual_cursor_auth(value: String) -> CursorAuth {
-    if value.contains('=') || value.contains(';') {
-        CursorAuth::Cookie(value)
-    } else {
-        CursorAuth::Bearer(value)
-    }
+fn extract_bearer_from_cookie(cookie_str: &str) -> Option<String> {
+    let prefix = "WorkosCursorSessionToken=";
+    let start = cookie_str.find(prefix)? + prefix.len();
+    let end = cookie_str[start..].find(';').map(|i| start + i).unwrap_or(cookie_str.len());
+    let raw = cookie_str[start..end].trim();
+    // URL-decode %3A -> ':'
+    let decoded = raw.replace("%3A", ":").replace("%3a", ":");
+    // Split on first "::" — left is userId, right is access_token
+    let sep = decoded.find("::")?;
+    let token = decoded[sep + 2..].to_string();
+    if token.is_empty() { None } else { Some(token) }
 }
 
 // ── API fetch ─────────────────────────────────────────────────────────────
+//
+// Primary endpoint: Connect RPC v1 on api2.cursor.sh (requires Bearer auth).
+// Stripe endpoint:  cursor.com/api/auth/stripe (requires session cookie).
+//
+// Auth resolution:
+//   1. Browser cookie  → extract bearer from WorkosCursorSessionToken
+//   2. Manual token    → bearer if no '=' chars, otherwise treat as cookie and extract
+//   3. Desktop token   → read cursorAuth/accessToken from storage.json / state.vscdb
 
 pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) -> Result<CursorUsageData, String> {
-    let auth = if let Some(cookie) = get_cursor_session_cookie() {
-        CursorAuth::Cookie(cookie)
-    } else if let Some(token) = manual_token {
-        classify_manual_cursor_auth(token)
-    } else if let Some(token) = read_cursor_key("cursorAuth/accessToken") {
-        CursorAuth::Bearer(token)
-    } else {
-        return Err("No Cursor auth found — sign into the Cursor desktop app, log into cursor.com/dashboard in your browser, or enter a token manually.".to_string());
-    };
+    // Resolve session cookie (for Stripe endpoint) and bearer token (for RPC) separately.
+    let session_cookie: Option<String> = get_cursor_session_cookie()
+        .or_else(|| manual_token.as_ref().filter(|t| t.contains('=') || t.contains(';')).cloned());
+
+    let bearer: String = session_cookie.as_deref()
+        .and_then(extract_bearer_from_cookie)
+        .or_else(|| manual_token.as_ref().filter(|t| !t.contains('=') && !t.contains(';')).cloned())
+        .or_else(|| read_cursor_key("cursorAuth/accessToken"))
+        .ok_or_else(|| "No Cursor auth found — sign into the Cursor desktop app, log into cursor.com/dashboard in your browser, or enter a token manually.".to_string())?;
 
     let email = read_cursor_key("cursorAuth/cachedEmail");
-
     let client = reqwest::Client::new();
-    let origin = "https://cursor.com";
 
-    let usage_req = client
-        .get("https://cursor.com/api/usage-summary")
-        .header("Origin", origin)
-        .header("Referer", "https://cursor.com/dashboard/usage")
-        .header("User-Agent", crate::USER_AGENT);
-    let hard_limit_req = client
-        .post("https://cursor.com/api/dashboard/get-hard-limit")
-        .header("Origin", origin)
-        .header("Referer", "https://cursor.com/dashboard/usage")
-        .header("Content-Type", "application/json")
-        .header("User-Agent", crate::USER_AGENT)
-        .body("{}");
-    let billing_req = client
-        .post("https://cursor.com/api/dashboard/get-monthly-billing-cycle")
-        .header("Origin", origin)
-        .header("Referer", "https://cursor.com/dashboard/usage")
-        .header("Content-Type", "application/json")
-        .header("User-Agent", crate::USER_AGENT)
-        .body("{}");
-    let plan_req = client
-        .post("https://cursor.com/api/dashboard/get-plan-info")
-        .header("Origin", origin)
-        .header("Referer", "https://cursor.com/dashboard/usage")
-        .header("Content-Type", "application/json")
-        .header("User-Agent", crate::USER_AGENT)
-        .body("{}");
-
-    // Fire API calls in parallel using whichever auth source is available.
-    let (usage_res, hard_limit_res, billing_res, plan_res) = match &auth {
-        CursorAuth::Cookie(cookie) => tokio::join!(
-            usage_req.try_clone().ok_or_else(|| "Failed to clone Cursor usage request".to_string())?.header("Cookie", cookie).send(),
-            hard_limit_req.try_clone().ok_or_else(|| "Failed to clone Cursor hard-limit request".to_string())?.header("Cookie", cookie).send(),
-            billing_req.try_clone().ok_or_else(|| "Failed to clone Cursor billing request".to_string())?.header("Cookie", cookie).send(),
-            plan_req.try_clone().ok_or_else(|| "Failed to clone Cursor plan request".to_string())?.header("Cookie", cookie).send(),
-        ),
-        CursorAuth::Bearer(token) => tokio::join!(
-            usage_req.try_clone().ok_or_else(|| "Failed to clone Cursor usage request".to_string())?.bearer_auth(token).send(),
-            hard_limit_req.try_clone().ok_or_else(|| "Failed to clone Cursor hard-limit request".to_string())?.bearer_auth(token).send(),
-            billing_req.try_clone().ok_or_else(|| "Failed to clone Cursor billing request".to_string())?.bearer_auth(token).send(),
-            plan_req.try_clone().ok_or_else(|| "Failed to clone Cursor plan request".to_string())?.bearer_auth(token).send(),
-        ),
-    };
-
-    // Helper: parse a response as JSON Value with debug logging
-    async fn parse_json(
-        label: &str,
-        res: Result<reqwest::Response, reqwest::Error>,
+    // Helper: POST a Connect RPC method and parse as JSON.
+    async fn rpc(
+        client: &reqwest::Client,
+        method: &str,
+        bearer: &str,
     ) -> Option<serde_json::Value> {
-        match res {
+        let url = format!("https://api2.cursor.sh/aiserver.v1.DashboardService/{method}");
+        match client
+            .post(&url)
+            .bearer_auth(bearer)
+            .header("Content-Type", "application/json")
+            .header("Connect-Protocol-Version", "1")
+            .header("User-Agent", crate::USER_AGENT)
+            .body("{}")
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp.json().await.ok(),
             Ok(resp) => {
-                let status = resp.status();
-                if !status.is_success() {
-                    let body = resp.text().await.unwrap_or_default();
-                    eprintln!("[Cursor] {label}: HTTP {status} — {}", &body[..body.len().min(200)]);
-                    return None;
-                }
-                let text = resp.text().await.ok()?;
-                serde_json::from_str(&text).ok()
+                eprintln!("[Cursor] {method}: HTTP {}", resp.status());
+                None
             }
             Err(e) => {
-                eprintln!("[Cursor] {label}: request error: {e}");
+                eprintln!("[Cursor] {method}: {e}");
                 None
             }
         }
     }
 
-    // Parse responses
-    let raw_usage = parse_json("usage-summary", usage_res).await;
-    let _hard_limit_json = parse_json("hard-limit", hard_limit_res).await;
-    let billing_json = parse_json("billing-cycle", billing_res).await;
-    let plan_json = parse_json("plan-info", plan_res).await;
+    // Fire all three fetches in parallel.
+    let (usage_json, plan_json, stripe_json) = tokio::join!(
+        rpc(&client, "GetCurrentPeriodUsage", &bearer),
+        rpc(&client, "GetPlanInfo", &bearer),
+        async {
+            // Stripe balance requires the session cookie, not bearer auth.
+            let Some(cookie) = &session_cookie else { return None };
+            match client
+                .get("https://cursor.com/api/auth/stripe")
+                .header("Cookie", cookie)
+                .header("User-Agent", crate::USER_AGENT)
+                .send()
+                .await
+            {
+                Ok(resp) if resp.status().is_success() => resp.json::<serde_json::Value>().await.ok(),
+                _ => None,
+            }
+        },
+    );
 
-    // Primary data source: usage-summary has individualUsage.overall.{used, limit}
-    let (spend_cents, hard_limit_cents) = raw_usage.as_ref()
-        .and_then(|v| {
-            let overall = v.get("individualUsage")?.get("overall")?;
-            let used = overall.get("used")?.as_f64()?;
-            let limit = overall.get("limit")?.as_f64()?;
-            Some((used, limit))
-        })
-        .unwrap_or((0.0, 0.0));
+    // ── Parse GetCurrentPeriodUsage ───────────────────────────────────────
 
-    // Billing cycle end — prefer usage-summary's billingCycleEnd (ISO string),
-    // fall back to billing-cycle endpoint (epoch millis)
-    let cycle_end: Option<String> = raw_usage.as_ref()
-        .and_then(|v| v.get("billingCycleEnd")?.as_str().map(|s| s.to_string()))
-        .or_else(|| {
-            billing_json.and_then(|v| {
-                let ms = v.get("endDateEpochMillis")?.as_str()?.parse::<i64>().ok()?;
-                chrono::DateTime::from_timestamp(ms / 1000, 0)
-                    .map(|dt| dt.to_rfc3339())
-            })
-        });
+    let plan_usage = usage_json.as_ref().and_then(|v| v.get("planUsage"));
 
-    // Plan name from plan-info endpoint
+    let included_spend = plan_usage.and_then(|p| p.get("includedSpend")?.as_f64()).unwrap_or(0.0);
+    let limit_cents    = plan_usage.and_then(|p| p.get("limit")?.as_f64()).unwrap_or(0.0);
+    let total_pct      = plan_usage.and_then(|p| p.get("totalPercentUsed")?.as_f64()).filter(|v| v.is_finite());
+    let auto_pct       = plan_usage.and_then(|p| p.get("autoPercentUsed")?.as_f64()).filter(|v| v.is_finite());
+    let api_pct        = plan_usage.and_then(|p| p.get("apiPercentUsed")?.as_f64()).filter(|v| v.is_finite());
+    let remaining_bonus = plan_usage.and_then(|p| p.get("remainingBonus")?.as_bool()).unwrap_or(false);
+
+    let spend_limit = usage_json.as_ref().and_then(|v| v.get("spendLimitUsage"));
+    let on_demand_used  = spend_limit.and_then(|s| s.get("individualUsed")?.as_f64()).filter(|&v| v > 0.0);
+    let on_demand_limit = spend_limit.and_then(|s| s.get("individualLimit")?.as_f64()).filter(|&v| v > 0.0);
+    let is_team = spend_limit.map(|s| {
+        s.get("limitType").and_then(|v| v.as_str()) == Some("team")
+        || s.get("pooledLimit").is_some()
+    }).unwrap_or(false);
+
+    // billingCycleEnd is a unix-millisecond string ("1771077734000")
+    let cycle_end: Option<String> = usage_json.as_ref()
+        .and_then(|v| v.get("billingCycleEnd")?.as_str()?.parse::<i64>().ok())
+        .and_then(|ms| chrono::DateTime::from_timestamp(ms / 1000, 0))
+        .map(|dt| dt.to_rfc3339());
+
+    // ── Parse GetPlanInfo ─────────────────────────────────────────────────
+
     let plan_name: Option<String> = plan_json
-        .and_then(|v| {
-            v.get("planInfo")?.get("planName")?.as_str().map(|s| s.to_string())
-        })
-        // Fall back to usage-summary's membershipType
-        .or_else(|| {
-            raw_usage.as_ref()
-                .and_then(|v| v.get("membershipType")?.as_str().map(|s| s.to_string()))
-        });
+        .and_then(|v| v.get("planInfo")?.get("planName")?.as_str().map(|s| s.to_string()));
+
+    // ── Parse Stripe balance ──────────────────────────────────────────────
+    // customerBalance is in cents; negative = prepaid credit available.
+
+    let stripe_balance_cents: Option<f64> = stripe_json
+        .and_then(|v| v.get("customerBalance")?.as_f64())
+        .map(|cents| -cents)           // negate: negative balance = positive credit
+        .filter(|&v| v > 0.0);
 
     Ok(CursorUsageData::build(
-        spend_cents,
-        hard_limit_cents,
+        included_spend,
+        limit_cents,
+        auto_pct,
+        api_pct,
+        total_pct,
+        remaining_bonus,
+        on_demand_used,
+        on_demand_limit,
+        is_team,
+        stripe_balance_cents,
         plan_name,
         cycle_end,
         email,
-        raw_usage,
     ))
 }
 

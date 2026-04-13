@@ -277,42 +277,71 @@ impl CodexUsageData {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CursorUsageData {
     pub plan_name: Option<String>,
-    /// Current total spend in cents for this billing cycle
+    /// Current included spend in cents (counts against plan limit)
     pub current_spend_cents: f64,
-    /// Hard spending limit in cents (e.g. $110 = 11000)
-    pub hard_limit_cents: f64,
-    /// Spend as a percentage of hard limit (for UsageBar)
+    /// Plan included-amount limit in cents
+    pub limit_cents: f64,
+    /// Spend as a percentage of plan limit
     pub spend_pct: f64,
+    /// Auto-mode usage percentage (may be absent on some plan types)
+    pub auto_pct: Option<f64>,
+    /// API/manual usage percentage (may be absent on some plan types)
+    pub api_pct: Option<f64>,
+    /// True when bonus credits from model providers are still available
+    pub remaining_bonus: bool,
+    /// On-demand individual spend this cycle in cents (>0 means over-plan usage)
+    pub on_demand_used_cents: Option<f64>,
+    /// On-demand individual limit in cents (None = no on-demand budget set)
+    pub on_demand_limit_cents: Option<f64>,
+    /// True when the account is a Team plan
+    pub is_team: bool,
+    /// Stripe prepaid credit balance in cents (positive = credit available)
+    pub stripe_balance_cents: Option<f64>,
     /// When the billing cycle resets (ISO-8601)
     pub cycle_resets_at: Option<String>,
     /// Email of the logged-in Cursor user
     pub email: Option<String>,
-    /// Raw usage summary for optional detail display
-    pub raw_usage: Option<serde_json::Value>,
 }
 
 impl CursorUsageData {
     pub fn build(
         spend_cents: f64,
         limit_cents: f64,
+        auto_pct: Option<f64>,
+        api_pct: Option<f64>,
+        total_pct: Option<f64>,
+        remaining_bonus: bool,
+        on_demand_used_cents: Option<f64>,
+        on_demand_limit_cents: Option<f64>,
+        is_team: bool,
+        stripe_balance_cents: Option<f64>,
         plan: Option<String>,
         cycle_end: Option<String>,
         email: Option<String>,
-        raw_usage: Option<serde_json::Value>,
     ) -> Self {
-        let spend_pct = if limit_cents > 0.0 {
-            (spend_cents / limit_cents * 100.0).clamp(0.0, 999.0)
-        } else {
-            0.0
-        };
+        let spend_pct = total_pct
+            .filter(|v| v.is_finite())
+            .unwrap_or_else(|| {
+                if limit_cents > 0.0 {
+                    (spend_cents / limit_cents * 100.0).clamp(0.0, 999.0)
+                } else {
+                    0.0
+                }
+            });
         Self {
             plan_name: plan,
             current_spend_cents: spend_cents,
-            hard_limit_cents: limit_cents,
+            limit_cents,
             spend_pct,
+            auto_pct,
+            api_pct,
+            remaining_bonus,
+            on_demand_used_cents,
+            on_demand_limit_cents,
+            is_team,
+            stripe_balance_cents,
             cycle_resets_at: cycle_end,
             email,
-            raw_usage,
         }
     }
 }

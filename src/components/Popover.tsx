@@ -22,6 +22,21 @@ export function Popover() {
   const [showHistory, setShowHistory] = useState(false);
   const hasCodex = !!(codexData || codexError);
   const hasCursor = !!(cursorData || cursorError);
+  // Track which providers are configured (auth exists) so tabs are stable from
+  // the start — without this they only appear after the first poll completes.
+  const [codexConfigured, setCodexConfigured] = useState(hasCodex);
+  const [cursorConfigured, setCursorConfigured] = useState(hasCursor);
+
+  useEffect(() => {
+    invoke<boolean>("check_codex_auth").then((ok) => { if (ok) setCodexConfigured(true); }).catch(() => {});
+    invoke<boolean>("check_cursor_auth").then((ok) => { if (ok) setCursorConfigured(true); }).catch(() => {});
+  }, []);
+
+  // Keep configured flags in sync if data arrives after the initial check
+  useEffect(() => { if (hasCodex) setCodexConfigured(true); }, [hasCodex]);
+  useEffect(() => { if (hasCursor) setCursorConfigured(true); }, [hasCursor]);
+
+  const showTabs = codexConfigured || cursorConfigured;
   const [billing, setBilling] = useState<BillingInfo | null>(null);
   const [pinned, setPinned] = useState(true);
 
@@ -137,8 +152,8 @@ export function Popover() {
         <StatusIndicator />
       </div>
 
-      {/* Tab bar — rendered when any secondary provider has data */}
-      {(hasCodex || hasCursor) && (
+      {/* Tab bar — shown as soon as any secondary provider is configured */}
+      {showTabs && (
         <div className="tab-bar">
           <button
             className={`tab-btn ${activeTab === 'claude' ? 'active' : ''}`}
@@ -146,7 +161,7 @@ export function Popover() {
           >
             Claude
           </button>
-          {hasCodex && (
+          {codexConfigured && (
             <button
               className={`tab-btn ${activeTab === 'codex' ? 'active' : ''}`}
               onClick={() => setActiveTab('codex')}
@@ -154,7 +169,7 @@ export function Popover() {
               Codex
             </button>
           )}
-          {hasCursor && (
+          {cursorConfigured && (
             <button
               className={`tab-btn ${activeTab === 'cursor' ? 'active' : ''}`}
               onClick={() => setActiveTab('cursor')}
@@ -251,13 +266,23 @@ export function Popover() {
                   )}
 
                   {peakHours && (
-                    <div className="peak-hours-badge" title="Claude API peak hours status (via PromoClock)">
+                    <div
+                      className="peak-hours-badge"
+                      title={
+                        peakHours.is_weekend
+                          ? "Weekend — Claude API is typically at lower load. Expect faster responses and higher rate limits."
+                          : peakHours.is_peak
+                          ? "Peak Hours — Claude API is under higher load right now. You may see slower responses or hit rate limits sooner."
+                          : "Off-Peak — Claude API is at lower load. Expect faster responses and higher rate limits."
+                      }
+                    >
                       <span className={`peak-dot ${peakHours.is_peak && !peakHours.is_weekend ? "peak" : "off-peak"}`} />
                       {peakHours.is_weekend
-                        ? "Weekend (Off-Peak)"
+                        ? "Weekend · Off-Peak"
                         : peakHours.is_peak
                         ? "Peak Hours"
                         : "Off-Peak"}
+                      <span style={{ opacity: 0.5, fontSize: "9px", marginLeft: 3 }}>ⓘ</span>
                     </div>
                   )}
 
@@ -433,59 +458,131 @@ export function Popover() {
         <>
           <div className="usage-list">
             {cursorData ? (
-              <div className="usage-section">
-                <h2 className="section-heading">
-                  Spending
-                  {cursorData.plan_name && (
-                    <span className="section-heading-meta section-heading-plan">
-                      {cursorData.plan_name}
-                    </span>
-                  )}
-                  {cursorData.email && (
-                    <span className="section-heading-meta section-heading-email">
-                      {cursorData.email}
-                    </span>
-                  )}
-                </h2>
-
-                <div className="extra-usage cursor-usage-card">
-                  <div className="cursor-usage-topline">
-                    <div className="cursor-usage-amounts">
-                      <span className="cursor-usage-amount">
-                        {formatCurrencyFromCents(cursorData.current_spend_cents)}
+              <>
+                {/* ── Plan usage ── */}
+                <div className="usage-section">
+                  <h2 className="section-heading">
+                    {cursorData.is_team ? 'Team Usage' : 'Plan Usage'}
+                    {cursorData.plan_name && (
+                      <span className="section-heading-meta section-heading-plan">
+                        {cursorData.plan_name}
                       </span>
-                      <span className="cursor-usage-divider">of</span>
-                      <span className="cursor-usage-limit">
-                        {formatCurrencyFromCents(cursorData.hard_limit_cents)}
+                    )}
+                    {cursorData.email && (
+                      <span className="section-heading-meta section-heading-email">
+                        {cursorData.email}
+                      </span>
+                    )}
+                  </h2>
+
+                  <div className="extra-usage cursor-usage-card">
+                    <div className="cursor-usage-topline">
+                      <div className="cursor-usage-amounts">
+                        <span className="cursor-usage-amount">
+                          {formatCurrencyFromCents(cursorData.current_spend_cents)}
+                        </span>
+                        <span className="cursor-usage-divider">of</span>
+                        <span className="cursor-usage-limit">
+                          {formatCurrencyFromCents(cursorData.limit_cents)}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {cursorData.remaining_bonus && (
+                          <span
+                            className="cursor-usage-badge"
+                            style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--green)', border: '1px solid rgba(34,197,94,0.3)' }}
+                            title="Bonus credits from model providers are still available"
+                          >
+                            +bonus
+                          </span>
+                        )}
+                        <span className={`cursor-usage-badge ${cursorUsageTone}`}>
+                          {cursorData.spend_pct.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="usage-bar-track">
+                      <div
+                        className="usage-bar-fill"
+                        style={{
+                          width: `${Math.min(cursorData.spend_pct, 100)}%`,
+                          backgroundColor: cursorData.spend_pct >= 90 ? 'var(--red)' : cursorData.spend_pct >= 75 ? 'var(--orange)' : 'var(--green)',
+                        }}
+                      />
+                    </div>
+
+                    {/* Auto / API breakdown */}
+                    {(cursorData.auto_pct != null || cursorData.api_pct != null) && (
+                      <div className="extra-usage-details" style={{ marginTop: '6px' }}>
+                        {cursorData.auto_pct != null && (
+                          <span title="Usage from Auto mode (Cursor selects the model)">
+                            Auto {cursorData.auto_pct.toFixed(1)}%
+                          </span>
+                        )}
+                        {cursorData.api_pct != null && (
+                          <span title="Usage from API/manual model selection">
+                            API {cursorData.api_pct.toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="extra-usage-details">
+                      <span>{formatCurrencyFromCents(cursorData.current_spend_cents)} used</span>
+                      <span>{formatCurrencyFromCents(cursorData.limit_cents)} included</span>
+                    </div>
+                  </div>
+
+                  {cursorData.cycle_resets_at && (
+                    <div className="usage-bar-footer" style={{ marginTop: '8px' }}>
+                      <span className="usage-bar-reset">
+                        Resets {new Date(cursorData.cycle_resets_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
                       </span>
                     </div>
-                    <span className={`cursor-usage-badge ${cursorUsageTone}`}>
-                      {cursorData.spend_pct.toFixed(0)}% used
-                    </span>
-                  </div>
-                  <div className="usage-bar-track">
-                    <div
-                      className="usage-bar-fill"
-                      style={{
-                        width: `${Math.min(cursorData.spend_pct, 100)}%`,
-                        backgroundColor: cursorData.spend_pct >= 90 ? 'var(--red)' : cursorData.spend_pct >= 75 ? 'var(--orange)' : 'var(--green)',
-                      }}
-                    />
-                  </div>
-                  <div className="extra-usage-details">
-                    <span>{formatCurrencyFromCents(cursorData.current_spend_cents)} spent</span>
-                    <span>{formatCurrencyFromCents(cursorData.hard_limit_cents)} limit</span>
-                  </div>
+                  )}
                 </div>
 
-                {cursorData.cycle_resets_at && (
-                  <div className="usage-bar-footer" style={{ marginTop: '8px' }}>
-                    <span className="usage-bar-reset">
-                      Resets {new Date(cursorData.cycle_resets_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </span>
+                {/* ── On-demand budget (shown only when set) ── */}
+                {cursorData.on_demand_limit_cents != null && (
+                  <div className="usage-section">
+                    <h2 className="section-heading">
+                      On-Demand Budget
+                      <span className="section-heading-meta" style={{ opacity: 0.5 }} title="Extra spending after the plan limit is exhausted">
+                        over-plan
+                      </span>
+                    </h2>
+                    <UsageBar
+                      label="Budget used"
+                      percentage={
+                        cursorData.on_demand_limit_cents > 0
+                          ? Math.min(((cursorData.on_demand_used_cents ?? 0) / cursorData.on_demand_limit_cents) * 100, 100)
+                          : 0
+                      }
+                      resetAt={cursorData.cycle_resets_at}
+                      showRemaining={show_remaining}
+                    />
+                    <div className="extra-usage-details" style={{ marginTop: '4px' }}>
+                      <span>{formatCurrencyFromCents(cursorData.on_demand_used_cents ?? 0)} used</span>
+                      <span>{formatCurrencyFromCents(cursorData.on_demand_limit_cents)} limit</span>
+                    </div>
                   </div>
                 )}
-              </div>
+
+                {/* ── Prepaid Stripe balance ── */}
+                {cursorData.stripe_balance_cents != null && (
+                  <div className="usage-section">
+                    <h2 className="section-heading">Prepaid Balance</h2>
+                    <div className="billing-cards">
+                      <div className="billing-card">
+                        <span className="billing-value">
+                          {formatCurrencyFromCents(cursorData.stripe_balance_cents)}
+                        </span>
+                        <span className="billing-label">Available credit</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : cursorError ? (
               <div className="loading-state">
                 <p style={{ fontSize: '12px' }}>{cursorError}</p>

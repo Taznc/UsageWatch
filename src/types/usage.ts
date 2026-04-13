@@ -123,11 +123,17 @@ export interface CodexUpdate {
 export interface CursorUsageData {
   plan_name: string | null;
   current_spend_cents: number;
-  hard_limit_cents: number;
+  limit_cents: number;
   spend_pct: number;
+  auto_pct: number | null;
+  api_pct: number | null;
+  remaining_bonus: boolean;
+  on_demand_used_cents: number | null;
+  on_demand_limit_cents: number | null;
+  is_team: boolean;
+  stripe_balance_cents: number | null;
   cycle_resets_at: string | null;
   email: string | null;
-  raw_usage: unknown;
 }
 
 export interface CursorUpdate {

@@ -70,11 +70,17 @@ export const previewCodexData: CodexUsageData = {
 export const previewCursorData: CursorUsageData = {
   plan_name: "Enterprise",
   current_spend_cents: 7352,
-  hard_limit_cents: 11000,
+  limit_cents: 11000,
   spend_pct: 66.8,
+  auto_pct: 45.2,
+  api_pct: 21.6,
+  remaining_bonus: false,
+  on_demand_used_cents: null,
+  on_demand_limit_cents: null,
+  is_team: false,
+  stripe_balance_cents: null,
   cycle_resets_at: futureIso(420),
   email: "preview@example.com",
-  raw_usage: null,
 };
 
 export const previewStatus: APIStatus = {
