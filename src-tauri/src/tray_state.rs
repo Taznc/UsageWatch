@@ -191,7 +191,7 @@ impl TrayDisplayData {
             opus_pct: None,
             extra_usage_enabled: true,
             extra_used: Some(data.current_spend_cents),
-            extra_limit: Some(data.hard_limit_cents),
+            extra_limit: Some(data.limit_cents),
         }
     }
 
