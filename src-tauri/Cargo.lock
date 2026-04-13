@@ -6759,7 +6759,6 @@ name = "usagewatch"
 version = "0.1.0"
 dependencies = [
  "axum",
- "cc",
  "chrono",
  "objc2",
  "objc2-app-kit",

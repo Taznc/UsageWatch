@@ -319,6 +319,7 @@ fn render_multi_tray(
 }
 
 /// Resolve a single segment field to a plain-text string.
+#[cfg(not(target_os = "macos"))]
 fn resolve_field_plain(
     field: &TrayField,
     data: Option<&TrayDisplayData>,

@@ -21,6 +21,8 @@ mod macos {
     extern "C" {
         fn set_styled_tray_title(segments: *const CTraySegment, count: c_int);
         fn register_tray_status_item(status_item: *mut c_void);
+        fn register_mouse_move_callback(cb: extern "C" fn(f64, f64));
+        fn start_native_mouse_monitor();
     }
 
     #[derive(Debug, Clone)]
@@ -84,6 +86,14 @@ mod macos {
         unsafe {
             register_tray_status_item(status_item);
         }
+    }
+
+    pub fn register_native_mouse_callback(cb: extern "C" fn(f64, f64)) {
+        unsafe { register_mouse_move_callback(cb) }
+    }
+
+    pub fn start_mouse_monitor() {
+        unsafe { start_native_mouse_monitor() }
     }
 
     // ── Running apps FFI ──────────────────────────────────────────────────

@@ -1,4 +1,3 @@
-use rdev::{listen, Event, EventType};
 use serde::Serialize;
 use std::sync::atomic::{AtomicI32, Ordering};
 use tauri::{Emitter, Listener, WebviewWindow};
@@ -26,6 +25,63 @@ fn update_window_geometry(window: &WebviewWindow) {
     }
 }
 
+fn emit_mouse(emitter: &WebviewWindow, x: f64, y: f64) {
+    let wx = WIN_X.load(Ordering::Relaxed) as f64;
+    let wy = WIN_Y.load(Ordering::Relaxed) as f64;
+    let ww = WIN_W.load(Ordering::Relaxed) as f64;
+    let wh = WIN_H.load(Ordering::Relaxed) as f64;
+
+    if x < wx - 80.0 || x > wx + ww + 80.0 || y < wy - 80.0 || y > wy + wh + 80.0 {
+        let _ = emitter.emit("device-mouse-move", MousePos { x: -9999.0, y: -9999.0 });
+        return;
+    }
+    let _ = emitter.emit("device-mouse-move", MousePos { x: x - wx, y: y - wy });
+}
+
+// ── macOS: native NSEvent global monitor (avoids rdev TSM thread crash) ──
+
+#[cfg(target_os = "macos")]
+mod platform {
+    use std::sync::OnceLock;
+    use tauri::WebviewWindow;
+
+    static EMITTER: OnceLock<WebviewWindow> = OnceLock::new();
+
+    extern "C" fn on_mouse_move(x: f64, y: f64) {
+        if let Some(win) = EMITTER.get() {
+            super::emit_mouse(win, x, y);
+        }
+    }
+
+    pub fn start(window: WebviewWindow) {
+        let _ = EMITTER.set(window);
+        crate::styled_tray::register_native_mouse_callback(on_mouse_move);
+        crate::styled_tray::start_mouse_monitor();
+    }
+}
+
+// ── Non-macOS: rdev-based global listener ────────────────────────────────
+
+#[cfg(not(target_os = "macos"))]
+mod platform {
+    use rdev::{listen, Event, EventType};
+    use tauri::WebviewWindow;
+
+    pub fn start(window: WebviewWindow) {
+        let emitter = window.clone();
+        std::thread::spawn(move || {
+            let callback = move |event: Event| {
+                if let EventType::MouseMove { x, y } = event.event_type {
+                    super::emit_mouse(&emitter, x, y);
+                }
+            };
+            if let Err(error) = listen(callback) {
+                eprintln!("[widget_hook] rdev error: {error:?}");
+            }
+        });
+    }
+}
+
 pub fn start_global_mouse_stream(window: WebviewWindow) {
     // Seed the initial position
     update_window_geometry(&window);
@@ -47,38 +103,5 @@ pub fn start_global_mouse_stream(window: WebviewWindow) {
         update_window_geometry(&w2);
     });
 
-    let emitter = window.clone();
-    std::thread::spawn(move || {
-        let callback = move |event: Event| {
-            if let EventType::MouseMove { x, y } = event.event_type {
-                let wx = WIN_X.load(Ordering::Relaxed) as f64;
-                let wy = WIN_Y.load(Ordering::Relaxed) as f64;
-                let ww = WIN_W.load(Ordering::Relaxed) as f64;
-                let wh = WIN_H.load(Ordering::Relaxed) as f64;
-
-                // Quick reject: skip emit entirely if cursor is far from the window
-                // (adds generous 80px margin for DPI scaling fuzz)
-                if x < wx - 80.0 || x > wx + ww + 80.0 || y < wy - 80.0 || y > wy + wh + 80.0 {
-                    // Still emit a sentinel so the frontend can set ignore=true
-                    let _ = emitter.emit("device-mouse-move", MousePos { x: -9999.0, y: -9999.0 });
-                    return;
-                }
-
-                // Emit window-local coordinates (physical pixels).
-                // The frontend divides by devicePixelRatio to get CSS pixels,
-                // matching getBoundingClientRect() which is viewport-relative.
-                let _ = emitter.emit(
-                    "device-mouse-move",
-                    MousePos {
-                        x: x - wx,
-                        y: y - wy,
-                    },
-                );
-            }
-        };
-
-        if let Err(error) = listen(callback) {
-            eprintln!("[widget_hook] rdev error: {error:?}");
-        }
-    });
+    platform::start(window);
 }

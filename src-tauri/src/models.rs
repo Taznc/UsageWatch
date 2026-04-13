@@ -163,8 +163,6 @@ pub struct CodexApiWindow {
     #[serde(default)]
     pub reset_at: i64,
     #[serde(default)]
-    pub reset_after_seconds: i64,
-    #[serde(default)]
     pub limit_window_seconds: u64,
 }
 
@@ -272,62 +270,6 @@ impl CodexUsageData {
             code_review_window,
         }
     }
-}
-
-// ── Cursor API response structs (deserialization only) ───────────────────────
-
-/// GET /api/usage-summary — overall usage counts
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct CursorUsageSummaryApi {
-    #[serde(default)]
-    pub total_spend_cents: f64,
-    // Catch-all for unknown fields the API might return
-    #[serde(flatten)]
-    pub extra: std::collections::HashMap<String, serde_json::Value>,
-}
-
-/// POST /api/dashboard/get-hard-limit
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CursorHardLimitApi {
-    #[serde(default)]
-    pub hard_limit: f64,
-    #[serde(flatten)]
-    pub extra: std::collections::HashMap<String, serde_json::Value>,
-}
-
-/// POST /api/dashboard/get-team-spend
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CursorTeamSpendApi {
-    #[serde(default)]
-    pub total_spend_cents: f64,
-    #[serde(flatten)]
-    pub extra: std::collections::HashMap<String, serde_json::Value>,
-}
-
-/// POST /api/dashboard/get-monthly-billing-cycle
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CursorBillingCycleApi {
-    #[serde(default)]
-    pub start_date: Option<String>,
-    #[serde(default)]
-    pub end_date: Option<String>,
-    #[serde(flatten)]
-    pub extra: std::collections::HashMap<String, serde_json::Value>,
-}
-
-/// POST /api/dashboard/get-plan-info
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CursorPlanInfoApi {
-    #[serde(default)]
-    pub subscription: Option<String>,
-    #[serde(default)]
-    pub plan: Option<String>,
-    #[serde(flatten)]
-    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 // ── Cursor frontend-ready structs (serialization only) ──────────────────────
@@ -587,24 +529,6 @@ impl TrayConfig {
             }
         }
         None
-    }
-
-    pub fn resolve_provider(&self, bundle_id: Option<&str>, app_name: Option<&str>) -> Provider {
-        match &self.mode {
-            TrayMode::Static(p) => *p,
-            TrayMode::Multi(segs) => {
-                // Return the first provider referenced in segments, or default
-                segs.iter()
-                    .find_map(|s| match &s.kind {
-                        TraySegmentKind::ProviderData { provider, .. } => Some(*provider),
-                        _ => None,
-                    })
-                    .unwrap_or(self.default_provider)
-            }
-            TrayMode::Dynamic => self
-                .match_provider(bundle_id, app_name)
-                .unwrap_or(self.default_provider),
-        }
     }
 
     /// Returns the effective list of segments for Multi/Static modes.

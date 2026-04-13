@@ -245,6 +245,44 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
 }
 
 // ---------------------------------------------------------------------------
+// Global mouse monitor (replaces rdev on macOS to avoid TSM thread assertion)
+// ---------------------------------------------------------------------------
+
+static void (*g_mouse_move_cb)(double, double) = NULL;
+static id g_mouse_monitor = nil;
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void register_mouse_move_callback(void (*cb)(double x, double y)) {
+    g_mouse_move_cb = cb;
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void start_native_mouse_monitor(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (g_mouse_monitor) return;
+        // Include dragged variants so widget drag (mouse held) also fires.
+        NSEventMask mask = NSEventMaskMouseMoved
+            | NSEventMaskLeftMouseDragged
+            | NSEventMaskRightMouseDragged
+            | NSEventMaskOtherMouseDragged;
+        g_mouse_monitor = [NSEvent addGlobalMonitorForEventsMatchingMask:mask
+                                                                 handler:^(NSEvent *__unused event) {
+            if (!g_mouse_move_cb) return;
+            NSPoint loc = [NSEvent mouseLocation];
+            NSScreen *screen = [NSScreen mainScreen];
+            if (!screen) return;
+            // Convert Cocoa coords (bottom-left, logical pts) → physical px (top-left)
+            double scl  = screen.backingScaleFactor;
+            double phys_x = loc.x * scl;
+            double phys_y = (screen.frame.size.height - loc.y) * scl;
+            g_mouse_move_cb(phys_x, phys_y);
+        }];
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Focus observation (KVO on NSWorkspace.frontmostApplication)
 // ---------------------------------------------------------------------------
 
