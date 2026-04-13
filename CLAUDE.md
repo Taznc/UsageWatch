@@ -1,85 +1,163 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Project
 
-Claude Usage Tracker — a macOS menu bar app (Tauri 2.x + React + TypeScript) that monitors Claude AI usage limits by polling internal claude.ai API endpoints using a session cookie.
+UsageWatch is a tray-first macOS Tauri 2.x app with a React + TypeScript frontend and Rust backend.
+
+- The product metadata still says `Claude Usage Tracker`.
+- The app polls Claude usage from `claude.ai`.
+- It also detects Codex auth, polls Codex usage, and can swap tray output based on the active app.
+- Cursor integration is limited to auth detection and provider mapping right now.
 
 ## Build & Run
 
 ```bash
-npm run tauri dev          # Dev mode (hot reload frontend + Rust rebuild on change)
-npm run build              # Frontend only: tsc + vite build
-cargo build --manifest-path src-tauri/Cargo.toml  # Rust only
+npm run tauri dev
+npm run build
+cargo build --manifest-path src-tauri/Cargo.toml
 ```
 
-Requires Rust via rustup (not Homebrew — `~/.cargo/env` must be sourced). Minimum Rust 1.94+.
+Notes:
+
+- Vite dev runs on `1420`; Tauri HMR uses `1421`.
+- This is a multi-page Vite app: `index.html` for the main UI and `widget/index.html` for the widget.
+- If Rust is missing in a shell session, source `~/.cargo/env`.
+
+## Claude Code Repo Config
+
+Repo-local Claude configuration exists, but there are no repo-local Claude skills or slash commands to load.
+
+- `.claude/launch.json` contains `tauri-dev` and `vite-frontend` launch targets.
+- `.claude/settings.local.json` grants local Claude tooling bash and web-search permissions.
+- No `.claude/commands`, `.claude/agents`, or repo skill files are present.
 
 ## Architecture
 
-**Tray-first app**: No dock icon, no traditional window. The 380x800 frameless popover appears under the tray icon on left-click. Right-click shows context menu (Refresh/Settings/Quit).
+### Runtime model
 
-**Backend (Rust, `src-tauri/src/`):**
-- `lib.rs` — App setup: plugin registration, tray icon/menu, window positioning, polling init
-- `commands/credentials.rs` — Tauri commands for credential CRUD. Uses `tauri-plugin-store` (JSON file) with an in-memory `CredentialsCache` to avoid repeated I/O
-- `commands/usage.rs` — Fetches usage, billing (prepaid/credits, overage_credit_grant, prepaid/bundles), and Anthropic status page
-- `polling.rs` — Background tokio task: polls usage API every 60s (min 30s), updates tray title with session %, emits `usage-update` event
-- `models.rs` — Serde structs matching claude.ai API response (fields use `#[serde(default)]` for resilience)
-- `credentials_cache.rs` — Mutex-wrapped in-memory cache loaded once from store at startup
-- `styled_tray.rs` — macOS FFI boundary for graphical tray rendering and native `NSStatusItem` registration
-- `native_tray.m` — AppKit bridge for styled tray drawing, click/menu preservation, and `TaoTrayTarget` z-order repair
+- The app is tray-first and hides its dock icon on macOS.
+- The main `main` window is a hidden frameless popover shown under the tray icon.
+- A separate hidden `widget` window is also bundled.
+- The tray can render styled provider-specific data and switch provider based on the focused app.
+- An Axum server serves the latest Claude usage on localhost for Stream Deck-style integrations.
 
-**Frontend (React, `src/`):**
-- `App.tsx` — Credential check on mount, view routing (setup/settings/popover), window-open animation
-- `context/AppContext.tsx` — useReducer-based global state (view, usageData, settings, offline status)
-- `hooks/useUsageData.ts` — Listens to `usage-update`, `refresh-requested`, `open-settings` Tauri events
-- `hooks/useHistoryRecorder.ts` — Records each poll to SQLite via `@tauri-apps/plugin-sql` (25s debounce)
-- `components/Popover.tsx` — Main UI: usage bars, billing cards, drag handling, pin/focus logic, history toggle
-- `types/usage.ts` — TypeScript interfaces mirroring Rust models
+### Backend (`src-tauri/src/`)
 
-**Communication pattern:** Rust emits events (`usage-update`, `window-opened`, `refresh-requested`), frontend listens via `@tauri-apps/api/event`. Frontend calls Rust via `invoke()` for commands.
+- `lib.rs`: app startup, plugin registration, tray/menu setup, focus monitor startup, HTTP server startup, polling startup, and tray/provider state management.
+- `commands/credentials.rs`: store-backed Claude credential persistence and connection testing.
+- `commands/usage.rs`: Claude usage, billing, raw-response, and Anthropic status fetches.
+- `commands/browser.rs`: browser and Claude Desktop cookie scanning for `sessionKey`.
+- `commands/codex.rs`: Codex auth discovery, OAuth token refresh, and Codex usage fetches.
+- `commands/cursor.rs`: Cursor auth file discovery and cached email lookup.
+- `polling.rs`: separate Claude and Codex background polling loops.
+- `http_server.rs`: local API on `127.0.0.1:52700`.
+- `credentials_cache.rs`: in-memory session/org cache.
+- `models.rs`: Claude, Codex, tray, alert, and provider models.
+- `tray_state.rs`: provider resolution plus tray refresh orchestration.
+- `tray_renderer.rs`: countdown/title formatting helpers.
+- `focus_monitor.rs`: frontmost-app tracking on macOS.
+- `styled_tray.rs` and `native_tray.m`: custom native tray rendering bridge.
 
-## API Endpoints Used
+### Frontend (`src/`)
 
-All authenticated with `cookie: sessionKey={key}` header against `claude.ai`:
-- `/api/organizations` — List orgs (connection test)
-- `/api/organizations/{org_id}/usage` — Usage data (5h session, 7d weekly, per-model, extra usage)
-- `/api/organizations/{org_id}/prepaid/credits` — Account balance
-- `/api/organizations/{org_id}/overage_credit_grant` — Promotion credits
-- `/api/organizations/{org_id}/prepaid/bundles` — Bundle pricing, monthly reset date
-- `status.anthropic.com/api/v2/status.json` — System status (no auth)
+- `App.tsx`: initial credential check and view routing.
+- `context/AppContext.tsx`: global app reducer for Claude/Codex data and settings.
+- `hooks/useUsageData.ts`: event listeners, manual refresh, and online/offline handling.
+- `hooks/useHistoryRecorder.ts`: SQLite snapshot recording.
+- `hooks/useBurnRate.ts` and `hooks/useAlertEngine.ts`: derived metrics and alert notifications.
+- `components/SetupWizard.tsx`: browser auto-detect plus manual credential setup.
+- `components/Settings.tsx`: account, tray, provider, alert, polling, and debug settings.
+- `components/Popover.tsx`: Claude and Codex usage tabs, billing cards, pin/focus behavior, and history view.
 
-API field names: `utilization` (not `utilization_pct`), `resets_at` (not `reset_at`), money values in cents.
+### Widget frontend
 
-## Key Design Decisions
+- `widget/WidgetApp.tsx` is the widget entrypoint.
+- `WidgetWindow.tsx` restores position and resizes to content.
+- `useWidgetData.ts` fetches immediate data and listens to shared update events.
+- `useWidgetStore.ts` persists widget layout under `widget_layout` in the Tauri store.
+- `widget/tiles/*` contains the actual tile components.
 
-- **No keychain**: Switched from `keyring` crate to `tauri-plugin-store` because macOS Keychain prompted for password repeatedly
-- **In-memory credential cache**: Store file read once at startup, writes go to both cache and file
-- **Window focus behavior**: Auto-hides on focus loss unless "pinned". 300ms focus guard after open to prevent immediate dismissal. Only handles `MouseButtonState::Up` to avoid double-toggle
-- **macOS Accessory mode**: `set_activation_policy(Accessory)` hides dock icon
-- **Resilient parsing**: All API response fields are `Option` with `#[serde(default)]` — missing/new fields won't break the app
+## Events and State Flow
 
-## macOS Tray Click Behavior
+- Rust emits `usage-update`, `codex-update`, `refresh-requested`, `open-settings`, and `window-opened`.
+- React windows subscribe using `@tauri-apps/api/event`.
+- Frontend code calls Rust via `invoke()`.
+- The widget and main app both consume the same backend update stream.
 
-The tray uses a custom graphical renderer on macOS instead of plain `set_title()`. That renderer is safe only because the app explicitly re-attaches itself to Tauri's real tray internals.
+## Persistence
 
-- `src-tauri/src/lib.rs` builds the tray with `.show_menu_on_left_click(false)`. Left-click is handled by `on_tray_icon_event` and opens/closes the popover. Right-click is expected to open the tray menu.
-- Immediately after building the tray, `lib.rs` calls `tray.with_inner_tray_icon(...)` and passes the real `NSStatusItem` pointer into `styled_tray::register_native_status_item(...)`.
-- `src-tauri/src/styled_tray.rs` is only an FFI shim. The real AppKit logic lives in `src-tauri/src/native_tray.m`.
-- `src-tauri/src/native_tray.m` draws the styled text into an `NSImage`, sets it on the tray button, detaches the `NSMenu` from `NSStatusItem`, and replays right-click / `ctrl`-click manually with `popUpMenuPositioningItem`.
-- After every redraw, `ensureSubviewCoverage(...)` resizes and re-adds Tauri's `TaoTrayTarget` as the top subview. This is critical: if the graphical tray content ends up above `TaoTrayTarget`, left/right click events stop reaching Tauri.
+- `tauri-plugin-store` file: `credentials.json`
+- Store keys include Claude credentials, tray format, tray config, alert config, and widget layout.
+- Claude history snapshots are persisted in `sqlite:usage_history.db`.
 
-## Tray Regression Notes
+## Network/API Surface
 
-This app previously regressed when the tray switched to a more graphical rendering mode.
+### Claude endpoints
 
-- Root cause: the native tray patch tried to discover the tray button by scanning `NSStatusBarWindow` instances. That is unreliable once the tray is custom-drawn and can bind the fix to the wrong status item or leave `TaoTrayTarget` underneath AppKit's content view.
-- Resolution: register the exact `NSStatusItem` created by Tauri via `with_inner_tray_icon`, then repair `TaoTrayTarget` z-order after each styled redraw.
-- Do not remove the exported native functions in `native_tray.m`. `register_tray_status_item(...)` and `set_styled_tray_title(...)` are used by Rust FFI and intentionally marked with explicit symbol visibility.
-- Do not switch back to `NSStatusItem.menu`-driven default behavior if you want left-click popover + right-click menu with styled graphics. The current behavior depends on detaching the menu and replaying secondary click manually.
-- If tray clicks break again, first verify that launch logs still show the native click fix initialization and that left clicks emit `[tray] event:` lines from `lib.rs`.
+Authenticated with `cookie: sessionKey={key}`:
+
+- `/api/organizations`
+- `/api/organizations/{org_id}/usage`
+- `/api/organizations/{org_id}/prepaid/credits`
+- `/api/organizations/{org_id}/overage_credit_grant`
+- `/api/organizations/{org_id}/prepaid/bundles`
+
+Field expectations:
+
+- `utilization`
+- `resets_at`
+- monetary values are minor units / cents
+
+### Codex endpoints
+
+- `https://auth.openai.com/oauth/token`
+- `https://chatgpt.com/backend-api/wham/usage`
+
+Auth is read from `~/.codex/auth.json` or `$CODEX_HOME/auth.json`.
+
+### Other endpoints
+
+- Anthropic status: `https://status.anthropic.com/api/v2/status.json`
+- Local API: `http://127.0.0.1:52700/api/usage` and `POST /api/open`
+
+## Important Behaviors
+
+- No keychain usage for Claude credentials.
+- Claude and Codex poll on separate loops and independently update UI/tray state.
+- Dynamic provider switching depends on app mappings and the macOS frontmost-app monitor.
+- Cursor can be selected as a provider in tray settings, but no Cursor polling exists yet.
+- The widget intentionally reuses main-window data flows instead of introducing a separate backend.
+
+## macOS Tray Notes
+
+Do not casually refactor the custom tray bridge.
+
+- Keep `.show_menu_on_left_click(false)` in place.
+- Keep `with_inner_tray_icon(...)` registration in `lib.rs`.
+- Do not remove exported bridge functions from `native_tray.m`.
+- Do not rely on default `NSStatusItem.menu` behavior if you need left-click popover plus right-click menu.
+- If clicks break, first verify the native registration path and `TaoTrayTarget` z-order fix.
+
+## Skills / Reusable Claude Assets
+
+What exists:
+
+- Repo-local Claude config in `.claude/`
+
+What does not currently exist in this repo:
+
+- repo-local Claude Code skills
+- repo-local slash commands
+- repo-local Claude agents
+
+I also checked the user-level `~/.claude` directory and found plans/cache/history content, but not a reusable skill library for this repo.
 
 ## Tauri Plugins
 
-`notification`, `autostart`, `sql` (SQLite), `store` (credential persistence), `opener`
+- `notification`
+- `autostart`
+- `sql`
+- `store`
+- `opener`
