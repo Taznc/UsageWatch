@@ -223,7 +223,7 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
         setStatus(
           "oauth_file",
           "error",
-          "~/.claude/.credentials.json not found or has no tokens. Sign in with the Claude CLI first (run 'claude' in a terminal)."
+          "Claude Code credentials not found. Sign in with the Claude CLI first by running 'claude' in a terminal."
         );
         return;
       }

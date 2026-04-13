@@ -24,6 +24,8 @@ struct ClaudeAiOauth {
     pub subscription_type: Option<String>,
 }
 
+/// Top-level structure for both keychain JSON and file-based credentials.
+/// Claude Code uses camelCase (`claudeAiOauth`), so `rename_all = "camelCase"` applies.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ClaudeCredentialsFile {
@@ -40,7 +42,7 @@ struct OAuthRefreshResponse {
     pub expires_in: u64,
 }
 
-// ── Path resolution ────────────────────────────────────────────────────────
+// ── Path resolution (file fallback) ───────────────────────────────────────
 
 fn claude_credentials_path() -> PathBuf {
     let home = std::env::var("HOME")
@@ -50,7 +52,56 @@ fn claude_credentials_path() -> PathBuf {
     home.join(".claude").join(".credentials.json")
 }
 
-// ── Credential reading ─────────────────────────────────────────────────────
+// ── macOS Keychain access ──────────────────────────────────────────────────
+
+/// Read Claude Code credentials from the macOS Keychain.
+/// Claude Code (v2+) stores OAuth tokens as JSON under service "Claude Code-credentials".
+#[cfg(target_os = "macos")]
+fn read_oauth_from_keychain() -> Option<ClaudeAiOauth> {
+    let output = std::process::Command::new("security")
+        .args(["find-generic-password", "-s", "Claude Code-credentials", "-w"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let json_str = std::str::from_utf8(&output.stdout).ok()?.trim();
+    let parsed: ClaudeCredentialsFile = serde_json::from_str(json_str).ok()?;
+    let oauth = parsed.claude_ai_oauth?;
+    if oauth.access_token.is_empty() {
+        return None;
+    }
+    Some(oauth)
+}
+
+/// Write updated credentials back to the macOS Keychain after a token refresh.
+#[cfg(target_os = "macos")]
+fn write_oauth_to_keychain(oauth: &ClaudeAiOauth) -> Result<(), String> {
+    let file = ClaudeCredentialsFile { claude_ai_oauth: Some(oauth.clone()) };
+    let json = serde_json::to_string(&file)
+        .map_err(|e| format!("Cannot serialize credentials: {e}"))?;
+
+    let account = std::env::var("USER").unwrap_or_else(|_| "claude".to_string());
+
+    // Delete existing entry first (add fails if it already exists)
+    let _ = std::process::Command::new("security")
+        .args(["delete-generic-password", "-s", "Claude Code-credentials"])
+        .output();
+
+    let status = std::process::Command::new("security")
+        .args(["add-generic-password", "-s", "Claude Code-credentials", "-a", &account, "-w", &json])
+        .status()
+        .map_err(|e| format!("security command failed: {e}"))?;
+
+    if !status.success() {
+        return Err("Failed to write updated credentials to keychain".to_string());
+    }
+    Ok(())
+}
+
+// ── Credential reading (platform-aware) ───────────────────────────────────
 
 fn read_oauth_from_file() -> Option<ClaudeAiOauth> {
     let path = claude_credentials_path();
@@ -63,6 +114,17 @@ fn read_oauth_from_file() -> Option<ClaudeAiOauth> {
     Some(oauth)
 }
 
+/// Try keychain first on macOS, then fall back to file.
+fn read_oauth() -> Option<ClaudeAiOauth> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(oauth) = read_oauth_from_keychain() {
+            return Some(oauth);
+        }
+    }
+    read_oauth_from_file()
+}
+
 // ── Token expiry check ─────────────────────────────────────────────────────
 
 fn is_expiring_soon(expires_at_ms: u64) -> bool {
@@ -70,7 +132,6 @@ fn is_expiring_soon(expires_at_ms: u64) -> bool {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    // Refresh if within 5 minutes of expiry
     let five_min_ms: u64 = 5 * 60 * 1000;
     expires_at_ms <= now_ms.saturating_add(five_min_ms)
 }
@@ -107,21 +168,14 @@ async fn do_oauth_refresh(refresh_token: &str) -> Result<OAuthRefreshResponse, S
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /// Returns the current access token, refreshing proactively if within 5 minutes
-/// of expiry. Writes the updated token back to `~/.claude/.credentials.json`.
+/// of expiry. Writes the updated token back to keychain (macOS) or file.
 pub async fn get_claude_oauth_token() -> Result<String, String> {
-    let path = claude_credentials_path();
-    let content = tokio::fs::read_to_string(&path)
-        .await
-        .map_err(|_| "~/.claude/.credentials.json not found. Sign in with the Claude CLI first.".to_string())?;
-
-    let mut file: ClaudeCredentialsFile = serde_json::from_str(&content)
-        .map_err(|e| format!("Cannot parse .credentials.json: {e}"))?;
-
-    let oauth = file
-        .claude_ai_oauth
-        .as_mut()
-        .filter(|o| !o.access_token.is_empty())
-        .ok_or_else(|| "No OAuth credentials found in .credentials.json".to_string())?;
+    let mut oauth = read_oauth().ok_or_else(|| {
+        #[cfg(target_os = "macos")]
+        return "Claude Code credentials not found. Sign in with the Claude CLI first (run 'claude' in a terminal).".to_string();
+        #[cfg(not(target_os = "macos"))]
+        return "~/.claude/.credentials.json not found. Sign in with the Claude CLI first.".to_string();
+    })?;
 
     if !is_expiring_soon(oauth.expires_at) {
         return Ok(oauth.access_token.clone());
@@ -134,29 +188,36 @@ pub async fn get_claude_oauth_token() -> Result<String, String> {
     if let Some(new_rt) = refreshed.refresh_token {
         oauth.refresh_token = new_rt;
     }
-    // expires_in is seconds; convert to unix ms
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     oauth.expires_at = now_ms + refreshed.expires_in * 1000;
 
-    let updated = serde_json::to_string_pretty(&file)
-        .map_err(|e| format!("Cannot serialize credentials: {e}"))?;
-    tokio::fs::write(&path, updated)
-        .await
-        .map_err(|e| format!("Cannot write .credentials.json: {e}"))?;
+    // Write back — keychain on macOS, file on other platforms
+    #[cfg(target_os = "macos")]
+    {
+        if let Err(e) = write_oauth_to_keychain(&oauth) {
+            eprintln!("[ClaudeOAuth] Failed to write keychain: {e}");
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let path = claude_credentials_path();
+        let file = ClaudeCredentialsFile { claude_ai_oauth: Some(oauth.clone()) };
+        if let Ok(json) = serde_json::to_string_pretty(&file) {
+            let _ = std::fs::write(&path, json);
+        }
+    }
 
-    eprintln!("[ClaudeOAuth] Token refreshed and written.");
+    eprintln!("[ClaudeOAuth] Token refreshed.");
     Ok(refreshed.access_token)
 }
 
-// ── Tauri commands ─────────────────────────────────────────────────────────
-
-/// Returns true if `~/.claude/.credentials.json` exists and contains a non-empty OAuth token.
+/// Returns true if Claude Code credentials are available (keychain on macOS, file on others).
 #[tauri::command]
 pub async fn check_claude_oauth() -> Result<bool, String> {
-    Ok(read_oauth_from_file().is_some())
+    Ok(read_oauth().is_some())
 }
 
 /// Saves the preferred Claude auth method ("session_key" or "oauth") to the store
