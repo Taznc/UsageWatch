@@ -1,4 +1,5 @@
 import { emit, listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, LogicalPosition, LogicalSize } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWidget } from "../context/WidgetContext";
@@ -95,6 +96,17 @@ export function WidgetOverlay() {
         width: header.width,
         height: header.height,
       });
+      // Push the header rect to the native drag monitor so it only allows
+      // drag from the header, not from card areas that slip through during
+      // the setIgnoreCursorEvents transition.
+      if (tauri) {
+        invoke("set_widget_drag_rect", {
+          x: header.left,
+          y: header.top,
+          w: header.width,
+          h: header.height,
+        }).catch(() => {});
+      }
     }
     setHitboxes(next);
   }
@@ -199,9 +211,9 @@ export function WidgetOverlay() {
     ignoreStateRef.current = false;
     if (!tauri) return;
     getCurrentWindow().setIgnoreCursorEvents(false).catch(() => {});
-    getCurrentWindow().startDragging().catch(() => {
-      dragRef.current = false;
-    });
+    // On macOS, a native NSEvent local monitor calls performWindowDragWithEvent:
+    // before this handler fires, so startDragging() is redundant there.
+    // On other platforms, data-tauri-drag-region on the header handles it.
   }
 
   return (
@@ -223,6 +235,7 @@ export function WidgetOverlay() {
       <div
         ref={headerRef}
         className="widget-overlay__provider"
+        data-tauri-drag-region
         onPointerDown={handleHeaderPointerDown}
       >
         <span className="widget-overlay__provider-dot" />

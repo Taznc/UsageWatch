@@ -385,6 +385,8 @@ pub enum Provider {
 pub struct AppMapping {
     pub app_identifier: String,   // bundle ID (com.googlecode.iterm2) or app name
     pub provider: Provider,
+    #[serde(default)]
+    pub title_pattern: Option<String>, // optional window title substring (case-insensitive)
 }
 
 // ── Multi-provider tray segment types ──────────────────────────────────────
@@ -451,52 +453,33 @@ pub struct TrayConfig {
     pub mode: TrayMode,
     pub app_mappings: Vec<AppMapping>,
     pub default_provider: Provider,
+    #[serde(default)]
+    pub title_matching_enabled: bool,
 }
 
 impl Default for TrayConfig {
     fn default() -> Self {
+        let mapping = |id: &str, provider: Provider| AppMapping {
+            app_identifier: id.to_string(),
+            provider,
+            title_pattern: None,
+        };
         Self {
             mode: TrayMode::Dynamic,
             app_mappings: vec![
-                AppMapping {
-                    app_identifier: "com.anthropic.claudefordesktop".to_string(),
-                    provider: Provider::Claude,
-                },
-                AppMapping {
-                    app_identifier: "com.openai.codex".to_string(),
-                    provider: Provider::Codex,
-                },
-                AppMapping {
-                    // Cursor uses ToDesktop packaging on macOS
-                    app_identifier: "com.todesktop.230313mzl4w4u92".to_string(),
-                    provider: Provider::Cursor,
-                },
-                AppMapping {
-                    app_identifier: "Claude".to_string(),
-                    provider: Provider::Claude,
-                },
-                AppMapping {
-                    app_identifier: "Claude.exe".to_string(),
-                    provider: Provider::Claude,
-                },
-                AppMapping {
-                    app_identifier: "Codex".to_string(),
-                    provider: Provider::Codex,
-                },
-                AppMapping {
-                    app_identifier: "Codex.exe".to_string(),
-                    provider: Provider::Codex,
-                },
-                AppMapping {
-                    app_identifier: "Cursor".to_string(),
-                    provider: Provider::Cursor,
-                },
-                AppMapping {
-                    app_identifier: "Cursor.exe".to_string(),
-                    provider: Provider::Cursor,
-                },
+                mapping("com.anthropic.claudefordesktop", Provider::Claude),
+                mapping("com.openai.codex", Provider::Codex),
+                // Cursor uses ToDesktop packaging on macOS
+                mapping("com.todesktop.230313mzl4w4u92", Provider::Cursor),
+                mapping("Claude", Provider::Claude),
+                mapping("Claude.exe", Provider::Claude),
+                mapping("Codex", Provider::Codex),
+                mapping("Codex.exe", Provider::Codex),
+                mapping("Cursor", Provider::Cursor),
+                mapping("Cursor.exe", Provider::Cursor),
             ],
             default_provider: Provider::Claude,
+            title_matching_enabled: false,
         }
     }
 }
@@ -514,20 +497,40 @@ impl TrayConfig {
             .to_ascii_lowercase()
     }
 
-    pub fn match_provider(&self, bundle_id: Option<&str>, app_name: Option<&str>) -> Option<Provider> {
-        for mapping in &self.app_mappings {
+    pub fn match_provider(
+        &self,
+        bundle_id: Option<&str>,
+        app_name: Option<&str>,
+        window_title: Option<&str>,
+    ) -> Option<Provider> {
+        let app_matches = |mapping: &AppMapping| -> bool {
             let mapping_id = Self::normalize_identifier(&mapping.app_identifier);
-            if let Some(bid) = bundle_id {
-                if Self::normalize_identifier(bid) == mapping_id {
-                    return Some(mapping.provider);
-                }
-            }
-            if let Some(name) = app_name {
-                if Self::normalize_identifier(name) == mapping_id {
-                    return Some(mapping.provider);
+            bundle_id.map(|b| Self::normalize_identifier(b) == mapping_id).unwrap_or(false)
+                || app_name.map(|n| Self::normalize_identifier(n) == mapping_id).unwrap_or(false)
+        };
+
+        // Pass 1: title-pattern-aware mappings (most specific — require both app + title match).
+        if self.title_matching_enabled {
+            for mapping in &self.app_mappings {
+                if let Some(pattern) = &mapping.title_pattern {
+                    if app_matches(mapping) {
+                        if let Some(title) = window_title {
+                            if title.to_ascii_lowercase().contains(&pattern.to_ascii_lowercase()) {
+                                return Some(mapping.provider);
+                            }
+                        }
+                    }
                 }
             }
         }
+
+        // Pass 2: app-identifier-only mappings (no title constraint).
+        for mapping in &self.app_mappings {
+            if mapping.title_pattern.is_none() && app_matches(mapping) {
+                return Some(mapping.provider);
+            }
+        }
+
         None
     }
 

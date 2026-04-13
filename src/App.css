@@ -1220,6 +1220,59 @@ select.input {
   font-size: 14px;
 }
 
+/* App picker dropdown */
+.app-picker-dropdown {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated, var(--bg));
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-picker-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+  -webkit-app-region: no-drag;
+}
+
+.app-picker-row:hover {
+  background: var(--hover);
+}
+
+.app-picker-name {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.app-picker-id {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-picker-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 6px 8px;
+}
+
+.icon-btn.active {
+  color: var(--blue);
+}
+
 /* Toggle groups */
 .toggle-group label {
   display: flex;

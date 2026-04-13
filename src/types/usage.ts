@@ -153,6 +153,7 @@ export type Provider = "Claude" | "Codex" | "Cursor";
 export interface AppMapping {
   app_identifier: string;
   provider: Provider;
+  title_pattern?: string;
 }
 
 export type TrayField =
@@ -178,6 +179,7 @@ export interface TrayConfig {
   mode: TrayMode;
   app_mappings: AppMapping[];
   default_provider: Provider;
+  title_matching_enabled: boolean;
 }
 
 export interface RunningApp {

@@ -16,6 +16,8 @@ body {
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body.widget-preview-body {
@@ -179,16 +181,28 @@ body.widget-preview-body {
   width: 394px;
 }
 
+.widget-overlay--compact .widget-overlay__ticker-board {
+  grid-template-columns: repeat(3, minmax(108px, 1fr));
+  gap: 5px;
+  width: 360px;
+}
+
 .widget-overlay--ultra-compact .widget-overlay__ticker-board {
-  grid-template-columns: repeat(3, minmax(88px, 1fr));
+  grid-template-columns: repeat(3, minmax(82px, 1fr));
   gap: 3px;
-  width: 296px;
+  width: 270px;
+}
+
+.widget-overlay--compact .widget-overlay__deck-board {
+  grid-template-columns: repeat(2, minmax(104px, 1fr));
+  gap: 6px;
+  width: 310px;
 }
 
 .widget-overlay--ultra-compact .widget-overlay__deck-board {
-  grid-template-columns: repeat(2, minmax(80px, 1fr));
-  gap: 4px;
-  width: 256px;
+  grid-template-columns: repeat(2, minmax(76px, 1fr));
+  gap: 3px;
+  width: 238px;
 }
 
 .widget-overlay__card-shell--ticker,
@@ -208,15 +222,34 @@ body.widget-preview-body {
   -webkit-backdrop-filter: blur(10px);
 }
 
+.widget-overlay--compact .widget-ticker-cell {
+  min-height: 56px;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 15px;
+}
+
+.widget-overlay--compact .widget-ticker-cell__sub {
+  display: none;
+}
+
+.widget-overlay--compact .widget-ticker-cell__value {
+  font: 700 12px/1 "Aptos Display", "Segoe UI Variable Display", sans-serif;
+}
+
 .widget-overlay--ultra-compact .widget-ticker-cell {
-  min-height: 52px;
-  gap: 4px;
-  padding: 7px 9px;
-  border-radius: 14px;
+  min-height: 44px;
+  gap: 3px;
+  padding: 5px 8px;
+  border-radius: 12px;
 }
 
 .widget-overlay--ultra-compact .widget-ticker-cell__sub {
   display: none;
+}
+
+.widget-overlay--ultra-compact .widget-ticker-cell__value {
+  font: 700 10px/1 "Aptos Display", "Segoe UI Variable Display", sans-serif;
 }
 
 .widget-ticker-cell__label {
@@ -266,15 +299,34 @@ body.widget-preview-body {
   -webkit-backdrop-filter: blur(14px);
 }
 
+.widget-overlay--compact .widget-deck-cell {
+  min-height: 80px;
+  gap: 7px;
+  padding: 10px 11px;
+  border-radius: 15px;
+}
+
+.widget-overlay--compact .widget-deck-cell__sub {
+  display: none;
+}
+
+.widget-overlay--compact .widget-deck-cell__value {
+  font: 700 15px/0.98 "Aptos Display", "Segoe UI Variable Display", sans-serif;
+}
+
 .widget-overlay--ultra-compact .widget-deck-cell {
-  min-height: 72px;
-  gap: 6px;
-  padding: 9px 10px;
-  border-radius: 14px;
+  min-height: 58px;
+  gap: 4px;
+  padding: 7px 9px;
+  border-radius: 12px;
 }
 
 .widget-overlay--ultra-compact .widget-deck-cell__sub {
   display: none;
+}
+
+.widget-overlay--ultra-compact .widget-deck-cell__value {
+  font: 700 12px/0.98 "Aptos Display", "Segoe UI Variable Display", sans-serif;
 }
 
 .widget-deck-cell__topline {

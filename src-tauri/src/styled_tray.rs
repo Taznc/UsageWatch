@@ -23,6 +23,8 @@ mod macos {
         fn register_tray_status_item(status_item: *mut c_void);
         fn register_mouse_move_callback(cb: extern "C" fn(f64, f64));
         fn start_native_mouse_monitor();
+        fn start_widget_drag_monitor();
+        fn set_widget_drag_rect(x: f32, y: f32, w: f32, h: f32);
     }
 
     #[derive(Debug, Clone)]
@@ -94,6 +96,14 @@ mod macos {
 
     pub fn start_mouse_monitor() {
         unsafe { start_native_mouse_monitor() }
+    }
+
+    pub fn setup_widget_drag_monitor() {
+        unsafe { start_widget_drag_monitor() }
+    }
+
+    pub fn update_widget_drag_rect(x: f32, y: f32, w: f32, h: f32) {
+        unsafe { set_widget_drag_rect(x, y, w, h) }
     }
 
     // ── Running apps FFI ──────────────────────────────────────────────────

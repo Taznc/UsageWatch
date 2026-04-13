@@ -8,16 +8,16 @@ import { useApp } from "../context/AppContext";
 import { formatPollInterval } from "../utils/format";
 import { DebugPanel } from "./DebugPanel";
 import { ProviderMethodPicker } from "./setup/ProviderMethodPicker";
-import type { TrayFormat, TrayConfig, TraySegmentDef, TrayField, RunningApp, Provider, AlertConfig } from "../types/usage";
+import type { TrayFormat, TrayConfig, TraySegmentDef, TrayField, RunningApp, Provider, AlertConfig, AppMapping } from "../types/usage";
 import {
   DEFAULT_WIDGET_OVERLAY_LAYOUT,
   ALL_WIDGET_THEME_IDS,
   type WidgetCardId,
   type WidgetDensity,
   type WidgetOverlayLayout,
-  WIDGET_PROVIDER_CARD_IDS,
 } from "../types/widget";
 import { normalizeWidgetOverlayLayout, WIDGET_LAYOUT_STORE_KEY } from "../widget/layout";
+import { WidgetCardConfigurator } from "./WidgetCardConfigurator";
 
 type NavId = "account" | "menu-bar" | "provider" | "widget" | "alerts" | "general" | "debug";
 
@@ -265,10 +265,15 @@ export function Settings() {
       { app_identifier: "Cursor.exe", provider: "Cursor" },
     ],
     default_provider: "Claude",
+    title_matching_enabled: false,
   });
+  const [accessibilityGranted, setAccessibilityGranted] = useState<boolean | null>(null);
+  const [editingTitleIdx, setEditingTitleIdx] = useState<number | null>(null);
   const [runningApps, setRunningApps] = useState<RunningApp[]>([]);
   const [newMappingApp, setNewMappingApp] = useState("");
   const [newMappingProvider, setNewMappingProvider] = useState<Provider>("Claude");
+  const [mappingPlatform, setMappingPlatform] = useState<"mac" | "windows">(isMacPlatform ? "mac" : "windows");
+  const [showAppPicker, setShowAppPicker] = useState(false);
   const [widgetLayout, setWidgetLayout] = useState<WidgetOverlayLayout>(DEFAULT_WIDGET_OVERLAY_LAYOUT);
 
   // ── Alert config state ────────────────────────────────────────────────────
@@ -309,6 +314,7 @@ export function Settings() {
     loadTrayConfig();
     loadAlertConfig();
     loadWidgetLayout();
+    if (isMacPlatform) checkAccessibility();
   }, []);
 
   const updateTrayFormat = async (updates: Partial<TrayFormat>) => {
@@ -361,19 +367,41 @@ export function Settings() {
     });
   };
 
-  const moveCard = async (cardId: WidgetCardId, direction: -1 | 1) => {
-    const currentIndex = widgetLayout.cardOrder.indexOf(cardId);
-    const nextIndex = currentIndex + direction;
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= widgetLayout.cardOrder.length) return;
-    const cardOrder = [...widgetLayout.cardOrder];
-    [cardOrder[currentIndex], cardOrder[nextIndex]] = [cardOrder[nextIndex], cardOrder[currentIndex]];
-    await updateWidgetLayout({ cardOrder });
+  const reorderCards = async (newOrder: WidgetCardId[]) => {
+    await updateWidgetLayout({ cardOrder: newOrder });
   };
 
   const loadRunningApps = async () => {
     try {
       const apps = await invoke<RunningApp[]>("get_running_apps");
       setRunningApps(apps.sort((a, b) => a.name.localeCompare(b.name)));
+    } catch {}
+  };
+
+  const checkAccessibility = async () => {
+    try {
+      const granted = await invoke<boolean>("check_accessibility_permission");
+      setAccessibilityGranted(granted);
+    } catch {}
+  };
+
+  const requestAccessibility = async () => {
+    try {
+      await invoke<boolean>("request_accessibility_permission");
+      // Poll for a few seconds after prompting since the user has to switch to System Settings
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        const granted = await invoke<boolean>("check_accessibility_permission");
+        setAccessibilityGranted(granted);
+        if (granted || ++attempts >= 10) clearInterval(poll);
+      }, 1500);
+    } catch {}
+  };
+
+  const toggleTitleMatching = async (enabled: boolean) => {
+    try {
+      await invoke("set_title_matching_enabled", { enabled });
+      updateTrayConfig({ title_matching_enabled: enabled });
     } catch {}
   };
 
@@ -618,107 +646,266 @@ export function Settings() {
                     </select>
                   </div>
 
-                  <div className="settings-card" style={{ marginTop: 4 }}>
-                    <p className="card-label">App mappings</p>
-                    <p className="form-hint" style={{ marginTop: 0 }}>
-                      Keep one shared list. Bundle IDs, app names, process names, and picked executables all resolve through the same matcher.
-                    </p>
-                    {trayConfig.app_mappings.length > 0 ? (
-                      trayConfig.app_mappings.map((mapping, idx) => (
-                        <div className="mapping-row" key={mapping.app_identifier}>
-                          <span className="mapping-id" title={mapping.app_identifier}>{mapping.app_identifier}</span>
-                          <select
-                            className="input mapping-select"
-                            value={mapping.provider}
-                            onChange={(e) => {
-                              const updated = [...trayConfig.app_mappings];
-                              updated[idx] = { ...mapping, provider: e.target.value as Provider };
-                              updateTrayConfig({ app_mappings: updated });
-                            }}
-                          >
-                            <option value="Claude">Claude</option>
-                            <option value="Codex">Codex</option>
-                            <option value="Cursor">Cursor</option>
-                          </select>
+                  {/* Title matching opt-in */}
+                  <div className="settings-card" style={{ marginTop: 8 }}>
+                    <p className="card-label">Window title matching</p>
+                    {isMacPlatform ? (
+                      <>
+                        <p className="form-hint" style={{ marginTop: 0 }}>
+                          Match providers by window title (e.g. iTerm2 tab named "Claude"). Requires Accessibility permission on macOS.
+                        </p>
+                        <div className="toggle-row" style={{ marginBottom: 8 }}>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={trayConfig.title_matching_enabled}
+                              onChange={(e) => toggleTitleMatching(e.target.checked)}
+                              disabled={!accessibilityGranted && !trayConfig.title_matching_enabled}
+                            />
+                            Enable title matching
+                          </label>
+                        </div>
+                        {accessibilityGranted === false && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                              Accessibility not granted
+                            </span>
+                            <button className="icon-btn" style={{ fontSize: 11, padding: "2px 8px", width: "auto" }} onClick={requestAccessibility}>
+                              Open System Settings
+                            </button>
+                            <button className="icon-btn" style={{ fontSize: 11, padding: "2px 8px", width: "auto" }} onClick={checkAccessibility}>
+                              Re-check
+                            </button>
+                          </div>
+                        )}
+                        {accessibilityGranted === true && (
+                          <span style={{ fontSize: 11, color: "var(--green, #4ade80)" }}>Accessibility granted</span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <p className="form-hint" style={{ marginTop: 0 }}>
+                          Match providers by foreground window title. No extra permissions needed on Windows.
+                        </p>
+                        <div className="toggle-row">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={trayConfig.title_matching_enabled}
+                              onChange={(e) => toggleTitleMatching(e.target.checked)}
+                            />
+                            Enable title matching
+                          </label>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const isWinEntry = (id: string) => /\.(exe|lnk)$/i.test(id);
+                    const indexed = trayConfig.app_mappings.map((m, i) => ({ ...m, _idx: i }));
+                    const macMappings = indexed.filter(m => !isWinEntry(m.app_identifier));
+                    const winMappings = indexed.filter(m => isWinEntry(m.app_identifier));
+
+                    const updateMapping = (idx: number, patch: Partial<AppMapping>) => {
+                      const updated = [...trayConfig.app_mappings];
+                      updated[idx] = { ...updated[idx], ...patch };
+                      updateTrayConfig({ app_mappings: updated });
+                    };
+
+                    const renderMappingRow = (mapping: (typeof indexed)[0]) => {
+                      const isEditingTitle = editingTitleIdx === mapping._idx;
+                      const hasTitle = !!mapping.title_pattern;
+                      return (
+                        <div key={mapping.app_identifier} style={{ marginBottom: 6 }}>
+                          <div className="mapping-row" style={{ marginBottom: 0 }}>
+                            <span className="mapping-id" title={mapping.app_identifier}>{mapping.app_identifier}</span>
+                            {hasTitle && !isEditingTitle && (
+                              <span
+                                style={{ fontSize: 10, color: "var(--blue)", flexShrink: 0, cursor: "pointer" }}
+                                title="title pattern active — click to edit"
+                                onClick={() => setEditingTitleIdx(mapping._idx)}
+                              >
+                                title∋
+                              </span>
+                            )}
+                            <select
+                              className="input mapping-select"
+                              value={mapping.provider}
+                              onChange={(e) => updateMapping(mapping._idx, { provider: e.target.value as Provider })}
+                            >
+                              <option value="Claude">Claude</option>
+                              <option value="Codex">Codex</option>
+                              <option value="Cursor">Cursor</option>
+                            </select>
+                            {trayConfig.title_matching_enabled && (
+                              <button
+                                className={`icon-btn${hasTitle ? " active" : ""}`}
+                                title={isEditingTitle ? "Close title filter" : "Add/edit title filter"}
+                                onClick={() => setEditingTitleIdx(isEditingTitle ? null : mapping._idx)}
+                                style={{ fontSize: 11 }}
+                              >
+                                T
+                              </button>
+                            )}
+                            <button
+                              className="icon-btn mapping-remove"
+                              onClick={() => updateTrayConfig({ app_mappings: trayConfig.app_mappings.filter((_, i) => i !== mapping._idx) })}
+                            >
+                              &#215;
+                            </button>
+                          </div>
+                          {isEditingTitle && (
+                            <div style={{ display: "flex", gap: 6, marginTop: 4, marginLeft: 2 }}>
+                              <input
+                                className="input"
+                                style={{ flex: 1, fontSize: 11 }}
+                                placeholder="Window title must contain…"
+                                value={mapping.title_pattern ?? ""}
+                                onChange={(e) => updateMapping(mapping._idx, { title_pattern: e.target.value || undefined })}
+                                autoFocus
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    const addMapping = () => {
+                      if (!newMappingApp) return;
+                      updateTrayConfig({ app_mappings: [...trayConfig.app_mappings, { app_identifier: newMappingApp, provider: newMappingProvider }] });
+                      setNewMappingApp("");
+                      setNewMappingProvider("Claude");
+                      setShowAppPicker(false);
+                    };
+
+                    const availableApps = runningApps.filter(
+                      app => !trayConfig.app_mappings.some(m => m.app_identifier === app.bundle_id)
+                    );
+
+                    return (
+                      <div className="settings-card" style={{ marginTop: 4 }}>
+                        {/* Platform tabs */}
+                        <div className="tab-bar" style={{ marginBottom: 8 }}>
                           <button
-                            className="icon-btn mapping-remove"
-                            onClick={() => {
-                              const updated = trayConfig.app_mappings.filter((_, i) => i !== idx);
-                              updateTrayConfig({ app_mappings: updated });
-                            }}
+                            className={`tab-btn${mappingPlatform === "mac" ? " active" : ""}`}
+                            onClick={() => { setMappingPlatform("mac"); setShowAppPicker(false); setNewMappingApp(""); }}
                           >
-                            &#215;
+                            macOS
+                          </button>
+                          <button
+                            className={`tab-btn${mappingPlatform === "windows" ? " active" : ""}`}
+                            onClick={() => { setMappingPlatform("windows"); setShowAppPicker(false); setNewMappingApp(""); }}
+                          >
+                            Windows
                           </button>
                         </div>
-                      ))
-                    ) : (
-                      <p className="form-hint" style={{ marginBottom: 0 }}>
-                        No mappings configured.
-                      </p>
-                    )}
 
-                    <div className="mapping-row" style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-                      <input
-                        className="input"
-                        style={{ flex: 1 }}
-                        value={newMappingApp}
-                        onChange={(e) => setNewMappingApp(e.target.value)}
-                        onFocus={() => {
-                          if (runningApps.length === 0) loadRunningApps();
-                        }}
-                        placeholder={isMacPlatform ? "Add bundle ID or app name" : "Add app name, process, or executable"}
-                        list="widget-running-apps"
-                      />
-                      <datalist id="widget-running-apps">
-                        {runningApps
-                          .filter(
-                            (app) =>
-                              !trayConfig.app_mappings.some(
-                                (m) => m.app_identifier === app.bundle_id
-                              )
-                          )
-                          .map((app) => (
-                            <option key={app.bundle_id} value={app.bundle_id}>
-                              {app.name}
-                            </option>
-                          ))}
-                      </datalist>
-                      <select
-                        className="input mapping-select"
-                        value={newMappingProvider}
-                        onChange={(e) => setNewMappingProvider(e.target.value as Provider)}
-                      >
-                        <option value="Claude">Claude</option>
-                        <option value="Codex">Codex</option>
-                        <option value="Cursor">Cursor</option>
-                      </select>
-                      <button
-                        className="icon-btn"
-                        type="button"
-                        title={isMacPlatform ? "Pick an application" : "Pick an executable or shortcut"}
-                        onClick={pickMappingTarget}
-                      >
-                        ...
-                      </button>
-                      <button
-                        className="icon-btn"
-                        style={{ fontSize: 18, fontWeight: 600 }}
-                        disabled={!newMappingApp}
-                        onClick={() => {
-                          if (!newMappingApp) return;
-                          const updated = [
-                            ...trayConfig.app_mappings,
-                            { app_identifier: newMappingApp, provider: newMappingProvider },
-                          ];
-                          updateTrayConfig({ app_mappings: updated });
-                          setNewMappingApp("");
-                          setNewMappingProvider("Claude");
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
+                        {/* macOS tab */}
+                        {mappingPlatform === "mac" && (
+                          <>
+                            <p className="form-hint" style={{ marginTop: 0, marginBottom: 8 }}>
+                              Bundle IDs (e.g. <code>com.anthropic.claudefordesktop</code>) or app names.
+                            </p>
+                            {macMappings.length > 0
+                              ? macMappings.map(renderMappingRow)
+                              : <p className="form-hint" style={{ marginBottom: 0 }}>No macOS mappings.</p>
+                            }
+                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                              <div className="mapping-row" style={{ position: "relative" }}>
+                                <input
+                                  className="input"
+                                  style={{ flex: 1 }}
+                                  value={newMappingApp}
+                                  onChange={(e) => setNewMappingApp(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") addMapping(); }}
+                                  placeholder="Bundle ID or app name"
+                                />
+                                <select className="input mapping-select" value={newMappingProvider} onChange={(e) => setNewMappingProvider(e.target.value as Provider)}>
+                                  <option value="Claude">Claude</option>
+                                  <option value="Codex">Codex</option>
+                                  <option value="Cursor">Cursor</option>
+                                </select>
+                                {isMacPlatform && (
+                                  <button
+                                    className={`icon-btn${showAppPicker ? " active" : ""}`}
+                                    type="button"
+                                    title="Pick from running apps"
+                                    onClick={async () => {
+                                      if (!showAppPicker && runningApps.length === 0) await loadRunningApps();
+                                      setShowAppPicker(p => !p);
+                                    }}
+                                  >
+                                    ◎
+                                  </button>
+                                )}
+                                <button className="icon-btn" type="button" title="Browse for application" onClick={pickMappingTarget}>...</button>
+                                <button
+                                  className="icon-btn"
+                                  style={{ fontSize: 18, fontWeight: 600 }}
+                                  disabled={!newMappingApp}
+                                  onClick={addMapping}
+                                >+</button>
+                              </div>
+                              {/* Running app picker dropdown */}
+                              {showAppPicker && (
+                                <div className="app-picker-dropdown">
+                                  {availableApps.length === 0
+                                    ? <span className="app-picker-empty">No other running apps</span>
+                                    : availableApps.map(app => (
+                                        <button
+                                          key={app.bundle_id}
+                                          className="app-picker-row"
+                                          onClick={() => { setNewMappingApp(app.bundle_id); setShowAppPicker(false); }}
+                                        >
+                                          <span className="app-picker-name">{app.name}</span>
+                                          <span className="app-picker-id">{app.bundle_id}</span>
+                                        </button>
+                                      ))
+                                  }
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        {/* Windows tab */}
+                        {mappingPlatform === "windows" && (
+                          <>
+                            <p className="form-hint" style={{ marginTop: 0, marginBottom: 8 }}>
+                              Executable names (e.g. <code>Claude.exe</code>) or process names.
+                            </p>
+                            {winMappings.length > 0
+                              ? winMappings.map(renderMappingRow)
+                              : <p className="form-hint" style={{ marginBottom: 0 }}>No Windows mappings.</p>
+                            }
+                            <div className="mapping-row" style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                              <input
+                                className="input"
+                                style={{ flex: 1 }}
+                                value={newMappingApp}
+                                onChange={(e) => setNewMappingApp(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") addMapping(); }}
+                                placeholder="App name or .exe"
+                              />
+                              <select className="input mapping-select" value={newMappingProvider} onChange={(e) => setNewMappingProvider(e.target.value as Provider)}>
+                                <option value="Claude">Claude</option>
+                                <option value="Codex">Codex</option>
+                                <option value="Cursor">Cursor</option>
+                              </select>
+                              <button className="icon-btn" type="button" title="Browse for executable" onClick={pickMappingTarget}>...</button>
+                              <button
+                                className="icon-btn"
+                                style={{ fontSize: 18, fontWeight: 600 }}
+                                disabled={!newMappingApp}
+                                onClick={addMapping}
+                              >+</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -826,50 +1013,13 @@ export function Settings() {
               )}
 
               <div className="settings-card" style={{ marginTop: 10 }}>
-                <p className="card-label">Card order</p>
-                <p className="form-hint" style={{ marginTop: 0 }}>
-                  This order is shared across themes and providers. Hidden cards keep their place for future themes.
-                </p>
-                {widgetLayout.cardOrder.map((cardId, index) => (
-                  <div className="mapping-row" key={cardId}>
-                    <span className="mapping-id" style={{ textTransform: "capitalize" }}>{cardId}</span>
-                    <button
-                      className="icon-btn"
-                      disabled={index === 0}
-                      onClick={() => moveCard(cardId, -1)}
-                    >
-                      &#8593;
-                    </button>
-                    <button
-                      className="icon-btn"
-                      disabled={index === widgetLayout.cardOrder.length - 1}
-                      onClick={() => moveCard(cardId, 1)}
-                    >
-                      &#8595;
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="settings-card" style={{ marginTop: 10 }}>
-                <p className="card-label">Card visibility</p>
-                {(["Claude", "Codex", "Cursor"] as Provider[]).map((provider) => (
-                  <div key={provider} style={{ marginTop: provider === "Claude" ? 0 : 12, paddingTop: provider === "Claude" ? 0 : 12, borderTop: provider === "Claude" ? "none" : "1px solid var(--border)" }}>
-                    <p className="form-hint" style={{ marginTop: 0, marginBottom: 8 }}>{provider}</p>
-                    {WIDGET_PROVIDER_CARD_IDS[provider].map((cardId) => (
-                      <div className="toggle-row" key={`${provider}-${cardId}`}>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={widgetLayout.cardVisibility[provider][cardId]}
-                            onChange={(e) => updateCardVisibility(provider, cardId, e.target.checked)}
-                          />
-                          <span style={{ textTransform: "capitalize" }}>{cardId}</span>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                ))}
+                <p className="card-label">Cards</p>
+                <WidgetCardConfigurator
+                  cardOrder={widgetLayout.cardOrder}
+                  cardVisibility={widgetLayout.cardVisibility}
+                  onReorder={reorderCards}
+                  onVisibilityChange={updateCardVisibility}
+                />
               </div>
             </div>
           )}

@@ -46,6 +46,7 @@ type LegacyWidgetLayout = {
 
 function normalizeDensity(density: unknown) {
   if (density === "ultra-compact") return "ultra-compact";
+  if (density === "compact") return "compact";
   if (density === "comfortable") return "comfortable";
   return DEFAULT_WIDGET_OVERLAY_LAYOUT.density;
 }

@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -34,7 +35,8 @@
         "transparent": true,
         "shadow": false,
         "skipTaskbar": true,
-        "alwaysOnTop": true
+        "alwaysOnTop": true,
+        "acceptFirstMouse": true
       }
     ],
     "security": {

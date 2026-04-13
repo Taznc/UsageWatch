@@ -169,8 +169,8 @@ function MatrixRainCard({ card, theme, onPointerDown }: Pick<WidgetCardProps, "c
 
 function DialClusterCard({ card, theme, density, onPointerDown }: WidgetCardProps) {
   const pct = clampProgress(card.progress);
-  const sizeMap: Record<string, number> = { "ultra-compact": 48, compact: 68, comfortable: 96 };
-  const strokeMap: Record<string, number> = { "ultra-compact": 4, compact: 5, comfortable: 7 };
+  const sizeMap: Record<string, number> = { "ultra-compact": 36, compact: 58, comfortable: 96 };
+  const strokeMap: Record<string, number> = { "ultra-compact": 3, compact: 5, comfortable: 7 };
   const size = sizeMap[density] ?? 68;
   const strokeWidth = strokeMap[density] ?? 5;
   const radius = (size - strokeWidth) / 2;

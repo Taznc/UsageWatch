@@ -283,8 +283,63 @@ void start_native_mouse_monitor(void) {
 }
 
 // ---------------------------------------------------------------------------
+// Widget drag monitor
+//
+// performWindowDragWithEvent: starts a native move loop without requiring
+// the window to be key.  We restrict it to the header rect (stored via
+// set_widget_drag_rect) so only header clicks initiate drag — not card clicks
+// that slip through during the brief setIgnoreCursorEvents transition window.
+//
+// Coordinate note: event.locationInWindow uses AppKit coords (bottom-left
+// origin, logical pts).  g_widget_drag_rect is stored in CSS/viewport coords
+// (top-left origin).  We convert with cssY = windowHeight - appkitY.
+// ---------------------------------------------------------------------------
+
+static CGRect g_widget_drag_rect = {0, 0, 0, 0};
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void set_widget_drag_rect(float x, float y, float w, float h) {
+    // Called from Rust whenever the header hitbox changes (on layout/resize).
+    // Values are in CSS logical pixels (top-left origin, post-scale visual bounds).
+    g_widget_drag_rect = CGRectMake(x, y, w, h);
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void start_widget_drag_monitor(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        static BOOL monitorStarted = NO;
+        if (monitorStarted) return;
+        monitorStarted = YES;
+
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown
+                                             handler:^NSEvent *(NSEvent *event) {
+            NSWindow *win = event.window;
+            if (!win) return event;
+            if (![win.title isEqualToString:@"UsageWatch Widget"]) return event;
+
+            // Convert AppKit window coords (bottom-left) to CSS coords (top-left).
+            NSPoint loc = event.locationInWindow;
+            CGFloat winH = win.contentView.frame.size.height;
+            CGFloat cssX = loc.x;
+            CGFloat cssY = winH - loc.y;
+
+            if (!CGRectContainsPoint(g_widget_drag_rect, CGPointMake(cssX, cssY))) {
+                return event; // outside header — let click through normally
+            }
+
+            [win performWindowDragWithEvent:event];
+            return nil; // consume: suppress focus-acquisition
+        }];
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Focus observation (KVO on NSWorkspace.frontmostApplication)
 // ---------------------------------------------------------------------------
+
+#import <ApplicationServices/ApplicationServices.h>
 
 static void (*g_focus_callback)(const char *, const char *) = NULL;
 
@@ -375,4 +430,86 @@ void free_running_apps(CRunningApp *apps, int count) {
         free((void *)apps[i].name);
     }
     free(apps);
+}
+
+// ---------------------------------------------------------------------------
+// Accessibility permission helpers
+// ---------------------------------------------------------------------------
+
+__attribute__((used))
+__attribute__((visibility("default")))
+bool check_accessibility_trusted(void) {
+    return AXIsProcessTrusted();
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+bool request_accessibility_access(void) {
+    // Prompts the user via System Settings; returns current trust status.
+    NSDictionary *opts = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES};
+    return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts);
+}
+
+// ---------------------------------------------------------------------------
+// Window title polling via AXUIElement
+// ---------------------------------------------------------------------------
+
+static void (*g_title_callback)(const char *) = NULL;
+static NSTimer  *g_title_timer = nil;
+static NSString *g_last_title  = nil;
+
+static NSString *ax_frontmost_window_title(void) {
+    NSRunningApplication *app = [[NSWorkspace sharedWorkspace] frontmostApplication];
+    if (!app) return nil;
+
+    AXUIElementRef appRef = AXUIElementCreateApplication(app.processIdentifier);
+    if (!appRef) return nil;
+
+    CFTypeRef windowRef = NULL;
+    AXError err = AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute, &windowRef);
+    CFRelease(appRef);
+    if (err != kAXErrorSuccess || !windowRef) return nil;
+
+    CFTypeRef titleRef = NULL;
+    err = AXUIElementCopyAttributeValue((AXUIElementRef)windowRef, kAXTitleAttribute, &titleRef);
+    CFRelease(windowRef);
+    if (err != kAXErrorSuccess || !titleRef) return nil;
+
+    NSString *title = [NSString stringWithString:(__bridge_transfer NSString *)titleRef];
+    return title;
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void register_title_callback(void (*callback)(const char *)) {
+    g_title_callback = callback;
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void start_title_polling(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (g_title_timer) return;
+        g_title_timer = [NSTimer scheduledTimerWithTimeInterval:0.5
+                                                        repeats:YES
+                                                          block:^(NSTimer *__unused t) {
+            if (!g_title_callback || !AXIsProcessTrusted()) return;
+            NSString *title   = ax_frontmost_window_title() ?: @"";
+            NSString *lastStr = g_last_title ?: @"";
+            if (![title isEqualToString:lastStr]) {
+                g_last_title = title;
+                g_title_callback([title UTF8String]);
+            }
+        }];
+    });
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void stop_title_polling(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [g_title_timer invalidate];
+        g_title_timer = nil;
+        g_last_title  = nil;
+    });
 }

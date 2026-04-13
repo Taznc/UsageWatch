@@ -106,8 +106,9 @@ fn resolve_current_provider(config: &TrayConfig) -> Provider {
         TrayMode::Dynamic => {
             let bid = crate::focus_monitor::current_bundle_id();
             let name = crate::focus_monitor::current_app_name();
+            let title = crate::focus_monitor::current_window_title();
 
-            if let Some(provider) = config.match_provider(bid.as_deref(), name.as_deref()) {
+            if let Some(provider) = config.match_provider(bid.as_deref(), name.as_deref(), title.as_deref()) {
                 let state = LAST_MATCHED_PROVIDER.get_or_init(|| Mutex::new(None));
                 if let Ok(mut lock) = state.lock() {
                     *lock = Some(provider);

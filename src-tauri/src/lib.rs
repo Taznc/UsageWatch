@@ -147,6 +147,10 @@ pub fn run() {
             get_latest_codex_update,
             get_latest_cursor_update,
             get_active_provider,
+            check_accessibility_permission,
+            request_accessibility_permission,
+            set_title_matching_enabled,
+            set_widget_drag_rect,
         ])
         .setup(move |app| {
             // Hide dock icon on macOS (agent/accessory app)
@@ -163,6 +167,9 @@ pub fn run() {
             if let Some(widget_window) = app.get_webview_window("widget") {
                 hook::start_global_mouse_stream(widget_window);
             }
+
+            #[cfg(target_os = "macos")]
+            styled_tray::setup_widget_drag_monitor();
 
             // Load tray format and tray config from store
             load_tray_format_from_store(handle, &tray_format);
@@ -296,6 +303,20 @@ pub fn run() {
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             focus_monitor::start();
 
+            // If title matching was previously enabled and (on macOS) accessibility is trusted,
+            // resume the title polling immediately.
+            {
+                let cfg = tray_config.lock().unwrap().clone();
+                if cfg.title_matching_enabled {
+                    #[cfg(target_os = "macos")]
+                    if focus_monitor::is_accessibility_trusted() {
+                        focus_monitor::start_title_watch();
+                    }
+                    #[cfg(target_os = "windows")]
+                    focus_monitor::start_title_watch();
+                }
+            }
+
             // Start Stream Deck HTTP API server
             http_server::start(handle.clone(), latest_usage_for_server);
 
@@ -308,6 +329,14 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn set_widget_drag_rect(x: f32, y: f32, w: f32, h: f32) {
+    #[cfg(target_os = "macos")]
+    styled_tray::update_widget_drag_rect(x, y, w, h);
+    #[cfg(not(target_os = "macos"))]
+    let _ = (x, y, w, h);
 }
 
 #[tauri::command]
@@ -376,6 +405,39 @@ fn get_running_apps() -> Vec<models::RunningApp> {
     {
         Vec::new()
     }
+}
+
+#[tauri::command]
+fn check_accessibility_permission() -> bool {
+    focus_monitor::is_accessibility_trusted()
+}
+
+#[tauri::command]
+fn request_accessibility_permission() -> bool {
+    focus_monitor::request_accessibility()
+}
+
+#[tauri::command]
+fn set_title_matching_enabled(
+    enabled: bool,
+    state: tauri::State<'_, Arc<Mutex<TrayConfig>>>,
+) -> Result<(), String> {
+    {
+        let mut cfg = state.lock().map_err(|e| e.to_string())?;
+        cfg.title_matching_enabled = enabled;
+    }
+    if enabled {
+        #[cfg(target_os = "macos")]
+        if focus_monitor::is_accessibility_trusted() {
+            focus_monitor::start_title_watch();
+        }
+        #[cfg(target_os = "windows")]
+        focus_monitor::start_title_watch();
+    } else {
+        focus_monitor::stop_title_watch();
+    }
+    tray_state::refresh_tray();
+    Ok(())
 }
 
 #[tauri::command]
