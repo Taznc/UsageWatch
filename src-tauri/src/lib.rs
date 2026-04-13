@@ -274,7 +274,7 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             {
-                let _ = tray.with_inner_tray_icon(|inner: &tray_icon::TrayIcon| {
+                let _ = tray.with_inner_tray_icon(|inner| {
                     if let Some(status_item) = inner.ns_status_item() {
                         let ptr = Retained::as_ptr(&status_item) as *mut std::ffi::c_void;
                         crate::styled_tray::register_native_status_item(ptr);
