@@ -1,7 +1,7 @@
 import { createContext, useContext, useReducer, type ReactNode } from "react";
 import type { BillingInfo, CodexUsageData, CursorUsageData, Provider, UsageData } from "../types/usage";
-import type { APIStatus, WidgetLayout } from "../types/widget";
-import { DEFAULT_WIDGET_PREFERENCES } from "../types/widget";
+import type { APIStatus, WidgetOverlayLayout } from "../types/widget";
+import { DEFAULT_WIDGET_OVERLAY_LAYOUT } from "../types/widget";
 import {
   isTauriRuntime,
   previewBillingData,
@@ -18,7 +18,7 @@ interface WidgetState {
   billingData: BillingInfo | null;
   status: APIStatus | null;
   activeProvider: Provider;
-  layout: WidgetLayout;
+  layout: WidgetOverlayLayout;
 }
 
 type WidgetAction =
@@ -28,13 +28,9 @@ type WidgetAction =
   | { type: "SET_BILLING"; data: BillingInfo }
   | { type: "SET_STATUS"; data: APIStatus }
   | { type: "SET_ACTIVE_PROVIDER"; provider: Provider }
-  | { type: "SET_LAYOUT"; layout: WidgetLayout };
+  | { type: "SET_LAYOUT"; layout: WidgetOverlayLayout };
 
-const defaultLayout: WidgetLayout = {
-  version: 1,
-  position: { x: 200, y: 100 },
-  preferences: DEFAULT_WIDGET_PREFERENCES,
-};
+const defaultLayout: WidgetOverlayLayout = DEFAULT_WIDGET_OVERLAY_LAYOUT;
 
 const initialState: WidgetState = {
   usageData: isTauriRuntime() ? null : previewUsageData,

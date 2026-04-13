@@ -494,29 +494,35 @@ impl TrayConfig {
             .next()
             .unwrap_or(value)
             .trim()
+            .trim_end_matches(".app")
+            .trim_end_matches(".lnk")
             .trim_end_matches(".exe")
             .to_ascii_lowercase()
+    }
+
+    pub fn match_provider(&self, bundle_id: Option<&str>, app_name: Option<&str>) -> Option<Provider> {
+        for mapping in &self.app_mappings {
+            let mapping_id = Self::normalize_identifier(&mapping.app_identifier);
+            if let Some(bid) = bundle_id {
+                if Self::normalize_identifier(bid) == mapping_id {
+                    return Some(mapping.provider);
+                }
+            }
+            if let Some(name) = app_name {
+                if Self::normalize_identifier(name) == mapping_id {
+                    return Some(mapping.provider);
+                }
+            }
+        }
+        None
     }
 
     pub fn resolve_provider(&self, bundle_id: Option<&str>, app_name: Option<&str>) -> Provider {
         match &self.mode {
             TrayMode::Static(p) => *p,
-            TrayMode::Dynamic => {
-                for mapping in &self.app_mappings {
-                    let mapping_id = Self::normalize_identifier(&mapping.app_identifier);
-                    if let Some(bid) = bundle_id {
-                        if Self::normalize_identifier(bid) == mapping_id {
-                            return mapping.provider;
-                        }
-                    }
-                    if let Some(name) = app_name {
-                        if Self::normalize_identifier(name) == mapping_id {
-                            return mapping.provider;
-                        }
-                    }
-                }
-                self.default_provider
-            }
+            TrayMode::Dynamic => self
+                .match_provider(bundle_id, app_name)
+                .unwrap_or(self.default_provider),
         }
     }
 }

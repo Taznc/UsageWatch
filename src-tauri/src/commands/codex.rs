@@ -141,7 +141,7 @@ pub(crate) async fn fetch_codex_usage_internal() -> Result<CodexUsageData, Strin
         .get(CODEX_USAGE_URL)
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
-        .header("User-Agent", "Claude Usage Tracker/0.1.0")
+        .header("User-Agent", "UsageWatch/0.1.0")
         .send()
         .await
         .map_err(|e| format!("Codex request failed: {e}"))?;

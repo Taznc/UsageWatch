@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { WidgetProvider } from "../context/WidgetContext";
-import { WidgetWindow } from "./WidgetWindow";
+import { WidgetOverlay } from "./WidgetOverlay";
 import { isTauriRuntime } from "./preview";
 import "./widget.css";
 
@@ -11,9 +11,7 @@ function WidgetRoot() {
     return () => document.body.classList.remove("widget-preview-body");
   }, []);
 
-  return (
-    <WidgetWindow />
-  );
+  return <WidgetOverlay />;
 }
 
 export default function WidgetApp() {

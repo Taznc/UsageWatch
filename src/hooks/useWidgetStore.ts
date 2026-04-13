@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import type { Store } from "@tauri-apps/plugin-store";
+import { emit, listen } from "@tauri-apps/api/event";
 import { useWidget } from "../context/WidgetContext";
-import { DEFAULT_WIDGET_PREFERENCES, type WidgetLayout } from "../types/widget";
 import { isTauriRuntime } from "../widget/preview";
-
-const STORE_KEY = "widget_layout";
+import type { WidgetOverlayLayout } from "../types/widget";
+import { normalizeWidgetOverlayLayout, WIDGET_LAYOUT_STORE_KEY } from "../widget/layout";
 
 function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
   let timer: ReturnType<typeof setTimeout>;
@@ -13,39 +13,6 @@ function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), ms);
   }) as T;
-}
-
-function normalizeLayout(saved: unknown): WidgetLayout | null {
-  if (!saved || typeof saved !== "object") return null;
-  const candidate = saved as {
-    version?: unknown;
-    position?: { x?: unknown; y?: unknown };
-    preferences?: WidgetLayout["preferences"];
-  };
-
-  const x = typeof candidate.position?.x === "number" ? candidate.position.x : 200;
-  const y = typeof candidate.position?.y === "number" ? candidate.position.y : 100;
-
-  return {
-    version: typeof candidate.version === "number" ? candidate.version : 1,
-    position: { x, y },
-    preferences: {
-      ...DEFAULT_WIDGET_PREFERENCES,
-      ...candidate.preferences,
-      claude: {
-        ...DEFAULT_WIDGET_PREFERENCES.claude,
-        ...candidate.preferences?.claude,
-      },
-      codex: {
-        ...DEFAULT_WIDGET_PREFERENCES.codex,
-        ...candidate.preferences?.codex,
-      },
-      cursor: {
-        ...DEFAULT_WIDGET_PREFERENCES.cursor,
-        ...candidate.preferences?.cursor,
-      },
-    },
-  };
 }
 
 export function useWidgetStore() {
@@ -58,33 +25,44 @@ export function useWidgetStore() {
     async function init() {
       const store = await load("credentials.json", { autoSave: false, defaults: {} });
       storeRef.current = store;
-      const saved = normalizeLayout(await store.get(STORE_KEY));
-      if (saved) {
-        dispatch({ type: "SET_LAYOUT", layout: saved });
-      }
+      dispatch({ type: "SET_LAYOUT", layout: normalizeWidgetOverlayLayout(await store.get(WIDGET_LAYOUT_STORE_KEY)) });
     }
     init();
   }, [dispatch, tauri]);
 
-  const saveRef = useRef(
-    debounce(async (layout: WidgetLayout, store: Store | null) => {
-      if (!store) return;
-      await store.set(STORE_KEY, layout);
-      await store.save();
-    }, 300)
-  );
-
   useEffect(() => {
     if (!tauri) return;
-    saveRef.current(state.layout, storeRef.current);
-  }, [state.layout, tauri]);
+    const unlisten = listen<WidgetOverlayLayout>("widget-layout-updated", (event) => {
+      dispatch({ type: "SET_LAYOUT", layout: normalizeWidgetOverlayLayout(event.payload) });
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [dispatch, tauri]);
+
+  const saveRef = useRef(
+    debounce(async (layout: WidgetOverlayLayout, store: Store | null) => {
+      if (!store) return;
+      await store.set(WIDGET_LAYOUT_STORE_KEY, layout);
+      await store.save();
+      await emit("widget-layout-updated", layout);
+    }, 120)
+  );
 
   function savePosition(x: number, y: number) {
-    dispatch({
-      type: "SET_LAYOUT",
-      layout: { ...state.layout, position: { x, y } },
-    });
+    const layout = { ...state.layout, position: { x, y } };
+    dispatch({ type: "SET_LAYOUT", layout });
+    if (tauri) {
+      saveRef.current(layout, storeRef.current);
+    }
   }
 
-  return { savePosition };
+  function saveLayout(layout: WidgetOverlayLayout) {
+    dispatch({ type: "SET_LAYOUT", layout });
+    if (tauri) {
+      saveRef.current(layout, storeRef.current);
+    }
+  }
+
+  return { savePosition, saveLayout };
 }

@@ -4,7 +4,6 @@ import { listen } from "@tauri-apps/api/event";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Popover } from "./components/Popover";
 import { Settings } from "./components/Settings";
-import { SetupWizard } from "./components/SetupWizard";
 import "./App.css";
 
 function AppContent() {
@@ -27,8 +26,6 @@ function AppContent() {
   }, [dispatch]);
 
   switch (state.view) {
-    case "setup":
-      return <SetupWizard />;
     case "settings":
       return <Settings />;
     case "popover":

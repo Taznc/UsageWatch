@@ -14,10 +14,10 @@
     }
   ],
   "Version": "1.0.0",
-  "Name": "Claude Usage",
-  "Description": "Displays Claude AI usage limits from the UsageWatch app. Requires UsageWatch to be running.",
+  "Name": "UsageWatch",
+  "Description": "Displays UsageWatch provider metrics on Stream Deck keys. Requires UsageWatch to be running.",
   "Author": "Josh Ashworth",
-  "Category": "Claude Usage",
+  "Category": "UsageWatch",
   "CategoryIcon": "imgs/plugin",
   "Icon": "imgs/plugin",
   "CodePath": "bin/plugin.js",
@@ -26,7 +26,7 @@
       "Name": "Session Usage",
       "UUID": "com.usagewatch.session",
       "Icon": "imgs/actions/session/icon",
-      "Tooltip": "Shows current 5-hour Claude session usage %",
+      "Tooltip": "Shows the current 5-hour provider session usage %",
       "Controllers": ["Keypad"],
       "States": [
         {
@@ -38,7 +38,7 @@
       "Name": "Weekly Usage",
       "UUID": "com.usagewatch.weekly",
       "Icon": "imgs/actions/weekly/icon",
-      "Tooltip": "Shows 7-day Claude weekly usage %",
+      "Tooltip": "Shows the current 7-day provider weekly usage %",
       "Controllers": ["Keypad"],
       "States": [
         {

@@ -1,7 +1,7 @@
 {
   "name": "usagewatch-streamdeck",
   "version": "1.0.0",
-  "description": "Stream Deck plugin for UsageWatch — displays Claude AI usage on Stream Deck keys",
+  "description": "Stream Deck plugin for UsageWatch — displays provider usage on Stream Deck keys",
   "main": "bin/plugin.js",
   "scripts": {
     "build": "node scripts/build.mjs",

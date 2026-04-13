@@ -1,12 +1,22 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { load } from "@tauri-apps/plugin-store";
 import { useApp } from "../context/AppContext";
 import { formatPollInterval } from "../utils/format";
 import { DebugPanel } from "./DebugPanel";
 import type { Organization, TrayFormat, TrayConfig, RunningApp, Provider, AlertConfig } from "../types/usage";
-import { DEFAULT_WIDGET_PREFERENCES, type WidgetLayout, type WidgetPreferences } from "../types/widget";
+import {
+  DEFAULT_WIDGET_OVERLAY_LAYOUT,
+  ALL_WIDGET_THEME_IDS,
+  type WidgetCardId,
+  type WidgetDensity,
+  type WidgetOverlayLayout,
+  WIDGET_PROVIDER_CARD_IDS,
+} from "../types/widget";
+import { normalizeWidgetOverlayLayout, WIDGET_LAYOUT_STORE_KEY } from "../widget/layout";
 
 interface BrowserResult {
   browser: string;
@@ -15,15 +25,73 @@ interface BrowserResult {
 
 type NavId = "account" | "menu-bar" | "provider" | "widget" | "alerts" | "general" | "debug";
 
-const NAV_ITEMS: { id: NavId; label: string; sub: string }[] = [
+type NavItem = { id: NavId; label: string; sub: string };
+
+const isMacPlatform = /mac/i.test(navigator.userAgent);
+const statusDisplayLabel = isMacPlatform ? "Menu Bar" : "Tooltip";
+const statusDisplayTarget = isMacPlatform ? "menu bar" : "tooltip";
+
+
+const WIDGET_THEME_CATALOG: Record<
+  (typeof ALL_WIDGET_THEME_IDS)[number],
+  {
+    name: string;
+    description: string;
+    layoutFamily: string;
+    bestForLaptop?: boolean;
+  }
+> = {
+  "rainmeter-stack": {
+    name: "Rainmeter Stack",
+    description: "Premium glass slabs with strong readability and a familiar desktop-widget silhouette.",
+    layoutFamily: "slab-stack",
+  },
+  "gauge-tower": {
+    name: "Gauge Dials",
+    description: "Circular car-style gauges with arc indicators and centered readouts.",
+    layoutFamily: "dial-cluster",
+    bestForLaptop: true,
+  },
+  "side-rail": {
+    name: "Side Rail",
+    description: "Ultra-narrow telemetry rails that save width and keep labels abbreviated.",
+    layoutFamily: "micro-rail",
+    bestForLaptop: true,
+  },
+  "mono-ticker": {
+    name: "Mono Ticker",
+    description: "Quiet monochrome micro-widget with minimal noise and a tiny footprint.",
+    layoutFamily: "micro-rail",
+    bestForLaptop: true,
+  },
+  "signal-deck": {
+    name: "Signal Deck",
+    description: "Sharper HUD styling with denser information, stronger contrast, and crisp telemetry.",
+    layoutFamily: "telemetry-panel",
+  },
+  "matrix-rain": {
+    name: "Matrix",
+    description: "Phosphor-green digital rain telemetry on a deep black field.",
+    layoutFamily: "matrix-rain",
+    bestForLaptop: true,
+  },
+};
+
+const NAV_ITEMS: NavItem[] = [
   { id: "account",   label: "Account",   sub: "Session key & org" },
-  { id: "menu-bar",  label: "Menu Bar",  sub: "Tray display" },
-  { id: "provider",  label: "Provider",  sub: "Active AI service" },
-  { id: "widget",    label: "Widget",    sub: "Compact dashboards" },
+  { id: "menu-bar",  label: statusDisplayLabel, sub: isMacPlatform ? "Tray display" : "Tray icon details" },
+  { id: "provider",  label: "Provider",  sub: "Focus-based switching" },
+  { id: "widget",    label: "Widget",    sub: "Themes & layout" },
   { id: "alerts",    label: "Alerts",    sub: "Notifications" },
   { id: "general",   label: "General",   sub: "Polling & startup" },
   { id: "debug",     label: "Debug",     sub: "Diagnostics" },
 ];
+
+function normalizePickedMapping(path: string): string {
+  const normalized = path.split(/[/\\]/).pop()?.trim() ?? path.trim();
+  return normalized.replace(/\.app$/i, "").replace(/\.exe$/i, "").replace(/\.lnk$/i, "");
+}
+
 
 export function Settings() {
   const { state, dispatch } = useApp();
@@ -73,7 +141,7 @@ export function Settings() {
   const [runningApps, setRunningApps] = useState<RunningApp[]>([]);
   const [newMappingApp, setNewMappingApp] = useState("");
   const [newMappingProvider, setNewMappingProvider] = useState<Provider>("Claude");
-  const [widgetPreferences, setWidgetPreferences] = useState<WidgetPreferences>(DEFAULT_WIDGET_PREFERENCES);
+  const [widgetLayout, setWidgetLayout] = useState<WidgetOverlayLayout>(DEFAULT_WIDGET_OVERLAY_LAYOUT);
 
   // ── Alert config state ────────────────────────────────────────────────────
   const [alertConfig, setAlertConfig] = useState<AlertConfig>({
@@ -103,26 +171,16 @@ export function Settings() {
         setAlertConfig(cfg);
       } catch {}
     }
-    async function loadWidgetPreferences() {
+    async function loadWidgetLayout() {
       try {
         const store = await load("credentials.json", { autoSave: false, defaults: {} });
-        const saved = await store.get<WidgetLayout>("widget_layout");
-        const prefs = saved?.preferences;
-        if (prefs) {
-          setWidgetPreferences({
-            ...DEFAULT_WIDGET_PREFERENCES,
-            ...prefs,
-            claude: { ...DEFAULT_WIDGET_PREFERENCES.claude, ...prefs.claude },
-            codex: { ...DEFAULT_WIDGET_PREFERENCES.codex, ...prefs.codex },
-            cursor: { ...DEFAULT_WIDGET_PREFERENCES.cursor, ...prefs.cursor },
-          });
-        }
+        setWidgetLayout(normalizeWidgetOverlayLayout(await store.get(WIDGET_LAYOUT_STORE_KEY)));
       } catch {}
     }
     loadTrayFormat();
     loadTrayConfig();
     loadAlertConfig();
-    loadWidgetPreferences();
+    loadWidgetLayout();
   }, []);
 
   const updateTrayFormat = async (updates: Partial<TrayFormat>) => {
@@ -149,25 +207,39 @@ export function Settings() {
     } catch {}
   };
 
-  const updateWidgetPreferences = async (updates: Partial<WidgetPreferences>) => {
-    const next: WidgetPreferences = {
-      ...widgetPreferences,
+  const updateWidgetLayout = async (updates: Partial<WidgetOverlayLayout>) => {
+    const next: WidgetOverlayLayout = {
+      ...widgetLayout,
       ...updates,
-      claude: { ...widgetPreferences.claude, ...updates.claude },
-      codex: { ...widgetPreferences.codex, ...updates.codex },
-      cursor: { ...widgetPreferences.cursor, ...updates.cursor },
     };
-    setWidgetPreferences(next);
+    setWidgetLayout(next);
     try {
       const store = await load("credentials.json", { autoSave: false, defaults: {} });
-      const saved = await store.get<WidgetLayout>("widget_layout");
-      await store.set("widget_layout", {
-        version: saved?.version ?? 1,
-        position: saved?.position ?? { x: 200, y: 100 },
-        preferences: next,
-      } satisfies WidgetLayout);
+      await store.set(WIDGET_LAYOUT_STORE_KEY, next);
       await store.save();
+      await emit("widget-layout-updated", next);
     } catch {}
+  };
+
+  const updateCardVisibility = async (provider: Provider, cardId: WidgetCardId, value: boolean) => {
+    await updateWidgetLayout({
+      cardVisibility: {
+        ...widgetLayout.cardVisibility,
+        [provider]: {
+          ...widgetLayout.cardVisibility[provider],
+          [cardId]: value,
+        },
+      },
+    });
+  };
+
+  const moveCard = async (cardId: WidgetCardId, direction: -1 | 1) => {
+    const currentIndex = widgetLayout.cardOrder.indexOf(cardId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= widgetLayout.cardOrder.length) return;
+    const cardOrder = [...widgetLayout.cardOrder];
+    [cardOrder[currentIndex], cardOrder[nextIndex]] = [cardOrder[nextIndex], cardOrder[currentIndex]];
+    await updateWidgetLayout({ cardOrder });
   };
 
   const loadRunningApps = async () => {
@@ -175,6 +247,28 @@ export function Settings() {
       const apps = await invoke<RunningApp[]>("get_running_apps");
       setRunningApps(apps.sort((a, b) => a.name.localeCompare(b.name)));
     } catch {}
+  };
+
+  const pickMappingTarget = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        title: isMacPlatform ? "Pick an app" : "Pick an app or executable",
+        filters: isMacPlatform
+          ? [{ name: "Applications", extensions: ["app"] }]
+          : [
+              { name: "Executables", extensions: ["exe", "lnk"] },
+              { name: "Applications", extensions: ["exe", "lnk", "app"] },
+            ],
+      });
+
+      if (typeof selected === "string" && selected.trim()) {
+        setNewMappingApp(normalizePickedMapping(selected));
+      }
+    } catch {
+      // User cancellation is non-critical.
+    }
   };
 
   const buildPreview = (): string => {
@@ -365,6 +459,24 @@ export function Settings() {
         </nav>
 
         <div className="settings-content">
+          {!state.hasCredentials && (
+            <div className="settings-card settings-onboarding-card">
+              <p className="card-label">Get Started</p>
+              <p className="form-hint" style={{ marginTop: 4 }}>
+                Connect at least one provider to start seeing tray, tooltip, and widget data.
+                Claude needs a session key and organization. Codex and Cursor can be checked and mapped here too.
+              </p>
+              <div className="settings-onboarding-actions">
+                <button className="btn primary" onClick={() => handleNavClick("account")}>
+                  Open provider connections
+                </button>
+                <button className="btn secondary" onClick={() => handleNavClick("provider")}>
+                  Review app mappings
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Account ───────────────────────────────────────── */}
           {activeTab === "account" && (
             <div className="settings-section">
@@ -619,11 +731,11 @@ export function Settings() {
           {/* ── Menu Bar ──────────────────────────────────────── */}
           {activeTab === "menu-bar" && (
             <div className="settings-section">
-              <p className="section-hint">Preview of what appears in the tray:</p>
+              <p className="section-hint">Preview of what appears in the {statusDisplayTarget}.</p>
               <div className="tray-preview">{buildPreview()}</div>
 
               <div className="settings-card">
-                <p className="card-label">Show in tray</p>
+                <p className="card-label">{isMacPlatform ? "Show in menu bar" : "Show in tooltip"}</p>
                 {[
                   { key: "show_session_pct" as const, label: "Session %" },
                   { key: "show_session_timer" as const, label: "Session countdown" },
@@ -659,32 +771,15 @@ export function Settings() {
                   <option value=" / ">Slash ( / )</option>
                 </select>
               </div>
-
-              <div className="form-group">
-                <label>Percentage display</label>
-                <div className="toggle-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={settings.show_remaining}
-                      onChange={(e) =>
-                        dispatch({
-                          type: "UPDATE_SETTINGS",
-                          settings: { show_remaining: e.target.checked },
-                        })
-                      }
-                    />
-                    Show remaining % instead of used %
-                  </label>
-                </div>
-              </div>
             </div>
           )}
 
           {/* ── Provider ──────────────────────────────────────── */}
           {activeTab === "provider" && (
             <div className="settings-section">
-              <p className="section-hint">Choose which AI service the tray displays.</p>
+              <p className="section-hint">
+                Choose which provider drives the {isMacPlatform ? "menu bar" : "tooltip"} and widget.
+              </p>
 
               <div className="settings-card">
                 <p className="card-label">Mode</p>
@@ -754,10 +849,13 @@ export function Settings() {
 
                   <div className="settings-card" style={{ marginTop: 4 }}>
                     <p className="card-label">App mappings</p>
+                    <p className="form-hint" style={{ marginTop: 0 }}>
+                      Keep one shared list. Bundle IDs, app names, process names, and picked executables all resolve through the same matcher.
+                    </p>
                     {trayConfig.app_mappings.length > 0 ? (
                       trayConfig.app_mappings.map((mapping, idx) => (
                         <div className="mapping-row" key={mapping.app_identifier}>
-                          <span className="mapping-id">{mapping.app_identifier}</span>
+                          <span className="mapping-id" title={mapping.app_identifier}>{mapping.app_identifier}</span>
                           <select
                             className="input mapping-select"
                             value={mapping.provider}
@@ -797,7 +895,7 @@ export function Settings() {
                         onFocus={() => {
                           if (runningApps.length === 0) loadRunningApps();
                         }}
-                        placeholder="Add app name or process (e.g. Cursor.exe)"
+                        placeholder={isMacPlatform ? "Add bundle ID or app name" : "Add app name, process, or executable"}
                         list="widget-running-apps"
                       />
                       <datalist id="widget-running-apps">
@@ -825,6 +923,14 @@ export function Settings() {
                       </select>
                       <button
                         className="icon-btn"
+                        type="button"
+                        title={isMacPlatform ? "Pick an application" : "Pick an executable or shortcut"}
+                        onClick={pickMappingTarget}
+                      >
+                        ...
+                      </button>
+                      <button
+                        className="icon-btn"
                         style={{ fontSize: 18, fontWeight: 600 }}
                         disabled={!newMappingApp}
                         onClick={() => {
@@ -849,90 +955,109 @@ export function Settings() {
 
           {activeTab === "widget" && (
             <div className="settings-section">
-              <p className="section-hint">Compact provider-specific dashboards shown in the floating widget window.</p>
+              <div className="settings-card settings-theme-picker" style={{ padding: "8px" }}>
+                <div className="settings-theme-grid-compact">
+                  {ALL_WIDGET_THEME_IDS.map((themeId) => {
+                    const theme = WIDGET_THEME_CATALOG[themeId];
+                    const selected = widgetLayout.themeId === themeId;
+                    return (
+                      <button
+                        key={themeId}
+                        type="button"
+                        className={`settings-theme-chip${selected ? " selected" : ""}`}
+                        onClick={() => updateWidgetLayout({ themeId })}
+                        aria-pressed={selected}
+                      >
+                        <span className="settings-theme-chip-name">{theme.name}</span>
+                        {theme.bestForLaptop && <span className="theme-badge" style={{ fontSize: "8px", padding: "1px 4px" }}>S</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-              <div className="form-group">
+              <div className="form-group" style={{ marginTop: 12 }}>
                 <label>Density</label>
                 <select
                   className="input"
-                  value={widgetPreferences.density}
-                  onChange={(e) => updateWidgetPreferences({ density: e.target.value as WidgetPreferences["density"] })}
+                  value={widgetLayout.density}
+                  onChange={(e) => updateWidgetLayout({ density: e.target.value as WidgetDensity })}
                 >
+                  <option value="ultra-compact">Ultra compact</option>
                   <option value="compact">Compact</option>
                   <option value="comfortable">Comfortable</option>
                 </select>
+                <p className="form-hint" style={{ marginTop: 8 }}>
+                  Ultra compact is the new smallest footprint. Compact keeps a bit more context. Comfortable preserves the fullest labels and spacing.
+                </p>
               </div>
 
               <div className="settings-card" style={{ marginTop: 10 }}>
-                <p className="card-label">Claude dashboard</p>
-                <div className="toggle-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={widgetPreferences.claude.showExtra ?? false}
-                      onChange={(e) => updateWidgetPreferences({ claude: { showExtra: e.target.checked } })}
-                    />
-                    Show extra usage
-                  </label>
-                </div>
-                <div className="toggle-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={widgetPreferences.claude.showBalance ?? false}
-                      onChange={(e) => updateWidgetPreferences({ claude: { showBalance: e.target.checked } })}
-                    />
-                    Show prepaid balance
-                  </label>
-                </div>
-                <div className="toggle-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={widgetPreferences.claude.showStatus ?? false}
-                      onChange={(e) => updateWidgetPreferences({ claude: { showStatus: e.target.checked } })}
-                    />
-                    Show API status
-                  </label>
+                <p className="card-label">Scale</p>
+                <p className="form-hint" style={{ marginTop: 0 }}>
+                  Shrinks or enlarges the whole widget after density is applied. Useful when you like a theme but want it materially smaller.
+                </p>
+                <input
+                  type="range"
+                  min={50}
+                  max={115}
+                  step={5}
+                  value={Math.round(widgetLayout.scale * 100)}
+                  onChange={(e) => updateWidgetLayout({ scale: Number(e.target.value) / 100 })}
+                  className="slider"
+                />
+                <div className="slider-labels">
+                  <span>50%</span>
+                  <span>{Math.round(widgetLayout.scale * 100)}%</span>
+                  <span>115%</span>
                 </div>
               </div>
 
               <div className="settings-card" style={{ marginTop: 10 }}>
-                <p className="card-label">Codex dashboard</p>
-                <div className="toggle-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={widgetPreferences.codex.showCredits ?? false}
-                      onChange={(e) => updateWidgetPreferences({ codex: { showCredits: e.target.checked } })}
-                    />
-                    Show credits
-                  </label>
-                </div>
-                <div className="toggle-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={widgetPreferences.codex.showStatus ?? false}
-                      onChange={(e) => updateWidgetPreferences({ codex: { showStatus: e.target.checked } })}
-                    />
-                    Show API status
-                  </label>
-                </div>
+                <p className="card-label">Card order</p>
+                <p className="form-hint" style={{ marginTop: 0 }}>
+                  This order is shared across themes and providers. Hidden cards keep their place for future themes.
+                </p>
+                {widgetLayout.cardOrder.map((cardId, index) => (
+                  <div className="mapping-row" key={cardId}>
+                    <span className="mapping-id" style={{ textTransform: "capitalize" }}>{cardId}</span>
+                    <button
+                      className="icon-btn"
+                      disabled={index === 0}
+                      onClick={() => moveCard(cardId, -1)}
+                    >
+                      &#8593;
+                    </button>
+                    <button
+                      className="icon-btn"
+                      disabled={index === widgetLayout.cardOrder.length - 1}
+                      onClick={() => moveCard(cardId, 1)}
+                    >
+                      &#8595;
+                    </button>
+                  </div>
+                ))}
               </div>
 
               <div className="settings-card" style={{ marginTop: 10 }}>
-                <p className="card-label">Cursor dashboard</p>
-                <div className="toggle-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={widgetPreferences.cursor.showStatus ?? false}
-                      onChange={(e) => updateWidgetPreferences({ cursor: { showStatus: e.target.checked } })}
-                    />
-                    Show API status
-                  </label>
-                </div>
+                <p className="card-label">Card visibility</p>
+                {(["Claude", "Codex", "Cursor"] as Provider[]).map((provider) => (
+                  <div key={provider} style={{ marginTop: provider === "Claude" ? 0 : 12, paddingTop: provider === "Claude" ? 0 : 12, borderTop: provider === "Claude" ? "none" : "1px solid var(--border)" }}>
+                    <p className="form-hint" style={{ marginTop: 0, marginBottom: 8 }}>{provider}</p>
+                    {WIDGET_PROVIDER_CARD_IDS[provider].map((cardId) => (
+                      <div className="toggle-row" key={`${provider}-${cardId}`}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={widgetLayout.cardVisibility[provider][cardId]}
+                            onChange={(e) => updateCardVisibility(provider, cardId, e.target.checked)}
+                          />
+                          <span style={{ textTransform: "capitalize" }}>{cardId}</span>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -1034,6 +1159,26 @@ export function Settings() {
           {activeTab === "general" && (
             <div className="settings-section">
               <div className="settings-card">
+                <p className="card-label">Usage display</p>
+                <p className="form-hint">Applies to the main app views that show percentages.</p>
+                <div className="toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={settings.show_remaining}
+                      onChange={(e) =>
+                        dispatch({
+                          type: "UPDATE_SETTINGS",
+                          settings: { show_remaining: e.target.checked },
+                        })
+                      }
+                    />
+                    Show remaining % instead of used %
+                  </label>
+                </div>
+              </div>
+
+              <div className="settings-card" style={{ marginTop: 10 }}>
                 <p className="card-label">Refresh interval</p>
                 <p className="form-hint">{formatPollInterval(settings.poll_interval_secs)}</p>
                 <input

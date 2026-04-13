@@ -2,6 +2,7 @@ mod commands;
 mod credentials_cache;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod focus_monitor;
+mod hook;
 mod http_server;
 mod models;
 mod polling;
@@ -83,6 +84,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
@@ -140,6 +142,10 @@ pub fn run() {
             // Load saved credentials from store file into memory cache
             commands::credentials::load_credentials_from_store(handle, &cache);
 
+            if let Some(widget_window) = app.get_webview_window("widget") {
+                hook::start_global_mouse_stream(widget_window);
+            }
+
             // Load tray format and tray config from store
             load_tray_format_from_store(handle, &tray_format);
             load_tray_config_from_store(handle, &tray_config);
@@ -154,14 +160,14 @@ pub fn run() {
 
             // Build tray icon
             let tray_menu = menu;
-            let tray = TrayIconBuilder::with_id("main-tray")
+            let _tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
                 .title("--")
-                .tooltip("Claude Usage Tracker")
+                .tooltip("UsageWatch")
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
+                .on_menu_event(move |app, event| match event.id.as_ref() {
                     "refresh" => {
                         let _ = app.emit("refresh-requested", ());
                     }

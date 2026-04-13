@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project
 
-Claude Usage Tracker — a macOS menu bar app (Tauri 2.x + React + TypeScript) that monitors Claude AI usage limits by polling internal claude.ai API endpoints using a session cookie.
+UsageWatch — a cross-provider tray app (Tauri 2.x + React + TypeScript) that monitors usage limits across supported AI providers.
 
 ## Build & Run
 

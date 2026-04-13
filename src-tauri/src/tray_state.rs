@@ -22,6 +22,7 @@ pub struct TrayState {
 
 static TRAY_STATE: OnceLock<TrayState> = OnceLock::new();
 static LAST_PROVIDER: OnceLock<Mutex<Option<Provider>>> = OnceLock::new();
+static LAST_MATCHED_PROVIDER: OnceLock<Mutex<Option<Provider>>> = OnceLock::new();
 
 /// Initialize global tray state. Call once during app setup.
 pub fn init(state: TrayState) {
@@ -80,9 +81,28 @@ fn emit_provider_change_if_needed(app: &AppHandle, provider: Provider) {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn resolve_current_provider(config: &TrayConfig) -> Provider {
-    let bid = crate::focus_monitor::current_bundle_id();
-    let name = crate::focus_monitor::current_app_name();
-    config.resolve_provider(bid.as_deref(), name.as_deref())
+    match &config.mode {
+        crate::models::TrayMode::Static(provider) => *provider,
+        crate::models::TrayMode::Dynamic => {
+            let bid = crate::focus_monitor::current_bundle_id();
+            let name = crate::focus_monitor::current_app_name();
+
+            if let Some(provider) = config.match_provider(bid.as_deref(), name.as_deref()) {
+                let state = LAST_MATCHED_PROVIDER.get_or_init(|| Mutex::new(None));
+                if let Ok(mut lock) = state.lock() {
+                    *lock = Some(provider);
+                }
+                provider
+            } else {
+                let state = LAST_MATCHED_PROVIDER.get_or_init(|| Mutex::new(None));
+                state
+                    .lock()
+                    .ok()
+                    .and_then(|lock| *lock)
+                    .unwrap_or(config.default_provider)
+            }
+        }
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -170,7 +190,6 @@ impl TrayDisplayData {
 // ── Rendering ───────────────────────────────────────────────────────────────
 
 fn render_tray(app: &AppHandle, data: &TrayDisplayData, format: &TrayFormat) {
-    use tauri::Manager;
     if app.tray_by_id("main-tray").is_none() {
         return;
     }
@@ -185,7 +204,15 @@ fn render_tray(app: &AppHandle, data: &TrayDisplayData, format: &TrayFormat) {
     {
         let title = build_plain_title(data, format);
         if let Some(tray) = app.tray_by_id("main-tray") {
-            let _ = tray.set_title(Some(&title));
+            #[cfg(target_os = "windows")]
+            {
+                let _ = tray.set_title(Option::<&str>::None);
+                let _ = tray.set_tooltip(Some(&title));
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = tray.set_title(Some(&title));
+            }
         }
     }
 }
@@ -198,9 +225,48 @@ fn build_plain_title(data: &TrayDisplayData, format: &TrayFormat) -> String {
             parts.push(format!("S {}%", pct.round() as i32));
         }
     }
+    if format.show_session_timer {
+        if let Some(ref reset) = data.session_reset {
+            let cd = crate::tray_renderer::format_countdown_public(reset);
+            if !cd.is_empty() {
+                parts.push(format!("S {}", cd));
+            }
+        }
+    }
     if format.show_weekly_pct {
         if let Some(pct) = data.weekly_pct {
             parts.push(format!("W {}%", pct.round() as i32));
+        }
+    }
+    if format.show_weekly_timer {
+        if let Some(ref reset) = data.weekly_reset {
+            let cd = crate::tray_renderer::format_countdown_public(reset);
+            if !cd.is_empty() {
+                parts.push(format!("W {}", cd));
+            }
+        }
+    }
+    if format.show_sonnet_pct {
+        if let Some(pct) = data.sonnet_pct {
+            if pct > 0.0 {
+                parts.push(format!("So {}%", pct.round() as i32));
+            }
+        }
+    }
+    if format.show_opus_pct {
+        if let Some(pct) = data.opus_pct {
+            if pct > 0.0 {
+                parts.push(format!("Op {}%", pct.round() as i32));
+            }
+        }
+    }
+    if format.show_extra_usage && data.extra_usage_enabled {
+        if let (Some(used), Some(limit)) = (data.extra_used, data.extra_limit) {
+            parts.push(format!(
+                "${}/{}",
+                (used / 100.0).round() as i32,
+                (limit / 100.0).round() as i32
+            ));
         }
     }
     parts.join(&format.separator)

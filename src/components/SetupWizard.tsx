@@ -86,16 +86,16 @@ export function SetupWizard() {
   return (
     <div className="setup-wizard">
       <div className="setup-header">
-        <h1>Claude Usage Tracker</h1>
-        <p className="setup-subtitle">Monitor your Claude AI usage limits</p>
+        <h1>UsageWatch</h1>
+        <p className="setup-subtitle">Monitor AI usage limits across supported providers</p>
       </div>
 
       {step === 0 && (
         <div className="setup-step">
           <h2>Welcome</h2>
           <p>
-            This app monitors your Claude usage limits by polling the Claude API.
-            You'll need to be logged into claude.ai in your browser.
+            UsageWatch tracks provider usage and account limits across supported tools.
+            To connect Claude, you'll need to be logged into claude.ai in your browser.
           </p>
           <button className="btn primary" onClick={() => setStep(1)}>
             Get Started

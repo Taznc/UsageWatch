@@ -78,7 +78,7 @@ export interface TrayFormat {
   separator: string;
 }
 
-export type AppView = "popover" | "settings" | "setup";
+export type AppView = "popover" | "settings";
 
 // ── Codex ─────────────────────────────────────────────────────────────────
 

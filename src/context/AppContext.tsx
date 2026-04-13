@@ -42,7 +42,7 @@ const defaultSettings: AppSettings = {
 };
 
 const initialState: AppState = {
-  view: "setup",
+  view: "settings",
   usageData: null,
   lastUpdated: null,
   error: null,
@@ -85,7 +85,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         hasCredentials: action.has,
-        view: action.has ? (state.view === "setup" ? "popover" : state.view) : "setup",
+        view: action.has ? state.view : "settings",
       };
     case "UPDATE_SETTINGS":
       return {
