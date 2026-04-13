@@ -1,7 +1,8 @@
 mod commands;
 mod credentials_cache;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod focus_monitor;
+mod hook;
 mod http_server;
 mod models;
 mod polling;
@@ -24,16 +25,19 @@ use credentials_cache::CredentialsCache;
 /// Browser-like User-Agent to avoid Cloudflare challenges when calling claude.ai APIs.
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 use models::{AlertConfig, TrayConfig, TrayFormat};
-use polling::{CodexUpdate, UsageUpdate};
+use polling::{CodexUpdate, CursorUpdate, UsageUpdate};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let poll_interval = Arc::new(Mutex::new(60u64));
     let poll_interval_clone = poll_interval.clone();
     let poll_interval_clone2 = poll_interval.clone();
+    let poll_interval_clone3 = poll_interval.clone();
 
     let cache = Arc::new(CredentialsCache::new());
     let cache_for_polling = cache.clone();
+    let cache_for_codex_polling = cache.clone();
+    let cache_for_cursor_polling = cache.clone();
 
     let tray_format = Arc::new(Mutex::new(TrayFormat::default()));
 
@@ -49,9 +53,13 @@ pub fn run() {
     let latest_codex: Arc<Mutex<Option<CodexUpdate>>> = Arc::new(Mutex::new(None));
     let latest_codex_for_polling = latest_codex.clone();
 
+    let latest_cursor: Arc<Mutex<Option<CursorUpdate>>> = Arc::new(Mutex::new(None));
+    let latest_cursor_for_polling = latest_cursor.clone();
+
     let tray_format_for_state = tray_format.clone();
     let latest_usage_for_state = latest_usage.clone();
     let latest_codex_for_state = latest_codex.clone();
+    let latest_cursor_for_state = latest_cursor.clone();
 
     tauri::Builder::default()
         .plugin(
@@ -78,6 +86,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
@@ -89,6 +98,9 @@ pub fn run() {
         .manage(tray_format.clone())
         .manage(tray_config.clone())
         .manage(alert_config.clone())
+        .manage(latest_usage.clone())
+        .manage(latest_codex.clone())
+        .manage(latest_cursor.clone())
         .invoke_handler(tauri::generate_handler![
             commands::credentials::save_session_key,
             commands::credentials::get_session_key,
@@ -99,10 +111,25 @@ pub fn run() {
             commands::usage::fetch_usage,
             commands::usage::fetch_usage_raw,
             commands::browser::pull_session_from_browsers,
+            commands::browser::pull_codex_session_from_browsers,
+            commands::browser::debug_claude_desktop_cookies,
             commands::usage::fetch_billing,
             commands::usage::fetch_status,
             commands::codex::check_codex_auth,
+            commands::codex::fetch_codex_usage,
+            commands::codex::test_codex_connection,
+            commands::codex::save_codex_token,
+            commands::codex::get_codex_token,
+            commands::codex::save_codex_browser_cookie,
+            commands::codex::get_codex_browser_cookie,
+            commands::codex::test_codex_browser_cookie,
             commands::cursor::check_cursor_auth,
+            commands::cursor::check_cursor_desktop_auth,
+            commands::cursor::pull_cursor_session_from_browsers,
+            commands::cursor::test_cursor_connection,
+            commands::cursor::save_cursor_token,
+            commands::cursor::get_cursor_token,
+            commands::cursor::fetch_cursor_usage,
             commands::cursor::get_cursor_email,
             commands::cursor::get_cursor_auth_path,
             set_poll_interval,
@@ -113,6 +140,10 @@ pub fn run() {
             get_running_apps,
             get_alert_config,
             set_alert_config,
+            get_latest_usage_update,
+            get_latest_codex_update,
+            get_latest_cursor_update,
+            get_active_provider,
         ])
         .setup(move |app| {
             // Hide dock icon on macOS (agent/accessory app)
@@ -126,10 +157,17 @@ pub fn run() {
             // Load saved credentials from store file into memory cache
             commands::credentials::load_credentials_from_store(handle, &cache);
 
+            if let Some(widget_window) = app.get_webview_window("widget") {
+                hook::start_global_mouse_stream(widget_window);
+            }
+
             // Load tray format and tray config from store
             load_tray_format_from_store(handle, &tray_format);
             load_tray_config_from_store(handle, &tray_config);
             load_alert_config_from_store(handle, &alert_config);
+
+            // Restore widget visibility from previous session
+            restore_widget_visible_from_store(handle);
 
             // Build tray menu
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
@@ -140,14 +178,14 @@ pub fn run() {
 
             // Build tray icon
             let tray_menu = menu;
-            let tray = TrayIconBuilder::with_id("main-tray")
+            let _tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
                 .title("--")
-                .tooltip("Claude Usage Tracker")
+                .tooltip("UsageWatch")
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
+                .on_menu_event(move |app, event| match event.id.as_ref() {
                     "refresh" => {
                         let _ = app.emit("refresh-requested", ());
                     }
@@ -162,9 +200,11 @@ pub fn run() {
                         if let Some(w) = app.get_webview_window("widget") {
                             if w.is_visible().unwrap_or(false) {
                                 let _ = w.hide();
+                                save_widget_visible_to_store(app, false);
                             } else {
                                 let _ = w.show();
                                 let _ = w.set_focus();
+                                save_widget_visible_to_store(app, true);
                             }
                         }
                     }
@@ -246,10 +286,11 @@ pub fn run() {
                 tray_format: tray_format_for_state,
                 latest_usage: latest_usage_for_state,
                 latest_codex: latest_codex_for_state,
+                latest_cursor: latest_cursor_for_state,
             });
 
-            // Start focus observation (macOS KVO on frontmostApplication)
-            #[cfg(target_os = "macos")]
+            // Start focused-app observation for provider-aware tray/widget switching.
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             focus_monitor::start();
 
             // Start Stream Deck HTTP API server
@@ -257,7 +298,8 @@ pub fn run() {
 
             // Start background polling
             polling::start_polling(handle, poll_interval_clone, cache_for_polling, latest_usage_for_polling);
-            polling::start_codex_polling(handle, poll_interval_clone2, latest_codex_for_polling);
+            polling::start_codex_polling(handle, poll_interval_clone2, latest_codex_for_polling, cache_for_codex_polling);
+            polling::start_cursor_polling(handle, poll_interval_clone3, latest_cursor_for_polling, cache_for_cursor_polling);
 
             Ok(())
         })
@@ -355,6 +397,35 @@ fn set_alert_config(
     Ok(())
 }
 
+#[tauri::command]
+fn get_latest_usage_update(
+    state: tauri::State<'_, Arc<Mutex<Option<UsageUpdate>>>>,
+) -> Result<Option<UsageUpdate>, String> {
+    let lock = state.lock().map_err(|e| e.to_string())?;
+    Ok(lock.clone())
+}
+
+#[tauri::command]
+fn get_latest_codex_update(
+    state: tauri::State<'_, Arc<Mutex<Option<CodexUpdate>>>>,
+) -> Result<Option<CodexUpdate>, String> {
+    let lock = state.lock().map_err(|e| e.to_string())?;
+    Ok(lock.clone())
+}
+
+#[tauri::command]
+fn get_latest_cursor_update(
+    state: tauri::State<'_, Arc<Mutex<Option<CursorUpdate>>>>,
+) -> Result<Option<CursorUpdate>, String> {
+    let lock = state.lock().map_err(|e| e.to_string())?;
+    Ok(lock.clone())
+}
+
+#[tauri::command]
+fn get_active_provider() -> Result<models::Provider, String> {
+    crate::tray_state::current_provider().ok_or_else(|| "provider unavailable".to_string())
+}
+
 fn load_tray_format_from_store(app: &tauri::AppHandle, tray_format: &Arc<Mutex<TrayFormat>>) {
     use tauri_plugin_store::StoreExt;
     if let Ok(store) = app.store("credentials.json") {
@@ -420,6 +491,27 @@ fn save_alert_config_to_store(app: &tauri::AppHandle, config: &AlertConfig) {
         if let Ok(val) = serde_json::to_value(config) {
             store.set("alert_config", val);
             let _ = store.save();
+        }
+    }
+}
+
+fn save_widget_visible_to_store(app: &tauri::AppHandle, visible: bool) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        store.set("widget_visible", serde_json::Value::Bool(visible));
+        let _ = store.save();
+    }
+}
+
+fn restore_widget_visible_from_store(app: &tauri::AppHandle) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        if let Some(val) = store.get("widget_visible") {
+            if val.as_bool() == Some(true) {
+                if let Some(w) = app.get_webview_window("widget") {
+                    let _ = w.show();
+                }
+            }
         }
     }
 }

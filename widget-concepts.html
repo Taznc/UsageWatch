@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>UsageWatch Widget Concepts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg0: #05070c;
+    --bg1: #0b1020;
+    --bg2: #111826;
+    --panel: rgba(12, 16, 28, 0.8);
+    --line: rgba(255, 255, 255, 0.08);
+    --text: #f3f7ff;
+    --muted: rgba(227, 235, 255, 0.72);
+    --soft: rgba(227, 235, 255, 0.52);
+    --shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+    --mono: "IBM Plex Mono", monospace;
+    --sans: "IBM Plex Sans", "Space Grotesk", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: var(--sans);
+    color: var(--text);
+    background:
+      radial-gradient(circle at 20% 18%, rgba(89, 123, 255, 0.18), transparent 26%),
+      radial-gradient(circle at 82% 12%, rgba(136, 255, 195, 0.09), transparent 22%),
+      radial-gradient(circle at 50% 86%, rgba(255, 162, 89, 0.08), transparent 20%),
+      linear-gradient(180deg, var(--bg0), var(--bg1) 48%, var(--bg2));
+    overflow-x: hidden;
+  }
+  body::before,
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+  body::before {
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.6), transparent 92%);
+    opacity: 0.32;
+  }
+  body::after {
+    background:
+      radial-gradient(circle at center, transparent 0 55%, rgba(0, 0, 0, 0.18) 100%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%, rgba(255, 255, 255, 0.02));
+  }
+
+  .page { position: relative; z-index: 1; max-width: 1680px; margin: 0 auto; padding: 32px 28px 56px; }
+  .hero {
+    position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr); gap: 24px;
+    padding: 28px; margin-bottom: 22px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 34px;
+    background: linear-gradient(145deg, rgba(19, 24, 38, 0.94), rgba(11, 14, 24, 0.82)); box-shadow: var(--shadow);
+  }
+  .hero::before {
+    content: ""; position: absolute; inset: -1px; pointer-events: none;
+    background: linear-gradient(120deg, rgba(255, 255, 255, 0.18), transparent 26%, transparent 74%, rgba(255, 255, 255, 0.12));
+    mask: linear-gradient(#000, transparent 84%); opacity: 0.7;
+  }
+  .hero-copy, .hero-card { position: relative; z-index: 1; }
+  .hero-kicker, .concept-kicker, .hero-card-title, .chip, .footprint, .label, .note-label { font-family: var(--mono); }
+  .hero-kicker { margin: 0 0 10px; color: rgba(227, 235, 255, 0.55); font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; }
+  .hero-title { margin: 0; font-family: "Space Grotesk", var(--sans); font-size: clamp(34px, 4.2vw, 60px); line-height: 0.95; letter-spacing: -0.05em; }
+  .hero-text { max-width: 740px; margin: 16px 0 0; color: var(--muted); font-size: 15px; line-height: 1.72; }
+  .hero-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04); color: #dfe8ff; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .chip strong { color: #fff; font-weight: 600; }
+  .hero-card {
+    display: grid; gap: 12px; align-content: start; padding: 18px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(7, 10, 18, 0.42); backdrop-filter: blur(18px);
+  }
+  .hero-card-title { margin: 0; color: rgba(227, 235, 255, 0.55); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; }
+  .hero-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .hero-metric {
+    padding: 12px 12px 11px; border-radius: 18px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .hero-metric .label { display: block; margin-bottom: 5px; color: rgba(227, 235, 255, 0.55); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; }
+  .hero-metric .value { display: block; font-family: "Space Grotesk", var(--sans); font-size: 18px; font-weight: 600; letter-spacing: -0.04em; }
+  .hero-metric .sub { display: block; margin-top: 4px; color: var(--soft); font-size: 11px; line-height: 1.45; }
+  .intro {
+    display: flex; justify-content: space-between; gap: 16px; margin: 10px 0 24px; color: rgba(227, 235, 255, 0.62); font-size: 12px; line-height: 1.55;
+  }
+  .intro strong { color: #fff; font-weight: 600; }
+
+  .concept-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+  @media (max-width: 1200px) { .hero, .concept-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 840px) { .annotations { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  .concept {
+    position: relative; overflow: hidden; padding: 22px; border-radius: 30px; border: 1px solid rgba(255, 255, 255, 0.1);
+    background: linear-gradient(180deg, rgba(18, 23, 36, 0.92), rgba(10, 13, 22, 0.86)); box-shadow: var(--shadow);
+  }
+  .concept::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(120deg, rgba(255, 255, 255, 0.12), transparent 16%, transparent 84%, rgba(255, 255, 255, 0.08));
+    mask: linear-gradient(#000, transparent 88%); opacity: 0.75;
+  }
+  .concept-head { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 16px; }
+  .concept-copy { min-width: 0; }
+  .concept-kicker { margin: 0 0 7px; color: rgba(227, 235, 255, 0.55); font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; }
+  .concept-title { margin: 0; font-family: "Space Grotesk", var(--sans); font-size: 26px; line-height: 1; letter-spacing: -0.05em; }
+  .concept-summary { margin: 10px 0 0; max-width: 560px; color: var(--muted); font-size: 14px; line-height: 1.62; }
+  .concept-badge {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: #e8edff;
+  }
+  .stage {
+    position: relative; z-index: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; padding: 18px; border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.08); background: radial-gradient(circle at center, rgba(255, 255, 255, 0.04), transparent 58%), linear-gradient(180deg, rgba(9, 12, 20, 0.96), rgba(9, 12, 20, 0.8));
+  }
+  .stage::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 28px 28px; opacity: 0.34; mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.72), transparent 95%);
+  }
+  .footprint {
+    position: absolute; top: 13px; right: 14px; z-index: 2; padding: 7px 10px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(4, 6, 11, 0.4); color: rgba(227, 235, 255, 0.7); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .widget { position: relative; z-index: 1; }
+  .annotations { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+  .annotation { min-height: 92px; padding: 12px 12px 11px; border-radius: 18px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.035); }
+  .note-label { display: block; margin-bottom: 7px; color: rgba(227, 235, 255, 0.55); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; }
+  .annotation .value { color: #eff4ff; font-size: 13px; line-height: 1.55; }
+
+  .accent-red { --accent: #ff6a76; }
+  .accent-green { --accent: #72e29f; }
+  .accent-blue { --accent: #6fb4ff; }
+  .accent-gold { --accent: #ffd76f; }
+  .accent-violet { --accent: #c39bff; }
+  .accent-cyan { --accent: #65e6ff; }
+  .accent-ice { --accent: #b4c8ff; }
+  .swatch { display: inline-flex; width: 10px; height: 10px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 72%, transparent); flex: 0 0 auto; }
+  .metric-sub { color: var(--soft); font-size: 11px; line-height: 1.45; }
+  .small-screen-note { margin-top: 18px; color: rgba(227, 235, 255, 0.52); font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+
+  .slab-stack { display: grid; gap: 10px; width: 334px; }
+  .slab {
+    display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 13px 14px; border-radius: 21px;
+    border: 1px solid rgba(255, 255, 255, 0.08); background: linear-gradient(180deg, rgba(18, 22, 34, 0.9), rgba(10, 13, 22, 0.84)); backdrop-filter: blur(18px);
+  }
+  .slab .badge {
+    width: 34px; height: 34px; border-radius: 12px; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+    background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.4), transparent 36%), linear-gradient(160deg, color-mix(in srgb, var(--accent) 65%, #000), rgba(255, 255, 255, 0.08));
+  }
+  .slab .main { min-width: 0; }
+  .slab .name { display: block; margin-bottom: 3px; color: rgba(227, 235, 255, 0.6); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; }
+  .slab .title { display: block; color: #f5f8ff; font-size: 15px; font-weight: 600; line-height: 1.1; letter-spacing: -0.03em; }
+  .slab .sub { display: block; margin-top: 4px; color: var(--soft); font-size: 11px; line-height: 1.45; }
+  .slab .value { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; white-space: nowrap; }
+  .slab .value strong { font-family: "Space Grotesk", var(--sans); font-size: 20px; font-weight: 600; letter-spacing: -0.05em; }
+  .slab .value span { color: var(--soft); font-size: 11px; }
+  .slab .meter { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .slab .meter-track { flex: 1; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+  .slab .meter-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 84%, white), var(--accent)); }
+  .slab .meter-meta { color: rgba(227, 235, 255, 0.45); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+
+  .tower { width: 232px; display: grid; gap: 10px; }
+  .tower-row {
+    display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 12px; border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08); background: linear-gradient(180deg, rgba(15, 19, 30, 0.88), rgba(9, 12, 18, 0.82));
+  }
+  .tower-gauge { position: relative; width: 18px; height: 62px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+  .tower-gauge::before {
+    content: ""; position: absolute; inset: auto 3px 3px 3px; height: var(--fill); border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), var(--accent)); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 48%, transparent);
+  }
+  .tower-copy { min-width: 0; }
+  .tower-label { display: block; color: rgba(227, 235, 255, 0.56); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; }
+  .tower-title { display: block; margin-top: 4px; font-family: "Space Grotesk", var(--sans); font-size: 14px; font-weight: 600; letter-spacing: -0.03em; }
+  .tower-sub { display: block; margin-top: 2px; color: var(--soft); font-size: 11px; line-height: 1.4; }
+  .tower-value { text-align: right; }
+  .tower-value strong { display: block; font-family: "Space Grotesk", var(--sans); font-size: 20px; font-weight: 600; letter-spacing: -0.05em; }
+  .tower-value span { color: var(--soft); font-size: 11px; }
+  .rail { width: 154px; display: grid; gap: 8px; padding: 2px 0; }
+  .rail-row {
+    display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 10px 10px 9px; border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(14, 18, 28, 0.88);
+  }
+  .rail-mark { width: 10px; height: 10px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 52%, transparent); }
+  .rail-main { min-width: 0; }
+  .rail-label { display: block; color: rgba(227, 235, 255, 0.52); font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .rail-value { display: block; margin-top: 2px; color: #f4f7ff; font-size: 12px; font-weight: 600; }
+  .rail-line { grid-column: 2 / 4; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+  .rail-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, rgba(255, 255, 255, 0.85), var(--accent)); }
+
+  .ticker {
+    width: 472px; padding: 12px; border-radius: 22px; border: 1px solid rgba(255, 255, 255, 0.1);
+    background: linear-gradient(180deg, rgba(12, 14, 19, 0.88), rgba(7, 9, 14, 0.88)); display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; overflow: hidden;
+  }
+  .ticker-cell { position: relative; min-width: 0; padding: 12px 10px 10px; }
+  .ticker-cell + .ticker-cell::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 1px; background: rgba(255, 255, 255, 0.08); }
+  .ticker-label { display: block; margin-bottom: 6px; color: rgba(227, 235, 255, 0.52); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; }
+  .ticker-value { display: block; color: #f4f7ff; font-family: "Space Grotesk", var(--sans); font-size: 22px; font-weight: 600; line-height: 0.95; letter-spacing: -0.05em; }
+  .ticker-sub { display: block; margin-top: 6px; color: var(--soft); font-size: 10px; line-height: 1.35; }
+
+  .signal {
+    width: 394px; padding: 14px; border-radius: 22px; border: 1px solid rgba(123, 204, 255, 0.22);
+    background: linear-gradient(180deg, rgba(10, 18, 27, 0.96), rgba(6, 11, 17, 0.9)); position: relative; overflow: hidden;
+  }
+  .signal::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 24px 24px; mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 96%); opacity: 0.35;
+  }
+  .signal-top {
+    position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 12px; margin-bottom: 12px;
+    border-bottom: 1px solid rgba(123, 204, 255, 0.12);
+  }
+  .signal-title { font-family: "Space Grotesk", var(--sans); font-size: 18px; font-weight: 700; letter-spacing: -0.04em; }
+  .signal-status {
+    display: inline-flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 999px; border: 1px solid rgba(123, 204, 255, 0.18);
+    background: rgba(123, 204, 255, 0.08); color: #d7f1ff; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .signal-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .signal-card { padding: 12px; border-radius: 16px; border: 1px solid rgba(123, 204, 255, 0.12); background: rgba(255, 255, 255, 0.035); min-height: 84px; }
+  .signal-card .label { display: block; color: rgba(227, 235, 255, 0.56); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; }
+  .signal-card .value { display: block; margin-top: 8px; font-family: "Space Grotesk", var(--sans); font-size: 20px; font-weight: 600; line-height: 1; letter-spacing: -0.04em; }
+  .signal-card .sub { display: block; margin-top: 5px; color: var(--soft); font-size: 11px; line-height: 1.45; }
+  .signal-meter { margin-top: 10px; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+  .signal-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, rgba(255, 255, 255, 0.7), var(--accent)); }
+  .signal-footer { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(123, 204, 255, 0.12); color: var(--soft); font-size: 11px; line-height: 1.45; }
+
+  .orbit {
+    width: 418px; height: 356px; position: relative; border-radius: 26px; border: 1px solid rgba(255, 255, 255, 0.1);
+    background: radial-gradient(circle at 50% 52%, rgba(247, 251, 255, 0.09), rgba(9, 12, 18, 0.08) 24%, rgba(9, 12, 18, 0.86) 52%), linear-gradient(180deg, rgba(12, 16, 28, 0.92), rgba(8, 11, 17, 0.92));
+    overflow: hidden;
+  }
+  .orbit::before, .orbit::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; }
+  .orbit::before { width: 260px; height: 260px; border: 1px solid rgba(191, 211, 255, 0.12); }
+  .orbit::after { width: 176px; height: 176px; border: 1px solid rgba(191, 211, 255, 0.1); }
+  .orbit-core {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 180px; padding: 18px; border-radius: 26px; border: 1px solid rgba(255, 255, 255, 0.12);
+    background: radial-gradient(circle at 30% 18%, rgba(255, 255, 255, 0.2), transparent 28%), linear-gradient(180deg, rgba(27, 35, 54, 0.9), rgba(10, 13, 20, 0.92));
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3); text-align: center;
+  }
+  .orbit-core .label { display: block; margin-bottom: 7px; color: rgba(227, 235, 255, 0.58); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; }
+  .orbit-core .value { display: block; font-family: "Space Grotesk", var(--sans); font-size: 24px; font-weight: 700; letter-spacing: -0.05em; }
+  .orbit-core .sub { display: block; margin-top: 8px; color: var(--soft); font-size: 11px; line-height: 1.45; }
+  .orbit-card {
+    position: absolute; width: 128px; padding: 12px 12px 11px; border-radius: 18px; border: 1px solid rgba(255, 255, 255, 0.11);
+    background: rgba(255, 255, 255, 0.04); backdrop-filter: blur(16px);
+  }
+  .orbit-card .label { display: block; margin-bottom: 6px; color: rgba(227, 235, 255, 0.56); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; }
+  .orbit-card .value { display: block; font-family: "Space Grotesk", var(--sans); font-size: 20px; font-weight: 600; letter-spacing: -0.04em; }
+  .orbit-card .sub { display: block; margin-top: 5px; color: var(--soft); font-size: 10px; line-height: 1.4; }
+  .orbit-card::after {
+    content: ""; position: absolute; inset: auto auto -9px -9px; width: 18px; height: 18px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 70%, white);
+    background: rgba(255, 255, 255, 0.06); box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+  .orbit-a { top: 22px; left: 18px; }
+  .orbit-b { top: 24px; right: 18px; }
+  .orbit-c { bottom: 22px; left: 18px; }
+  .orbit-d { bottom: 24px; right: 18px; }
+  .orbit-topline {
+    position: absolute; left: 22px; right: 22px; top: 20px; display: flex; justify-content: space-between; color: rgba(227, 235, 255, 0.55);
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; pointer-events: none;
+  }
+
+  .rainmeter-stack .widget { width: 334px; }
+  .gauge-tower .widget { width: 232px; }
+  .side-rail .widget { width: 154px; }
+  .mono-ticker .widget { width: 472px; }
+  .signal-deck .widget { width: 394px; }
+  .glass-orbit .widget { width: 418px; height: 356px; }
+  .rainmeter-stack .stage { min-height: 620px; }
+  .gauge-tower .stage { min-height: 606px; }
+  .side-rail .stage { min-height: 600px; }
+  .mono-ticker .stage { min-height: 160px; }
+  .signal-deck .stage { min-height: 352px; }
+  .glass-orbit .stage { min-height: 392px; }
+</style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="hero-kicker">UsageWatch review surface</p>
+        <h1 class="hero-title">Six widget concepts, same data, real footprints.</h1>
+        <p class="hero-text">
+          Each mockup below uses the same UsageWatch sample set and is drawn at its intended size, so the review is about silhouette,
+          density, and hierarchy rather than oversized artboards. The goal is to choose six genuinely distinct widgets, not six color variants
+          of the same stack.
+        </p>
+        <div class="hero-chips">
+          <span class="chip"><strong>Dataset</strong> Session, weekly, extra, balance, Codex, status</span>
+          <span class="chip"><strong>Scale</strong> 1x footprint</span>
+          <span class="chip"><strong>Focus</strong> laptop-friendly options</span>
+        </div>
+      </div>
+      <aside class="hero-card">
+        <p class="hero-card-title">Shared sample data</p>
+        <div class="hero-grid">
+          <div class="hero-metric"><span class="label">Session</span><span class="value">91%</span><span class="sub">Resets in 1h 18m</span></div>
+          <div class="hero-metric"><span class="label">Weekly</span><span class="value">56%</span><span class="sub">Resets in 3d 15h</span></div>
+          <div class="hero-metric"><span class="label">Extra</span><span class="value">29%</span><span class="sub">730 of 2500 used</span></div>
+          <div class="hero-metric"><span class="label">Balance</span><span class="value">$184.20</span><span class="sub">Prepaid credit</span></div>
+          <div class="hero-metric"><span class="label">Codex</span><span class="value">64%</span><span class="sub">24.50 credits</span></div>
+          <div class="hero-metric"><span class="label">Status</span><span class="value">OK</span><span class="sub">All systems operational</span></div>
+        </div>
+      </aside>
+    </section>
+
+    <div class="intro">
+      <div><strong>Review rule:</strong> every concept uses the same sample values and the same ordering of information.</div>
+      <div>Annotation blocks call out footprint, intent, density behavior, and what gets suppressed in compact mode.</div>
+    </div>
+
+    <section class="concept-grid">
+      <article class="concept rainmeter-stack">
+        <div class="concept-head">
+          <div class="concept-copy">
+            <p class="concept-kicker">01 / rainmeter-stack</p>
+            <h2 class="concept-title">Premium glass slabs.</h2>
+            <p class="concept-summary">The flagship stack. It keeps the classic Rainmeter vertical rhythm, but tightens the material treatment and icon/value hierarchy so it feels intentional instead of generic.</p>
+          </div>
+          <div class="concept-badge"><span class="swatch accent-red"></span>Baseline premium</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">332 x 620 px</div>
+          <div class="widget slab-stack">
+            <div class="slab accent-red">
+              <div class="badge">S</div>
+              <div class="main"><span class="name">Session</span><span class="title">Active usage</span><span class="sub">Primary session window with full time remaining.</span></div>
+              <div class="value"><strong>91%</strong><span>Resets in 1h 18m</span></div>
+              <div class="meter"><div class="meter-track"><div class="meter-fill" style="width:91%"></div></div><div class="meter-meta">High</div></div>
+            </div>
+            <div class="slab accent-green">
+              <div class="badge">W</div>
+              <div class="main"><span class="name">Weekly</span><span class="title">Week-to-date</span><span class="sub">Shows weekly quota pressure and reset window.</span></div>
+              <div class="value"><strong>56%</strong><span>Resets in 3d 15h</span></div>
+              <div class="meter"><div class="meter-track"><div class="meter-fill" style="width:56%"></div></div><div class="meter-meta">Stable</div></div>
+            </div>
+            <div class="slab accent-blue">
+              <div class="badge">E</div>
+              <div class="main"><span class="name">Extra</span><span class="title">Additional usage</span><span class="sub">Tracks bundled overage usage without clutter.</span></div>
+              <div class="value"><strong>29%</strong><span>730 of 2500 used</span></div>
+              <div class="meter"><div class="meter-track"><div class="meter-fill" style="width:29%"></div></div><div class="meter-meta">Comfortable</div></div>
+            </div>
+            <div class="slab accent-gold">
+              <div class="badge">$</div>
+              <div class="main"><span class="name">Balance</span><span class="title">Prepaid credit</span><span class="sub">Keeps the money metric readable at a glance.</span></div>
+              <div class="value"><strong>$184.20</strong><span>Credit balance</span></div>
+              <div class="meter"><div class="meter-track"><div class="meter-fill" style="width:68%"></div></div><div class="meter-meta">Healthy</div></div>
+            </div>
+            <div class="slab accent-violet">
+              <div class="badge">C</div>
+              <div class="main"><span class="name">Codex</span><span class="title">Session credits</span><span class="sub">Shows the current Codex plan window and balance.</span></div>
+              <div class="value"><strong>64%</strong><span>24.50 credits</span></div>
+              <div class="meter"><div class="meter-track"><div class="meter-fill" style="width:64%"></div></div><div class="meter-meta">Moderate</div></div>
+            </div>
+            <div class="slab accent-cyan">
+              <div class="badge">OK</div>
+              <div class="main"><span class="name">Status</span><span class="title">All systems operational</span><span class="sub">Quiet confirmation that everything is healthy.</span></div>
+              <div class="value"><strong>Live</strong><span>Last poll just now</span></div>
+              <div class="meter"><div class="meter-track"><div class="meter-fill" style="width:100%"></div></div><div class="meter-meta">Nominal</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="annotations">
+          <div class="annotation"><span class="note-label">Footprint</span><div class="value">332 x 620 px. Tall enough for the full stack, but still intended for one edge of a laptop display.</div></div>
+          <div class="annotation"><span class="note-label">Intended use</span><div class="value">Premium always-open widget with the strongest readability and the clearest production baseline.</div></div>
+          <div class="annotation"><span class="note-label">Density behavior</span><div class="value">Comfortable keeps all text; compact tightens vertical spacing and shrinks the secondary line lengths.</div></div>
+          <div class="annotation"><span class="note-label">Suppressed in compact mode</span><div class="value">Long reset copy and status prose collapse to shorter summaries while the slab rhythm stays intact.</div></div>
+        </div>
+      </article>
+
+      <article class="concept gauge-tower">
+        <div class="concept-head">
+          <div class="concept-copy">
+            <p class="concept-kicker">02 / gauge-tower</p>
+            <h2 class="concept-title">Vertically stacked gauges.</h2>
+            <p class="concept-summary">A small-footprint tower for users who want the entire widget to tuck into a narrow side area without losing the full six-stat set.</p>
+          </div>
+          <div class="concept-badge"><span class="swatch accent-green"></span>Laptop-friendly</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">232 x 606 px</div>
+          <div class="widget tower">
+            <div class="tower-row accent-red" style="--fill:91%;"><div class="tower-gauge"></div><div class="tower-copy"><span class="tower-label">Session</span><span class="tower-title">Active usage</span><span class="tower-sub">Readable first, no decorative waste.</span></div><div class="tower-value"><strong>91%</strong><span>1h 18m</span></div></div>
+            <div class="tower-row accent-green" style="--fill:56%;"><div class="tower-gauge"></div><div class="tower-copy"><span class="tower-label">Weekly</span><span class="tower-title">Week-to-date</span><span class="tower-sub">The main column stays compact and ordered.</span></div><div class="tower-value"><strong>56%</strong><span>3d 15h</span></div></div>
+            <div class="tower-row accent-blue" style="--fill:29%;"><div class="tower-gauge"></div><div class="tower-copy"><span class="tower-label">Extra</span><span class="tower-title">Additional usage</span><span class="tower-sub">Makes the overage metric fit the slim column.</span></div><div class="tower-value"><strong>29%</strong><span>730 / 2500</span></div></div>
+            <div class="tower-row accent-gold" style="--fill:68%;"><div class="tower-gauge"></div><div class="tower-copy"><span class="tower-label">Balance</span><span class="tower-title">Prepaid credit</span><span class="tower-sub">A money metric that still feels calm and neat.</span></div><div class="tower-value"><strong>$184.20</strong><span>Credit</span></div></div>
+            <div class="tower-row accent-violet" style="--fill:64%;"><div class="tower-gauge"></div><div class="tower-copy"><span class="tower-label">Codex</span><span class="tower-title">Session credits</span><span class="tower-sub">Minimal captioning; value carries the weight.</span></div><div class="tower-value"><strong>64%</strong><span>24.50</span></div></div>
+            <div class="tower-row accent-cyan" style="--fill:100%;"><div class="tower-gauge"></div><div class="tower-copy"><span class="tower-label">Status</span><span class="tower-title">All systems operational</span><span class="tower-sub">Small but complete signal state.</span></div><div class="tower-value"><strong>OK</strong><span>Live</span></div></div>
+          </div>
+        </div>
+        <div class="annotations">
+          <div class="annotation"><span class="note-label">Footprint</span><div class="value">232 x 606 px. Narrow enough to live on a laptop edge without crowding the desktop.</div></div>
+          <div class="annotation"><span class="note-label">Intended use</span><div class="value">The best option when the widget needs to stay open but should not dominate the screen.</div></div>
+          <div class="annotation"><span class="note-label">Density behavior</span><div class="value">Compact compresses the body copy and keeps the center-aligned values as the primary read.</div></div>
+          <div class="annotation"><span class="note-label">Suppressed in compact mode</span><div class="value">Secondary status notes shorten aggressively, and decorative phrasing gets dropped first.</div></div>
+        </div>
+      </article>
+
+      <article class="concept side-rail">
+        <div class="concept-head">
+          <div class="concept-copy">
+            <p class="concept-kicker">03 / side-rail</p>
+            <h2 class="concept-title">Ultra-narrow telemetry rail.</h2>
+            <p class="concept-summary">The smallest width of the set. It trades visual ornament for a slim vertical rail that can sit almost flush against a screen edge.</p>
+          </div>
+          <div class="concept-badge"><span class="swatch accent-cyan"></span>Minimum width</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">154 x 600 px</div>
+          <div class="widget rail">
+            <div class="rail-row accent-red" style="--fill:91%;"><div class="rail-mark"></div><div class="rail-main"><span class="rail-label">S</span><span class="rail-value">91%</span></div><span class="metric-sub">1h</span><div class="rail-line"><div class="rail-fill" style="width:91%"></div></div></div>
+            <div class="rail-row accent-green" style="--fill:56%;"><div class="rail-mark"></div><div class="rail-main"><span class="rail-label">W</span><span class="rail-value">56%</span></div><span class="metric-sub">3d</span><div class="rail-line"><div class="rail-fill" style="width:56%"></div></div></div>
+            <div class="rail-row accent-blue" style="--fill:29%;"><div class="rail-mark"></div><div class="rail-main"><span class="rail-label">E</span><span class="rail-value">29%</span></div><span class="metric-sub">730</span><div class="rail-line"><div class="rail-fill" style="width:29%"></div></div></div>
+            <div class="rail-row accent-gold" style="--fill:68%;"><div class="rail-mark"></div><div class="rail-main"><span class="rail-label">$</span><span class="rail-value">$184</span></div><span class="metric-sub">bal</span><div class="rail-line"><div class="rail-fill" style="width:68%"></div></div></div>
+            <div class="rail-row accent-violet" style="--fill:64%;"><div class="rail-mark"></div><div class="rail-main"><span class="rail-label">C</span><span class="rail-value">64%</span></div><span class="metric-sub">24.5</span><div class="rail-line"><div class="rail-fill" style="width:64%"></div></div></div>
+            <div class="rail-row accent-cyan" style="--fill:100%;"><div class="rail-mark"></div><div class="rail-main"><span class="rail-label">OK</span><span class="rail-value">Live</span></div><span class="metric-sub">sys</span><div class="rail-line"><div class="rail-fill" style="width:100%"></div></div></div>
+          </div>
+        </div>
+        <div class="annotations">
+          <div class="annotation"><span class="note-label">Footprint</span><div class="value">154 x 600 px. Built to disappear into the edge of the screen while staying readable.</div></div>
+          <div class="annotation"><span class="note-label">Intended use</span><div class="value">Best for side-of-display placement where width matters more than anything else.</div></div>
+          <div class="annotation"><span class="note-label">Density behavior</span><div class="value">Compact is the default shape: short labels, short values, and no unnecessary prose.</div></div>
+          <div class="annotation"><span class="note-label">Suppressed in compact mode</span><div class="value">Long labels, full reset copy, and any secondary sentence-level text are intentionally removed.</div></div>
+        </div>
+      </article>
+
+      <article class="concept mono-ticker">
+        <div class="concept-head">
+          <div class="concept-copy">
+            <p class="concept-kicker">04 / mono-ticker</p>
+            <h2 class="concept-title">Quiet horizontal ticker.</h2>
+            <p class="concept-summary">The smallest height in the set. It reads like a restrained information strip, which makes it ideal for a laptop dock edge or top bar.</p>
+          </div>
+          <div class="concept-badge"><span class="swatch accent-ice"></span>Lowest height</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">472 x 138 px</div>
+          <div class="widget ticker">
+            <div class="ticker-cell accent-red"><span class="ticker-label">Session</span><span class="ticker-value">91%</span><span class="ticker-sub">1h 18m left</span></div>
+            <div class="ticker-cell accent-green"><span class="ticker-label">Weekly</span><span class="ticker-value">56%</span><span class="ticker-sub">3d 15h left</span></div>
+            <div class="ticker-cell accent-blue"><span class="ticker-label">Extra</span><span class="ticker-value">29%</span><span class="ticker-sub">730 used</span></div>
+            <div class="ticker-cell accent-gold"><span class="ticker-label">Balance</span><span class="ticker-value">$184</span><span class="ticker-sub">credits</span></div>
+            <div class="ticker-cell accent-violet"><span class="ticker-label">Codex</span><span class="ticker-value">64%</span><span class="ticker-sub">24.50 credits</span></div>
+            <div class="ticker-cell accent-cyan"><span class="ticker-label">Status</span><span class="ticker-value">OK</span><span class="ticker-sub">live</span></div>
+          </div>
+        </div>
+        <div class="annotations">
+          <div class="annotation"><span class="note-label">Footprint</span><div class="value">472 x 138 px. Wide, low, and quiet so it can sit under other UI without stealing space.</div></div>
+          <div class="annotation"><span class="note-label">Intended use</span><div class="value">A low-visual-noise strip for people who want a constant glanceable status row.</div></div>
+          <div class="annotation"><span class="note-label">Density behavior</span><div class="value">Compact removes the subline completely and leans on the value row as the primary signal.</div></div>
+          <div class="annotation"><span class="note-label">Suppressed in compact mode</span><div class="value">All extra sentence-length context is dropped, leaving only labels, values, and tiny separators.</div></div>
+        </div>
+      </article>
+
+      <article class="concept signal-deck">
+        <div class="concept-head">
+          <div class="concept-copy">
+            <p class="concept-kicker">05 / signal-deck</p>
+            <h2 class="concept-title">Dense telemetry panel.</h2>
+            <p class="concept-summary">A sharper, more technical take with stronger grid structure and a cockpit-like information hierarchy.</p>
+          </div>
+          <div class="concept-badge"><span class="swatch accent-cyan"></span>Telemetry heavy</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">394 x 352 px</div>
+          <div class="widget signal">
+            <div class="signal-top"><div><div class="signal-title">Signal Deck</div><div class="metric-sub">Sharper geometry and denser detail for telemetry-first users.</div></div><div class="signal-status"><span class="swatch accent-cyan"></span>All clear</div></div>
+            <div class="signal-grid">
+              <div class="signal-card accent-red"><span class="label">Session</span><span class="value">91%</span><span class="sub">Resets in 1h 18m</span><div class="signal-meter"><div class="signal-fill" style="width:91%"></div></div></div>
+              <div class="signal-card accent-green"><span class="label">Weekly</span><span class="value">56%</span><span class="sub">Resets in 3d 15h</span><div class="signal-meter"><div class="signal-fill" style="width:56%"></div></div></div>
+              <div class="signal-card accent-blue"><span class="label">Extra</span><span class="value">29%</span><span class="sub">730 of 2500 used</span><div class="signal-meter"><div class="signal-fill" style="width:29%"></div></div></div>
+              <div class="signal-card accent-gold"><span class="label">Balance</span><span class="value">$184.20</span><span class="sub">Prepaid credit</span><div class="signal-meter"><div class="signal-fill" style="width:68%"></div></div></div>
+              <div class="signal-card accent-violet"><span class="label">Codex</span><span class="value">64%</span><span class="sub">24.50 credits</span><div class="signal-meter"><div class="signal-fill" style="width:64%"></div></div></div>
+              <div class="signal-card accent-cyan"><span class="label">Status</span><span class="value">OK</span><span class="sub">All systems operational</span><div class="signal-meter"><div class="signal-fill" style="width:100%"></div></div></div>
+            </div>
+            <div class="signal-footer"><span>Compact mode trims the helper text while keeping the full panel structure intact.</span><span>Live status remains visible at a glance.</span></div>
+          </div>
+        </div>
+        <div class="annotations">
+          <div class="annotation"><span class="note-label">Footprint</span><div class="value">394 x 352 px. A medium panel that feels denser without becoming visually loud.</div></div>
+          <div class="annotation"><span class="note-label">Intended use</span><div class="value">For users who want more telemetry density and clearer engineering-style structure.</div></div>
+          <div class="annotation"><span class="note-label">Density behavior</span><div class="value">Compact keeps the grid but removes some narrative text and tightens the card padding.</div></div>
+          <div class="annotation"><span class="note-label">Suppressed in compact mode</span><div class="value">Decorative language and footer copy disappear first; the card grid stays fully legible.</div></div>
+        </div>
+      </article>
+
+      <article class="concept glass-orbit">
+        <div class="concept-head">
+          <div class="concept-copy">
+            <p class="concept-kicker">06 / glass-orbit</p>
+            <h2 class="concept-title">Expressive orbital shell.</h2>
+            <p class="concept-summary">The most distinctive silhouette in the set. It keeps the data premium and readable, but moves away from the conventional stack into a more editorial, showcase-style composition.</p>
+          </div>
+          <div class="concept-badge"><span class="swatch accent-violet"></span>Showcase premium</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">418 x 356 px</div>
+          <div class="widget orbit">
+            <div class="orbit-topline"><span>UsageWatch</span><span>glass orbit</span></div>
+            <div class="orbit-card orbit-a accent-red"><span class="label">Session</span><span class="value">91%</span><span class="sub">1h 18m left</span></div>
+            <div class="orbit-card orbit-b accent-green"><span class="label">Weekly</span><span class="value">56%</span><span class="sub">3d 15h left</span></div>
+            <div class="orbit-card orbit-c accent-blue"><span class="label">Extra</span><span class="value">29%</span><span class="sub">730 of 2500 used</span></div>
+            <div class="orbit-card orbit-d accent-violet"><span class="label">Codex</span><span class="value">64%</span><span class="sub">24.50 credits</span></div>
+            <div class="orbit-core"><span class="label">Balance</span><span class="value">$184.20</span><span class="sub">Prepaid credit</span></div>
+            <div class="orbit-card accent-cyan" style="left:50%; bottom:16px; transform:translateX(-50%); width:164px;"><span class="label">Status</span><span class="value">OK</span><span class="sub">All systems operational</span></div>
+          </div>
+        </div>
+        <div class="annotations">
+          <div class="annotation"><span class="note-label">Footprint</span><div class="value">418 x 356 px. A premium showcase widget with more personality than the other five.</div></div>
+          <div class="annotation"><span class="note-label">Intended use</span><div class="value">Best when the widget itself should feel like a designed object, not just a status panel.</div></div>
+          <div class="annotation"><span class="note-label">Density behavior</span><div class="value">Compact reins in the orbit rings and shortens the captions, but keeps the shell unique.</div></div>
+          <div class="annotation"><span class="note-label">Suppressed in compact mode</span><div class="value">Verbose orbit labeling and extra framing details are reduced to preserve the premium shape.</div></div>
+        </div>
+      </article>
+    </section>
+
+    <div class="small-screen-note">All six concepts are sized to their real intended footprint. The page should be reviewed at 100 percent zoom.</div>
+  </main>
+</body>
+</html>

@@ -10,17 +10,18 @@ import { useApp } from "../context/AppContext";
 import { UsageBar } from "./UsageBar";
 import { HistoryChart } from "./HistoryChart";
 import { StatusIndicator } from "./StatusIndicator";
-import { formatTimestamp } from "../utils/format";
+import { formatCurrencyFromCents, formatTimestamp } from "../utils/format";
 import type { BillingInfo } from "../types/usage";
 
 export function Popover() {
   const { usageData, lastUpdated, error, isLoading, isOffline, refresh } = useUsageData();
   const { state, dispatch } = useApp();
   const { show_remaining } = state.settings;
-  const { codexData, codexError, codexLastUpdated } = state;
-  const [activeTab, setActiveTab] = useState<'claude' | 'codex'>('claude');
+  const { codexData, codexError, codexLastUpdated, cursorData, cursorError, cursorLastUpdated } = state;
+  const [activeTab, setActiveTab] = useState<'claude' | 'codex' | 'cursor'>('claude');
   const [showHistory, setShowHistory] = useState(false);
   const hasCodex = !!(codexData || codexError);
+  const hasCursor = !!(cursorData || cursorError);
   const [billing, setBilling] = useState<BillingInfo | null>(null);
   const [pinned, setPinned] = useState(true);
 
@@ -78,6 +79,13 @@ export function Popover() {
     usageData?.seven_day?.utilization ?? null
   );
 
+  const cursorUsageTone =
+    cursorData && cursorData.spend_pct >= 90
+      ? "danger"
+      : cursorData && cursorData.spend_pct >= 75
+        ? "warning"
+        : "healthy";
+
   // Monitor thresholds and fire native notifications
   useAlertEngine(usageData, burnRate);
 
@@ -129,8 +137,8 @@ export function Popover() {
         <StatusIndicator />
       </div>
 
-      {/* Tab bar — only rendered when Codex data is available */}
-      {hasCodex && (
+      {/* Tab bar — rendered when any secondary provider has data */}
+      {(hasCodex || hasCursor) && (
         <div className="tab-bar">
           <button
             className={`tab-btn ${activeTab === 'claude' ? 'active' : ''}`}
@@ -138,12 +146,22 @@ export function Popover() {
           >
             Claude
           </button>
-          <button
-            className={`tab-btn ${activeTab === 'codex' ? 'active' : ''}`}
-            onClick={() => setActiveTab('codex')}
-          >
-            Codex
-          </button>
+          {hasCodex && (
+            <button
+              className={`tab-btn ${activeTab === 'codex' ? 'active' : ''}`}
+              onClick={() => setActiveTab('codex')}
+            >
+              Codex
+            </button>
+          )}
+          {hasCursor && (
+            <button
+              className={`tab-btn ${activeTab === 'cursor' ? 'active' : ''}`}
+              onClick={() => setActiveTab('cursor')}
+            >
+              Cursor
+            </button>
+          )}
         </div>
       )}
 
@@ -394,6 +412,83 @@ export function Popover() {
           {codexLastUpdated && (
             <div className="popover-footer">
               Last updated: {formatTimestamp(codexLastUpdated)}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Cursor tab ──────────────────────────────────────────────────────── */}
+      {activeTab === 'cursor' && (
+        <>
+          <div className="usage-list">
+            {cursorData ? (
+              <div className="usage-section">
+                <h2 className="section-heading">
+                  Spending
+                  {cursorData.plan_name && (
+                    <span className="section-heading-meta section-heading-plan">
+                      {cursorData.plan_name}
+                    </span>
+                  )}
+                  {cursorData.email && (
+                    <span className="section-heading-meta section-heading-email">
+                      {cursorData.email}
+                    </span>
+                  )}
+                </h2>
+
+                <div className="extra-usage cursor-usage-card">
+                  <div className="cursor-usage-topline">
+                    <div className="cursor-usage-amounts">
+                      <span className="cursor-usage-amount">
+                        {formatCurrencyFromCents(cursorData.current_spend_cents)}
+                      </span>
+                      <span className="cursor-usage-divider">of</span>
+                      <span className="cursor-usage-limit">
+                        {formatCurrencyFromCents(cursorData.hard_limit_cents)}
+                      </span>
+                    </div>
+                    <span className={`cursor-usage-badge ${cursorUsageTone}`}>
+                      {cursorData.spend_pct.toFixed(0)}% used
+                    </span>
+                  </div>
+                  <div className="usage-bar-track">
+                    <div
+                      className="usage-bar-fill"
+                      style={{
+                        width: `${Math.min(cursorData.spend_pct, 100)}%`,
+                        backgroundColor: cursorData.spend_pct >= 90 ? 'var(--red)' : cursorData.spend_pct >= 75 ? 'var(--orange)' : 'var(--green)',
+                      }}
+                    />
+                  </div>
+                  <div className="extra-usage-details">
+                    <span>{formatCurrencyFromCents(cursorData.current_spend_cents)} spent</span>
+                    <span>{formatCurrencyFromCents(cursorData.hard_limit_cents)} limit</span>
+                  </div>
+                </div>
+
+                {cursorData.cycle_resets_at && (
+                  <div className="usage-bar-footer" style={{ marginTop: '8px' }}>
+                    <span className="usage-bar-reset">
+                      Resets {new Date(cursorData.cycle_resets_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : cursorError ? (
+              <div className="loading-state">
+                <p style={{ fontSize: '12px' }}>{cursorError}</p>
+              </div>
+            ) : (
+              <div className="loading-state">
+                <p>Waiting for data...</p>
+              </div>
+            )}
+          </div>
+
+          {cursorLastUpdated && (
+            <div className="popover-footer">
+              Last updated: {formatTimestamp(cursorLastUpdated)}
             </div>
           )}
         </>

@@ -78,7 +78,7 @@ export interface TrayFormat {
   separator: string;
 }
 
-export type AppView = "popover" | "settings" | "setup";
+export type AppView = "popover" | "settings";
 
 // ── Codex ─────────────────────────────────────────────────────────────────
 
@@ -111,6 +111,24 @@ export interface CodexUpdate {
   timestamp: string;
 }
 
+// ── Cursor ───────────────────────────────────────────────────────────────────
+
+export interface CursorUsageData {
+  plan_name: string | null;
+  current_spend_cents: number;
+  hard_limit_cents: number;
+  spend_pct: number;
+  cycle_resets_at: string | null;
+  email: string | null;
+  raw_usage: unknown;
+}
+
+export interface CursorUpdate {
+  data: CursorUsageData | null;
+  error: string | null;
+  timestamp: string;
+}
+
 // ── Alert configuration ─────────────────────────────────────────────────────
 
 export interface AlertConfig {
@@ -130,7 +148,24 @@ export interface AppMapping {
   provider: Provider;
 }
 
-export type TrayMode = "Dynamic" | { Static: Provider };
+export type TrayField =
+  | "SessionPct"
+  | "SessionTimer"
+  | "WeeklyPct"
+  | "WeeklyTimer"
+  | "SonnetPct"
+  | "OpusPct"
+  | "ExtraUsage";
+
+export type TraySegmentKind =
+  | { type: "ProviderData"; provider: Provider; field: TrayField }
+  | { type: "CustomText"; text: string };
+
+export interface TraySegmentDef {
+  kind: TraySegmentKind;
+}
+
+export type TrayMode = "Dynamic" | { Static: Provider } | { Multi: TraySegmentDef[] };
 
 export interface TrayConfig {
   mode: TrayMode;

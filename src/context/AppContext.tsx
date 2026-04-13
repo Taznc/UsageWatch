@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, ReactNode } from "react";
-import type { UsageData, AppSettings, AppView, CodexUsageData } from "../types/usage";
+import type { UsageData, AppSettings, AppView, CodexUsageData, CursorUsageData } from "../types/usage";
 
 interface AppState {
   view: AppView;
@@ -13,6 +13,9 @@ interface AppState {
   codexData: CodexUsageData | null;
   codexError: string | null;
   codexLastUpdated: string | null;
+  cursorData: CursorUsageData | null;
+  cursorError: string | null;
+  cursorLastUpdated: string | null;
 }
 
 type AppAction =
@@ -24,7 +27,9 @@ type AppAction =
   | { type: "SET_HAS_CREDENTIALS"; has: boolean }
   | { type: "UPDATE_SETTINGS"; settings: Partial<AppSettings> }
   | { type: 'SET_CODEX'; data: CodexUsageData; timestamp: string }
-  | { type: 'SET_CODEX_ERROR'; error: string; timestamp: string };
+  | { type: 'SET_CODEX_ERROR'; error: string; timestamp: string }
+  | { type: 'SET_CURSOR'; data: CursorUsageData; timestamp: string }
+  | { type: 'SET_CURSOR_ERROR'; error: string; timestamp: string };
 
 const defaultSettings: AppSettings = {
   poll_interval_secs: 60,
@@ -37,7 +42,7 @@ const defaultSettings: AppSettings = {
 };
 
 const initialState: AppState = {
-  view: "setup",
+  view: "settings",
   usageData: null,
   lastUpdated: null,
   error: null,
@@ -48,6 +53,9 @@ const initialState: AppState = {
   codexData: null,
   codexError: null,
   codexLastUpdated: null,
+  cursorData: null,
+  cursorError: null,
+  cursorLastUpdated: null,
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -77,7 +85,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         hasCredentials: action.has,
-        view: action.has ? (state.view === "setup" ? "popover" : state.view) : "setup",
+        view: action.has ? state.view : "settings",
       };
     case "UPDATE_SETTINGS":
       return {
@@ -88,6 +96,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, codexData: action.data, codexError: null, codexLastUpdated: action.timestamp };
     case 'SET_CODEX_ERROR':
       return { ...state, codexError: action.error, codexLastUpdated: action.timestamp };
+    case 'SET_CURSOR':
+      return { ...state, cursorData: action.data, cursorError: null, cursorLastUpdated: action.timestamp };
+    case 'SET_CURSOR_ERROR':
+      return { ...state, cursorError: action.error, cursorLastUpdated: action.timestamp };
     default:
       return state;
   }

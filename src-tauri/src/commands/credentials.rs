@@ -4,7 +4,7 @@ use tauri_plugin_store::StoreExt;
 use crate::credentials_cache::CredentialsCache;
 use crate::models::Organization;
 
-fn save_to_store(app: &AppHandle, key: &str, value: &str) -> Result<(), String> {
+pub(crate) fn save_to_store(app: &AppHandle, key: &str, value: &str) -> Result<(), String> {
     let store = app
         .store("credentials.json")
         .map_err(|e| format!("Store error: {}", e))?;
@@ -12,6 +12,11 @@ fn save_to_store(app: &AppHandle, key: &str, value: &str) -> Result<(), String> 
     store.save().map_err(|e| format!("Store save error: {}", e))
 }
 
+
+pub(crate) fn read_from_store(app: &AppHandle, key: &str) -> Option<String> {
+    let store = app.store("credentials.json").ok()?;
+    store.get(key).and_then(|v| v.as_str().map(|s| s.to_string()))
+}
 
 fn delete_from_store(app: &AppHandle, key: &str) -> Result<(), String> {
     let store = app
@@ -33,6 +38,21 @@ pub fn load_credentials_from_store(app: &AppHandle, cache: &CredentialsCache) {
             if let Some(val) = store.get("org_id") {
                 if let Some(s) = val.as_str() {
                     cache.set_org_id(s.to_string());
+                }
+            }
+            if let Some(val) = store.get("codex_manual_token") {
+                if let Some(s) = val.as_str() {
+                    cache.set_codex_manual_token(s.to_string());
+                }
+            }
+            if let Some(val) = store.get("codex_browser_cookie") {
+                if let Some(s) = val.as_str() {
+                    cache.set_codex_browser_cookie(s.to_string());
+                }
+            }
+            if let Some(val) = store.get("cursor_manual_token") {
+                if let Some(s) = val.as_str() {
+                    cache.set_cursor_manual_token(s.to_string());
                 }
             }
         }

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Claude Usage Tracker",
+  "productName": "UsageWatch",
   "version": "0.1.0",
-  "identifier": "com.joshashworth.claude-usage-tracker",
+  "identifier": "com.joshashworth.usagewatch",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Claude Usage Tracker",
+        "title": "UsageWatch",
         "width": 380,
         "height": 800,
         "resizable": false,
@@ -31,6 +31,8 @@
         "resizable": true,
         "visible": false,
         "decorations": false,
+        "transparent": true,
+        "shadow": false,
         "skipTaskbar": true,
         "alwaysOnTop": true
       }

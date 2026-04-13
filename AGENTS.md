@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project
 
-UsageWatch is a tray-first macOS Tauri 2.x app with a React + TypeScript frontend and Rust backend.
+UsageWatch is a cross-provider, tray-first app (Tauri 2.x + React + TypeScript) that monitors usage limits across supported AI providers.
 
 - The shipped product name and bundle metadata still use `Claude Usage Tracker`.
 - The app monitors Claude usage directly from `claude.ai`.
@@ -128,10 +128,15 @@ Important response fields:
 
 - No macOS keychain for Claude credentials; persistence uses `tauri-plugin-store`.
 - Credentials are copied into an in-memory cache at startup to avoid repeated store I/O.
+- Window focus auto-hides on focus loss unless “pinned”; 300ms focus guard prevents immediate dismissal; only `MouseButtonState::Up` is handled to avoid double-toggle.
+- macOS Accessory mode (`set_activation_policy(Accessory)`) hides the dock icon.
 - Claude and Codex poll independently; both refresh the tray after each update.
 - The menu bar can be static or dynamic by provider, using app/bundle mappings from settings.
 - The widget and main window intentionally consume the same shared usage events.
 - Parsing is defensive: most Claude API fields are optional with `#[serde(default)]`.
+- **Widget is now fixed-layout**: The live widget is one fixed vertical “reference glass stack” mapped from existing UsageWatch data.
+- **No in-widget controls in normal mode**: Widget show/hide comes from the tray menu; do not reintroduce edit/theme/header chrome unless explicitly requested.
+- **Transparent gaps are intentional**: Space between widget slabs must stay fully transparent — avoid shared backing panels, stack-level shadows, or enclosing cards.
 
 ## macOS Tray Behavior
 
@@ -148,6 +153,38 @@ If tray clicks regress:
 - Check launch logs for the native tray registration path.
 - Check for `[tray]` click logs from `lib.rs`.
 - Verify `ensureSubviewCoverage(...)` is still restoring `TaoTrayTarget`.
+
+## Widget Notes
+
+The widget was rebuilt to visually match a desktop-widget reference instead of the old theme/tile system.
+
+- `src/widget/ReferenceGlassWidget.tsx` is the only runtime renderer for the widget strip. It builds a fixed ordered set of rows from existing app data:
+  - session usage
+  - weekly usage
+  - extra usage
+  - prepaid balance
+  - Codex session
+  - Codex credits
+  - Anthropic/API status
+- `src/widget/widget.css` intentionally styles each row as an independent frosted slab with:
+  - overlapping circular badge on the left
+  - higher-opacity readable glass surface
+  - no shared container shadow
+  - no slab shadow or edge glow outside the material
+  - transparent gaps between rows
+- `src/widget/WidgetWindow.tsx` auto-sizes the widget window to the rendered strip and starts dragging from the widget body itself, so no visible header bar is required.
+- `src/hooks/useWidgetStore.ts` now persists only widget position. Older saved layout/theme/tile data may still exist in the store, but the live widget no longer uses it.
+
+## Windows Widget Shadow Regression
+
+On Windows, the widget can still look like a floating rounded window even when the CSS is fully transparent. That border is native window shadow, not frontend styling.
+
+- The fix is in `src-tauri/tauri.conf.json` on the `widget` window:
+  - `"transparent": true`
+  - `"decorations": false`
+  - `"shadow": false`
+- If you change widget transparency behavior, test in the real Tauri window, not just browser preview. Playwright/browser preview cannot reproduce Windows native shadow.
+- If the widget suddenly shows a soft rounded border again, first verify that `shadow: false` is still present and that the app was fully restarted. Frontend HMR is not enough for native window shadow changes.
 
 ## Tauri Plugins
 

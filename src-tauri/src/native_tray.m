@@ -20,7 +20,7 @@ static BOOL isOurTrayButton(NSStatusBarButton *button) {
     if (!button.window) return NO;
 
     NSString *tooltip = button.toolTip;
-    if ([tooltip isEqualToString:@"Claude Usage Tracker"]) {
+    if ([tooltip isEqualToString:@"UsageWatch"]) {
         return YES;
     }
 

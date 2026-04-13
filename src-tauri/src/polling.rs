@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::time::{interval, Duration};
 
 use crate::credentials_cache::CredentialsCache;
-use crate::models::{CodexUsageData, UsageData};
+use crate::models::{CodexUsageData, CursorUsageData, UsageData};
 use crate::commands;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -16,6 +16,13 @@ pub struct UsageUpdate {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CodexUpdate {
     pub data: Option<CodexUsageData>,
+    pub error: Option<String>,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CursorUpdate {
+    pub data: Option<CursorUsageData>,
     pub error: Option<String>,
     pub timestamp: String,
 }
@@ -109,6 +116,7 @@ pub fn start_codex_polling(
     app: &AppHandle,
     poll_interval: Arc<Mutex<u64>>,
     latest_codex: Arc<Mutex<Option<CodexUpdate>>>,
+    cache: Arc<CredentialsCache>,
 ) {
     let app_handle = app.clone();
 
@@ -123,7 +131,9 @@ pub fn start_codex_polling(
                 continue;
             }
 
-            let update = match commands::codex::fetch_codex_usage_internal().await {
+            let browser_cookie = cache.get_codex_browser_cookie();
+            let manual_token = cache.get_codex_manual_token();
+            let update = match commands::codex::fetch_codex_usage_with_fallbacks(browser_cookie, manual_token).await {
                 Ok(data) => CodexUpdate {
                     data: Some(data),
                     error: None,
@@ -145,6 +155,55 @@ pub fn start_codex_polling(
             crate::tray_state::refresh_tray();
 
             let _ = app_handle.emit("codex-update", &update);
+
+            let mut tick = interval(Duration::from_secs(secs));
+            tick.tick().await;
+            tick.tick().await;
+        }
+    });
+}
+
+pub fn start_cursor_polling(
+    app: &AppHandle,
+    poll_interval: Arc<Mutex<u64>>,
+    latest_cursor: Arc<Mutex<Option<CursorUpdate>>>,
+    cache: Arc<CredentialsCache>,
+) {
+    let app_handle = app.clone();
+
+    tauri::async_runtime::spawn(async move {
+        // Offset from Claude (2s) and Codex (5s) to avoid simultaneous API bursts
+        tokio::time::sleep(Duration::from_secs(8)).await;
+
+        loop {
+            let secs = { *poll_interval.lock().unwrap() };
+            if secs == 0 {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
+            }
+
+            let manual_token = cache.get_cursor_manual_token();
+            let update = match commands::cursor::fetch_cursor_usage_internal(manual_token).await {
+                Ok(data) => CursorUpdate {
+                    data: Some(data),
+                    error: None,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                },
+                Err(e) => {
+                    eprintln!("[Cursor] Usage fetch failed: {e}");
+                    CursorUpdate {
+                        data: None,
+                        error: Some(e),
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                    }
+                }
+            };
+
+            *latest_cursor.lock().unwrap() = Some(update.clone());
+
+            crate::tray_state::refresh_tray();
+
+            let _ = app_handle.emit("cursor-update", &update);
 
             let mut tick = interval(Duration::from_secs(secs));
             tick.tick().await;

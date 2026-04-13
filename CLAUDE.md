@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project
 
-UsageWatch is a tray-first macOS Tauri 2.x app with a React + TypeScript frontend and Rust backend.
+UsageWatch is a cross-provider, tray-first app (Tauri 2.x + React + TypeScript) that monitors usage limits across supported AI providers.
 
 - The product metadata still says `Claude Usage Tracker`.
 - The app polls Claude usage from `claude.ai`.
@@ -74,10 +74,10 @@ Repo-local Claude configuration exists, but there are no repo-local Claude skill
 ### Widget frontend
 
 - `widget/WidgetApp.tsx` is the widget entrypoint.
-- `WidgetWindow.tsx` restores position and resizes to content.
+- `WidgetWindow.tsx` auto-sizes to the rendered strip and enables drag from the widget body itself (no visible header bar).
+- `widget/ReferenceGlassWidget.tsx` is the only runtime widget renderer — a fixed vertical glass-slab stack built from existing app data.
 - `useWidgetData.ts` fetches immediate data and listens to shared update events.
-- `useWidgetStore.ts` persists widget layout under `widget_layout` in the Tauri store.
-- `widget/tiles/*` contains the actual tile components.
+- `useWidgetStore.ts` persists widget position only; older tile/layout/theme store keys are ignored.
 
 ## Events and State Flow
 
@@ -139,6 +139,23 @@ Do not casually refactor the custom tray bridge.
 - Do not remove exported bridge functions from `native_tray.m`.
 - Do not rely on default `NSStatusItem.menu` behavior if you need left-click popover plus right-click menu.
 - If clicks break, first verify the native registration path and `TaoTrayTarget` z-order fix.
+
+## Widget Notes
+
+The widget uses a fixed-layout glass-slab renderer, not the old tile/theme system.
+
+- `ReferenceGlassWidget.tsx` renders a fixed ordered set of rows: session usage, weekly usage, extra usage, prepaid balance, Codex session, Codex credits, and Anthropic/API status.
+- `widget.css` styles each row as an independent frosted slab with no shared container shadow and transparent gaps between rows.
+- Widget show/hide is controlled via the tray menu; do not add visible header or edit chrome unless explicitly requested.
+- Transparent gaps between slabs are intentional — avoid shared backing panels or enclosing cards.
+- `useWidgetStore.ts` now persists only widget position; older layout/tile keys in the store are unused.
+
+## Windows Widget Shadow Regression
+
+On Windows, the widget can appear as a floating rounded window even when CSS is transparent — that border is native window shadow, not frontend styling.
+
+- The fix lives in `src-tauri/tauri.conf.json` on the `widget` window: `"transparent": true`, `"decorations": false`, `"shadow": false`.
+- If the widget suddenly shows a soft rounded border, verify `shadow: false` is still present and the app was fully restarted (HMR is insufficient for native window shadow changes).
 
 ## Skills / Reusable Claude Assets
 
