@@ -992,6 +992,10 @@ body.widget-preview-body {
 
 /* ── Matrix Rain theme ──────────────────────────────────────────── */
 
+.widget-overlay--matrix-rain {
+  position: relative;
+}
+
 .widget-overlay--matrix .widget-overlay__provider {
   background: rgba(0, 8, 0, 0.6);
   border-color: rgba(0, 255, 65, 0.15);

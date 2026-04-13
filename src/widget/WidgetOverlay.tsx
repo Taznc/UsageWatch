@@ -1,10 +1,10 @@
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalPosition, LogicalSize } from "@tauri-apps/api/window";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useWidget } from "../context/WidgetContext";
 import { useWidgetData } from "../hooks/useWidgetData";
 import { useWidgetStore } from "../hooks/useWidgetStore";
-import type { WidgetCardId, WidgetCardViewModel } from "../types/widget";
+import type { WidgetCardViewModel } from "../types/widget";
 import { WidgetCard } from "./WidgetCard";
 import { MatrixRain } from "./MatrixRain";
 import { isTauriRuntime } from "./preview";
@@ -18,24 +18,10 @@ type Hitbox = {
   height: number;
 };
 
-function isInHitbox(localX: number, localY: number, hitbox: Hitbox): boolean {
-  return localX >= hitbox.left && localX <= hitbox.left + hitbox.width && localY >= hitbox.top && localY <= hitbox.top + hitbox.height;
-}
-
-function buildHitboxes(refs: Map<WidgetCardId, RefObject<HTMLDivElement | null>>, cardIds: WidgetCardId[]) {
-  return cardIds
-    .map((cardId) => {
-      const node = refs.get(cardId)?.current;
-      if (!node) return null;
-      const rect = node.getBoundingClientRect();
-      return {
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
-      } satisfies Hitbox;
-    })
-    .filter((box): box is Hitbox => box !== null);
+function isInHitbox(deviceX: number, deviceY: number, hitbox: Hitbox): boolean {
+  const x = deviceX / window.devicePixelRatio;
+  const y = deviceY / window.devicePixelRatio;
+  return x >= hitbox.left && x <= hitbox.left + hitbox.width && y >= hitbox.top && y <= hitbox.top + hitbox.height;
 }
 
 function clampProgress(progress?: number | null) {
@@ -86,7 +72,6 @@ export function WidgetOverlay() {
   const { state } = useWidget();
   const rootRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  const cardRefs = useRef(new Map<WidgetCardId, RefObject<HTMLDivElement | null>>());
   const restoredPositionRef = useRef(false);
   const dragRef = useRef(false);
   const ignoreStateRef = useRef<boolean | null>(null);
@@ -99,15 +84,9 @@ export function WidgetOverlay() {
   );
   const theme = getWidgetTheme(state.layout.themeId);
 
-  function getCardRef(cardId: WidgetCardId) {
-    if (!cardRefs.current.has(cardId)) {
-      cardRefs.current.set(cardId, { current: null });
-    }
-    return cardRefs.current.get(cardId)!;
-  }
-
-  function recalcHitboxes(cardIds: WidgetCardId[]) {
-    const next = buildHitboxes(cardRefs.current, cardIds);
+  // Only the header is an interactive hitbox — cards are display-only (click-through).
+  function recalcHitboxes() {
+    const next: Hitbox[] = [];
     const header = headerRef.current?.getBoundingClientRect();
     if (header) {
       next.push({
@@ -133,10 +112,9 @@ export function WidgetOverlay() {
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    const cardIds = visibleCards.map((card) => card.id);
 
     const recalc = () => {
-      recalcHitboxes(cardIds);
+      recalcHitboxes();
     };
 
     const observer = new ResizeObserver(() => {
@@ -144,7 +122,9 @@ export function WidgetOverlay() {
       if (tauri) {
         const rect = root.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          getCurrentWindow().setSize(new LogicalSize(Math.ceil(rect.width), Math.ceil(rect.height))).catch(() => {});
+          getCurrentWindow().setSize(new LogicalSize(Math.ceil(rect.width), Math.ceil(rect.height)))
+            .then(() => emit("widget-geometry-sync"))
+            .catch(() => {});
         }
       }
     });
@@ -157,7 +137,9 @@ export function WidgetOverlay() {
       requestAnimationFrame(() => {
         const rect = root.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          getCurrentWindow().setSize(new LogicalSize(Math.ceil(rect.width), Math.ceil(rect.height))).catch(() => {});
+          getCurrentWindow().setSize(new LogicalSize(Math.ceil(rect.width), Math.ceil(rect.height)))
+            .then(() => emit("widget-geometry-sync"))
+            .catch(() => {});
         }
       });
     }
@@ -170,45 +152,23 @@ export function WidgetOverlay() {
 
   useEffect(() => {
     if (!tauri) return;
-    const cardIds = visibleCards.map((card) => card.id);
     const unlistenMove = getCurrentWindow().onMoved(({ payload }) => {
       if (!dragRef.current) return;
       savePosition(payload.x, payload.y);
-      recalcHitboxes(cardIds);
+      recalcHitboxes();
     });
 
     return () => {
       unlistenMove.then((fn) => fn());
     };
-  }, [savePosition, tauri, visibleCards]);
+  }, [savePosition, tauri]);
 
   useEffect(() => {
     if (!tauri) return;
 
-    // Track window position in logical pixels for hit-testing.
-    // rdev gives screen-level coords; getBoundingClientRect gives viewport-relative coords.
-    // We need to subtract the window position to convert screen → viewport.
-    const winPosRef = { x: 0, y: 0 };
-
-    // Seed from the current window position
-    getCurrentWindow().outerPosition().then((pos) => {
-      winPosRef.x = pos.x / window.devicePixelRatio;
-      winPosRef.y = pos.y / window.devicePixelRatio;
-    }).catch(() => {});
-
-    const unlistenPos = getCurrentWindow().onMoved(({ payload }) => {
-      // onMoved payload is physical pixels on most platforms
-      winPosRef.x = payload.x / window.devicePixelRatio;
-      winPosRef.y = payload.y / window.devicePixelRatio;
-    });
-
     const unlisten = listen<{ x: number; y: number }>("device-mouse-move", ({ payload }) => {
-      // rdev coords: physical screen pixels
-      const dpr = window.devicePixelRatio;
-      const localX = payload.x / dpr - winPosRef.x;
-      const localY = payload.y / dpr - winPosRef.y;
-      const inCard = hitboxes.some((box) => isInHitbox(localX, localY, box));
-      const shouldIgnore = !dragRef.current && !inCard;
+      const inHeader = hitboxes.some((box) => isInHitbox(payload.x, payload.y, box));
+      const shouldIgnore = !dragRef.current && !inHeader;
       if (ignoreStateRef.current === shouldIgnore) return;
       ignoreStateRef.current = shouldIgnore;
       getCurrentWindow().setIgnoreCursorEvents(shouldIgnore).catch(() => {});
@@ -216,7 +176,6 @@ export function WidgetOverlay() {
 
     return () => {
       unlisten.then((fn) => fn());
-      unlistenPos.then((fn) => fn());
     };
   }, [hitboxes, tauri]);
 
@@ -281,7 +240,6 @@ export function WidgetOverlay() {
           {visibleCards.map((card) => (
             <div
               key={card.id}
-              ref={getCardRef(card.id)}
               className="widget-overlay__card-shell widget-overlay__card-shell--ticker"
               style={{ ["--widget-card-accent" as string]: card.accent }}
             >
@@ -294,7 +252,6 @@ export function WidgetOverlay() {
           {visibleCards.map((card) => (
             <div
               key={card.id}
-              ref={getCardRef(card.id)}
               className="widget-overlay__card-shell widget-overlay__card-shell--deck"
               style={{ ["--widget-card-accent" as string]: card.accent }}
             >
@@ -304,7 +261,7 @@ export function WidgetOverlay() {
         </div>
       ) : (
         visibleCards.map((card) => (
-          <div key={card.id} ref={getCardRef(card.id)} className="widget-overlay__card-shell">
+          <div key={card.id} className="widget-overlay__card-shell">
             <WidgetCard
               card={card}
               density={state.layout.density}

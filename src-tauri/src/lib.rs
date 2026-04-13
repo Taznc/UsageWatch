@@ -36,6 +36,8 @@ pub fn run() {
 
     let cache = Arc::new(CredentialsCache::new());
     let cache_for_polling = cache.clone();
+    let cache_for_codex_polling = cache.clone();
+    let cache_for_cursor_polling = cache.clone();
 
     let tray_format = Arc::new(Mutex::new(TrayFormat::default()));
 
@@ -109,11 +111,24 @@ pub fn run() {
             commands::usage::fetch_usage,
             commands::usage::fetch_usage_raw,
             commands::browser::pull_session_from_browsers,
+            commands::browser::pull_codex_session_from_browsers,
+            commands::browser::debug_claude_desktop_cookies,
             commands::usage::fetch_billing,
             commands::usage::fetch_status,
             commands::codex::check_codex_auth,
             commands::codex::fetch_codex_usage,
+            commands::codex::test_codex_connection,
+            commands::codex::save_codex_token,
+            commands::codex::get_codex_token,
+            commands::codex::save_codex_browser_cookie,
+            commands::codex::get_codex_browser_cookie,
+            commands::codex::test_codex_browser_cookie,
             commands::cursor::check_cursor_auth,
+            commands::cursor::check_cursor_desktop_auth,
+            commands::cursor::pull_cursor_session_from_browsers,
+            commands::cursor::test_cursor_connection,
+            commands::cursor::save_cursor_token,
+            commands::cursor::get_cursor_token,
             commands::cursor::fetch_cursor_usage,
             commands::cursor::get_cursor_email,
             commands::cursor::get_cursor_auth_path,
@@ -151,6 +166,9 @@ pub fn run() {
             load_tray_config_from_store(handle, &tray_config);
             load_alert_config_from_store(handle, &alert_config);
 
+            // Restore widget visibility from previous session
+            restore_widget_visible_from_store(handle);
+
             // Build tray menu
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
@@ -182,9 +200,11 @@ pub fn run() {
                         if let Some(w) = app.get_webview_window("widget") {
                             if w.is_visible().unwrap_or(false) {
                                 let _ = w.hide();
+                                save_widget_visible_to_store(app, false);
                             } else {
                                 let _ = w.show();
                                 let _ = w.set_focus();
+                                save_widget_visible_to_store(app, true);
                             }
                         }
                     }
@@ -278,8 +298,8 @@ pub fn run() {
 
             // Start background polling
             polling::start_polling(handle, poll_interval_clone, cache_for_polling, latest_usage_for_polling);
-            polling::start_codex_polling(handle, poll_interval_clone2, latest_codex_for_polling);
-            polling::start_cursor_polling(handle, poll_interval_clone3, latest_cursor_for_polling);
+            polling::start_codex_polling(handle, poll_interval_clone2, latest_codex_for_polling, cache_for_codex_polling);
+            polling::start_cursor_polling(handle, poll_interval_clone3, latest_cursor_for_polling, cache_for_cursor_polling);
 
             Ok(())
         })
@@ -471,6 +491,27 @@ fn save_alert_config_to_store(app: &tauri::AppHandle, config: &AlertConfig) {
         if let Ok(val) = serde_json::to_value(config) {
             store.set("alert_config", val);
             let _ = store.save();
+        }
+    }
+}
+
+fn save_widget_visible_to_store(app: &tauri::AppHandle, visible: bool) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        store.set("widget_visible", serde_json::Value::Bool(visible));
+        let _ = store.save();
+    }
+}
+
+fn restore_widget_visible_from_store(app: &tauri::AppHandle) {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        if let Some(val) = store.get("widget_visible") {
+            if val.as_bool() == Some(true) {
+                if let Some(w) = app.get_webview_window("widget") {
+                    let _ = w.show();
+                }
+            }
         }
     }
 }

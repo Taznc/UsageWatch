@@ -84,12 +84,50 @@ async fn do_token_refresh(refresh_token: &str) -> Result<AuthTokens, String> {
     })
 }
 
-pub(crate) async fn get_access_token() -> Result<String, String> {
+/// Fetch Codex usage using a ChatGPT browser session cookie instead of a Bearer token.
+/// `cookie` is a full Cookie header value, e.g.:
+///   "__Secure-next-auth.session-token=<value>"          (single)
+///   "__Secure-next-auth.session-token.0=<v0>; ...1=<v1>" (chunked)
+async fn fetch_codex_usage_with_cookie(cookie: &str) -> Result<CodexUsageData, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get(CODEX_USAGE_URL)
+        .header("Cookie", cookie)
+        .header("Content-Type", "application/json")
+        .header("User-Agent", "UsageWatch/0.1.0")
+        .send()
+        .await
+        .map_err(|e| format!("Codex request failed: {e}"))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("ChatGPT session cookie expired or invalid. Re-scan your browser.".to_string());
+    }
+    if !response.status().is_success() {
+        return Err(format!("Codex API returned status {}", response.status()));
+    }
+
+    let api_resp: CodexApiResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Codex usage data: {e}"))?;
+
+    Ok(CodexUsageData::from_api(api_resp))
+}
+
+pub(crate) async fn get_access_token_with_fallback(manual_token: Option<String>) -> Result<String, String> {
     let path = codex_auth_path();
 
-    let content = tokio::fs::read_to_string(&path)
-        .await
-        .map_err(|_| "~/.codex/auth.json not found. Please authenticate with the Codex App or CLI.".to_string())?;
+    // Try native auth.json first
+    let content = match tokio::fs::read_to_string(&path).await {
+        Ok(c) => c,
+        Err(_) => {
+            // Fall back to manual token if native file not found
+            if let Some(token) = manual_token {
+                return Ok(token);
+            }
+            return Err("~/.codex/auth.json not found. Please authenticate with the Codex App or CLI, or enter a token manually.".to_string());
+        }
+    };
 
     let mut auth: AuthJson = serde_json::from_str(&content)
         .map_err(|e| format!("Cannot parse auth.json: {e}"))?;
@@ -133,8 +171,8 @@ pub(crate) async fn get_access_token() -> Result<String, String> {
 
 // ── Usage fetch ────────────────────────────────────────────────────────────
 
-pub(crate) async fn fetch_codex_usage_internal() -> Result<CodexUsageData, String> {
-    let token = get_access_token().await?;
+pub(crate) async fn fetch_codex_usage_internal(manual_token: Option<String>) -> Result<CodexUsageData, String> {
+    let token = get_access_token_with_fallback(manual_token).await?;
 
     let client = reqwest::Client::new();
     let response = client
@@ -162,23 +200,134 @@ pub(crate) async fn fetch_codex_usage_internal() -> Result<CodexUsageData, Strin
     Ok(CodexUsageData::from_api(api_resp))
 }
 
+pub(crate) async fn fetch_codex_usage_with_fallbacks(
+    browser_cookie: Option<String>,
+    manual_token: Option<String>,
+) -> Result<CodexUsageData, String> {
+    if let Some(cookie) = browser_cookie {
+        return fetch_codex_usage_with_cookie(&cookie).await;
+    }
+
+    fetch_codex_usage_internal(manual_token).await
+}
+
 // ── Tauri commands ─────────────────────────────────────────────────────────
+
+// ── Manual token support ──────────────────────────────────────────────────
+
+const CODEX_MANUAL_TOKEN_KEY: &str = "codex_manual_token";
+
+/// Validate a manually-provided token by hitting the Codex usage endpoint.
+#[tauri::command]
+pub async fn test_codex_connection(token: String) -> Result<bool, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get(CODEX_USAGE_URL)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .header("User-Agent", "UsageWatch/0.1.0")
+        .send()
+        .await
+        .map_err(|e| format!("Codex request failed: {e}"))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Token is invalid or expired.".to_string());
+    }
+    if !response.status().is_success() {
+        return Err(format!("Codex API returned status {}", response.status()));
+    }
+    Ok(true)
+}
+
+/// Save a manually-entered Codex access token to the credential store.
+#[tauri::command]
+pub fn save_codex_token(
+    app: tauri::AppHandle,
+    token: String,
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<(), String> {
+    super::credentials::save_to_store(&app, CODEX_MANUAL_TOKEN_KEY, &token)?;
+    cache.set_codex_manual_token(token);
+    Ok(())
+}
+
+/// Read the manually-saved Codex token from the credential store.
+#[tauri::command]
+pub fn get_codex_token(
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<Option<String>, String> {
+    Ok(cache.get_codex_manual_token())
+}
 
 /// Returns true if ~/.codex/auth.json exists and contains tokens.
 /// Used by the settings UI to show Codex connection status.
 #[tauri::command]
-pub async fn check_codex_auth() -> Result<bool, String> {
+pub async fn check_codex_auth(
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<bool, String> {
+    // Check native auth.json first
     let path = codex_auth_path();
-    match tokio::fs::read_to_string(&path).await {
-        Ok(content) => {
-            let auth: Result<AuthJson, _> = serde_json::from_str(&content);
-            Ok(auth.map(|a| a.tokens.is_some()).unwrap_or(false))
+    if let Ok(content) = tokio::fs::read_to_string(&path).await {
+        if let Ok(auth) = serde_json::from_str::<AuthJson>(&content) {
+            if auth.tokens.is_some() {
+                return Ok(true);
+            }
         }
-        Err(_) => Ok(false),
     }
+    // Fall back to browser cookie or manual token
+    Ok(cache.get_codex_browser_cookie().is_some() || cache.get_codex_manual_token().is_some())
+}
+
+/// Save a browser-extracted ChatGPT session cookie.
+#[tauri::command]
+pub fn save_codex_browser_cookie(
+    app: tauri::AppHandle,
+    cookie: String,
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<(), String> {
+    super::credentials::save_to_store(&app, "codex_browser_cookie", &cookie)?;
+    cache.set_codex_browser_cookie(cookie);
+    Ok(())
+}
+
+/// Read the saved ChatGPT browser session cookie.
+#[tauri::command]
+pub fn get_codex_browser_cookie(
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<Option<String>, String> {
+    Ok(cache.get_codex_browser_cookie())
+}
+
+/// Validate a browser-extracted ChatGPT cookie by hitting the usage endpoint.
+/// `cookie` is a full Cookie header value (already formatted).
+#[tauri::command]
+pub async fn test_codex_browser_cookie(cookie: String) -> Result<bool, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get(CODEX_USAGE_URL)
+        .header("Cookie", &cookie)
+        .header("Content-Type", "application/json")
+        .header("User-Agent", "UsageWatch/0.1.0")
+        .send()
+        .await
+        .map_err(|e| format!("Codex request failed: {e}"))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Cookie is invalid or expired.".to_string());
+    }
+    if !response.status().is_success() {
+        return Err(format!("Codex API returned status {}", response.status()));
+    }
+    Ok(true)
 }
 
 #[tauri::command]
-pub async fn fetch_codex_usage() -> Result<CodexUsageData, String> {
-    fetch_codex_usage_internal().await
+pub async fn fetch_codex_usage(
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<CodexUsageData, String> {
+    fetch_codex_usage_with_fallbacks(
+        cache.get_codex_browser_cookie(),
+        cache.get_codex_manual_token(),
+    )
+    .await
 }

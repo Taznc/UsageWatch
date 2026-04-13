@@ -411,6 +411,16 @@ impl Default for AlertConfig {
     }
 }
 
+// ── Browser scan result (shared by Claude + Cursor browser extraction) ─────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BrowserResult {
+    pub browser: String,
+    pub session_key: Option<String>,
+    /// Debug info: how many cookies found, key prefix, key length
+    pub debug: Option<String>,
+}
+
 // ── Provider switching types ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -426,10 +436,63 @@ pub struct AppMapping {
     pub provider: Provider,
 }
 
+// ── Multi-provider tray segment types ──────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrayField {
+    SessionPct,
+    SessionTimer,
+    WeeklyPct,
+    WeeklyTimer,
+    SonnetPct,
+    OpusPct,
+    ExtraUsage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum TraySegmentKind {
+    ProviderData { provider: Provider, field: TrayField },
+    CustomText { text: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraySegmentDef {
+    pub kind: TraySegmentKind,
+}
+
+impl Provider {
+    pub fn emoji(&self) -> &'static str {
+        match self {
+            Provider::Claude => "\u{1F7E0}",  // 🟠
+            Provider::Codex => "\u{1F7E2}",   // 🟢
+            Provider::Cursor => "\u{1F7E3}",  // 🟣
+        }
+    }
+
+    pub fn default_segments(&self) -> Vec<TraySegmentDef> {
+        vec![
+            TraySegmentDef {
+                kind: TraySegmentKind::ProviderData {
+                    provider: *self,
+                    field: TrayField::SessionPct,
+                },
+            },
+            TraySegmentDef {
+                kind: TraySegmentKind::ProviderData {
+                    provider: *self,
+                    field: TrayField::SessionTimer,
+                },
+            },
+        ]
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TrayMode {
     Dynamic,
     Static(Provider),
+    Multi(Vec<TraySegmentDef>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -520,9 +583,27 @@ impl TrayConfig {
     pub fn resolve_provider(&self, bundle_id: Option<&str>, app_name: Option<&str>) -> Provider {
         match &self.mode {
             TrayMode::Static(p) => *p,
+            TrayMode::Multi(segs) => {
+                // Return the first provider referenced in segments, or default
+                segs.iter()
+                    .find_map(|s| match &s.kind {
+                        TraySegmentKind::ProviderData { provider, .. } => Some(*provider),
+                        _ => None,
+                    })
+                    .unwrap_or(self.default_provider)
+            }
             TrayMode::Dynamic => self
                 .match_provider(bundle_id, app_name)
                 .unwrap_or(self.default_provider),
+        }
+    }
+
+    /// Returns the effective list of segments for Multi/Static modes.
+    pub fn effective_segments(&self) -> Option<Vec<TraySegmentDef>> {
+        match &self.mode {
+            TrayMode::Multi(segs) => Some(segs.clone()),
+            TrayMode::Static(p) => Some(p.default_segments()),
+            TrayMode::Dynamic => None,
         }
     }
 }

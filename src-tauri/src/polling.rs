@@ -116,6 +116,7 @@ pub fn start_codex_polling(
     app: &AppHandle,
     poll_interval: Arc<Mutex<u64>>,
     latest_codex: Arc<Mutex<Option<CodexUpdate>>>,
+    cache: Arc<CredentialsCache>,
 ) {
     let app_handle = app.clone();
 
@@ -130,7 +131,9 @@ pub fn start_codex_polling(
                 continue;
             }
 
-            let update = match commands::codex::fetch_codex_usage_internal().await {
+            let browser_cookie = cache.get_codex_browser_cookie();
+            let manual_token = cache.get_codex_manual_token();
+            let update = match commands::codex::fetch_codex_usage_with_fallbacks(browser_cookie, manual_token).await {
                 Ok(data) => CodexUpdate {
                     data: Some(data),
                     error: None,
@@ -164,6 +167,7 @@ pub fn start_cursor_polling(
     app: &AppHandle,
     poll_interval: Arc<Mutex<u64>>,
     latest_cursor: Arc<Mutex<Option<CursorUpdate>>>,
+    cache: Arc<CredentialsCache>,
 ) {
     let app_handle = app.clone();
 
@@ -178,7 +182,8 @@ pub fn start_cursor_polling(
                 continue;
             }
 
-            let update = match commands::cursor::fetch_cursor_usage_internal().await {
+            let manual_token = cache.get_cursor_manual_token();
+            let update = match commands::cursor::fetch_cursor_usage_internal(manual_token).await {
                 Ok(data) => CursorUpdate {
                     data: Some(data),
                     error: None,

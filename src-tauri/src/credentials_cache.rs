@@ -5,6 +5,9 @@ use std::sync::Mutex;
 pub struct CredentialsCache {
     session_key: Mutex<Option<String>>,
     org_id: Mutex<Option<String>>,
+    codex_manual_token: Mutex<Option<String>>,
+    codex_browser_cookie: Mutex<Option<String>>,
+    cursor_manual_token: Mutex<Option<String>>,
 }
 
 impl CredentialsCache {
@@ -12,6 +15,9 @@ impl CredentialsCache {
         Self {
             session_key: Mutex::new(None),
             org_id: Mutex::new(None),
+            codex_manual_token: Mutex::new(None),
+            codex_browser_cookie: Mutex::new(None),
+            cursor_manual_token: Mutex::new(None),
         }
     }
 
@@ -33,5 +39,29 @@ impl CredentialsCache {
 
     pub fn clear_session_key(&self) {
         *self.session_key.lock().unwrap() = None;
+    }
+
+    pub fn get_codex_manual_token(&self) -> Option<String> {
+        self.codex_manual_token.lock().unwrap().clone()
+    }
+
+    pub fn set_codex_manual_token(&self, token: String) {
+        *self.codex_manual_token.lock().unwrap() = Some(token);
+    }
+
+    pub fn get_codex_browser_cookie(&self) -> Option<String> {
+        self.codex_browser_cookie.lock().unwrap().clone()
+    }
+
+    pub fn set_codex_browser_cookie(&self, cookie: String) {
+        *self.codex_browser_cookie.lock().unwrap() = Some(cookie);
+    }
+
+    pub fn get_cursor_manual_token(&self) -> Option<String> {
+        self.cursor_manual_token.lock().unwrap().clone()
+    }
+
+    pub fn set_cursor_manual_token(&self, token: String) {
+        *self.cursor_manual_token.lock().unwrap() = Some(token);
     }
 }

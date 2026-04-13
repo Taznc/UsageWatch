@@ -83,20 +83,15 @@ fn read_cursor_key(key: &str) -> Option<String> {
     None
 }
 
-// ── API fetch ─────────────────────────────────────────────────────────────
+// ── Browser cookie extraction ─────────────────────────────────────────────
 
-use crate::models::CursorUsageData;
+use crate::models::{BrowserResult, CursorUsageData};
+use rookie::common::enums::Cookie;
 
-/// Try to extract cursor.com session cookies from installed browsers.
-/// Returns cookie header string if found.
-fn get_cursor_session_cookie() -> Option<String> {
-    use rookie::common::enums::Cookie;
+type BrowserFn = fn(Option<Vec<String>>) -> rookie::Result<Vec<Cookie>>;
 
-    type BrowserFn = fn(Option<Vec<String>>) -> rookie::Result<Vec<Cookie>>;
-
-    let domains = Some(vec!["cursor.com".to_string()]);
-
-    let browsers: Vec<(&str, BrowserFn)> = vec![
+fn cursor_browser_list() -> Vec<(&'static str, BrowserFn)> {
+    vec![
         ("Chrome", rookie::chrome),
         ("Firefox", rookie::firefox),
         ("Zen", rookie::zen),
@@ -108,12 +103,17 @@ fn get_cursor_session_cookie() -> Option<String> {
         ("Chromium", rookie::chromium),
         #[cfg(target_os = "macos")]
         ("Safari", rookie::safari),
-    ];
+    ]
+}
 
-    for (_name, fetch_fn) in browsers {
+/// Build a cookie header string from all cookies for cursor.com found in any browser.
+/// Returns the first browser that has cookies (used by polling).
+fn get_cursor_session_cookie() -> Option<String> {
+    let domains = Some(vec!["cursor.com".to_string()]);
+
+    for (_name, fetch_fn) in cursor_browser_list() {
         match fetch_fn(domains.clone()) {
             Ok(cookies) if !cookies.is_empty() => {
-                // Build full cookie header from all cursor.com cookies
                 let cookie_str: String = cookies
                     .iter()
                     .map(|c| format!("{}={}", c.name, c.value))
@@ -128,52 +128,109 @@ fn get_cursor_session_cookie() -> Option<String> {
     None
 }
 
-pub(crate) async fn fetch_cursor_usage_internal() -> Result<CursorUsageData, String> {
-    let cookie = get_cursor_session_cookie()
-        .ok_or_else(|| "No cursor.com session found — log into cursor.com/dashboard in your browser".to_string())?;
+/// Scan all browsers for cursor.com session cookies, returning per-browser results.
+fn scan_cursor_browsers() -> Vec<BrowserResult> {
+    let domains = Some(vec!["cursor.com".to_string()]);
+    let mut results = Vec::new();
+
+    for (name, fetch_fn) in cursor_browser_list() {
+        match fetch_fn(domains.clone()) {
+            Ok(cookies) if !cookies.is_empty() => {
+                let cookie_str: String = cookies
+                    .iter()
+                    .map(|c| format!("{}={}", c.name, c.value))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                results.push(BrowserResult {
+                    browser: name.to_string(),
+                    session_key: Some(cookie_str),
+                    debug: Some(format!("cookies={}", cookies.len())),
+                });
+            }
+            Ok(cookies) if cookies.is_empty() => {}
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("[cursor-scan] {}: error: {:?}", name, e);
+            }
+        }
+    }
+
+    results
+}
+
+enum CursorAuth {
+    Cookie(String),
+    Bearer(String),
+}
+
+fn classify_manual_cursor_auth(value: String) -> CursorAuth {
+    if value.contains('=') || value.contains(';') {
+        CursorAuth::Cookie(value)
+    } else {
+        CursorAuth::Bearer(value)
+    }
+}
+
+// ── API fetch ─────────────────────────────────────────────────────────────
+
+pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) -> Result<CursorUsageData, String> {
+    let auth = if let Some(cookie) = get_cursor_session_cookie() {
+        CursorAuth::Cookie(cookie)
+    } else if let Some(token) = manual_token {
+        classify_manual_cursor_auth(token)
+    } else if let Some(token) = read_cursor_key("cursorAuth/accessToken") {
+        CursorAuth::Bearer(token)
+    } else {
+        return Err("No Cursor auth found — sign into the Cursor desktop app, log into cursor.com/dashboard in your browser, or enter a token manually.".to_string());
+    };
 
     let email = read_cursor_key("cursorAuth/cachedEmail");
 
     let client = reqwest::Client::new();
     let origin = "https://cursor.com";
 
-    // Fire API calls in parallel — use cookie auth + Origin header
-    let (usage_res, hard_limit_res, billing_res, plan_res) = tokio::join!(
-        client
-            .get("https://cursor.com/api/usage-summary")
-            .header("Cookie", &cookie)
-            .header("Origin", origin)
-            .header("Referer", "https://cursor.com/dashboard/usage")
-            .header("User-Agent", crate::USER_AGENT)
-            .send(),
-        client
-            .post("https://cursor.com/api/dashboard/get-hard-limit")
-            .header("Cookie", &cookie)
-            .header("Origin", origin)
-            .header("Referer", "https://cursor.com/dashboard/usage")
-            .header("Content-Type", "application/json")
-            .header("User-Agent", crate::USER_AGENT)
-            .body("{}")
-            .send(),
-        client
-            .post("https://cursor.com/api/dashboard/get-monthly-billing-cycle")
-            .header("Cookie", &cookie)
-            .header("Origin", origin)
-            .header("Referer", "https://cursor.com/dashboard/usage")
-            .header("Content-Type", "application/json")
-            .header("User-Agent", crate::USER_AGENT)
-            .body("{}")
-            .send(),
-        client
-            .post("https://cursor.com/api/dashboard/get-plan-info")
-            .header("Cookie", &cookie)
-            .header("Origin", origin)
-            .header("Referer", "https://cursor.com/dashboard/usage")
-            .header("Content-Type", "application/json")
-            .header("User-Agent", crate::USER_AGENT)
-            .body("{}")
-            .send(),
-    );
+    let usage_req = client
+        .get("https://cursor.com/api/usage-summary")
+        .header("Origin", origin)
+        .header("Referer", "https://cursor.com/dashboard/usage")
+        .header("User-Agent", crate::USER_AGENT);
+    let hard_limit_req = client
+        .post("https://cursor.com/api/dashboard/get-hard-limit")
+        .header("Origin", origin)
+        .header("Referer", "https://cursor.com/dashboard/usage")
+        .header("Content-Type", "application/json")
+        .header("User-Agent", crate::USER_AGENT)
+        .body("{}");
+    let billing_req = client
+        .post("https://cursor.com/api/dashboard/get-monthly-billing-cycle")
+        .header("Origin", origin)
+        .header("Referer", "https://cursor.com/dashboard/usage")
+        .header("Content-Type", "application/json")
+        .header("User-Agent", crate::USER_AGENT)
+        .body("{}");
+    let plan_req = client
+        .post("https://cursor.com/api/dashboard/get-plan-info")
+        .header("Origin", origin)
+        .header("Referer", "https://cursor.com/dashboard/usage")
+        .header("Content-Type", "application/json")
+        .header("User-Agent", crate::USER_AGENT)
+        .body("{}");
+
+    // Fire API calls in parallel using whichever auth source is available.
+    let (usage_res, hard_limit_res, billing_res, plan_res) = match &auth {
+        CursorAuth::Cookie(cookie) => tokio::join!(
+            usage_req.try_clone().ok_or_else(|| "Failed to clone Cursor usage request".to_string())?.header("Cookie", cookie).send(),
+            hard_limit_req.try_clone().ok_or_else(|| "Failed to clone Cursor hard-limit request".to_string())?.header("Cookie", cookie).send(),
+            billing_req.try_clone().ok_or_else(|| "Failed to clone Cursor billing request".to_string())?.header("Cookie", cookie).send(),
+            plan_req.try_clone().ok_or_else(|| "Failed to clone Cursor plan request".to_string())?.header("Cookie", cookie).send(),
+        ),
+        CursorAuth::Bearer(token) => tokio::join!(
+            usage_req.try_clone().ok_or_else(|| "Failed to clone Cursor usage request".to_string())?.bearer_auth(token).send(),
+            hard_limit_req.try_clone().ok_or_else(|| "Failed to clone Cursor hard-limit request".to_string())?.bearer_auth(token).send(),
+            billing_req.try_clone().ok_or_else(|| "Failed to clone Cursor billing request".to_string())?.bearer_auth(token).send(),
+            plan_req.try_clone().ok_or_else(|| "Failed to clone Cursor plan request".to_string())?.bearer_auth(token).send(),
+        ),
+    };
 
     // Helper: parse a response as JSON Value with debug logging
     async fn parse_json(
@@ -247,12 +304,77 @@ pub(crate) async fn fetch_cursor_usage_internal() -> Result<CursorUsageData, Str
     ))
 }
 
+// ── Manual token support ──────────────────────────────────────────────────
+
+const CURSOR_MANUAL_TOKEN_KEY: &str = "cursor_manual_token";
+
 // ── Commands ───────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn check_cursor_auth() -> Result<bool, String> {
-    // Check both: Cursor app auth token OR browser session cookies
-    Ok(read_cursor_key("cursorAuth/accessToken").is_some() || get_cursor_session_cookie().is_some())
+pub async fn check_cursor_auth(
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<bool, String> {
+    // Check: Cursor app auth token, browser session cookies, or manual token
+    Ok(read_cursor_key("cursorAuth/accessToken").is_some()
+        || get_cursor_session_cookie().is_some()
+        || cache.get_cursor_manual_token().is_some())
+}
+
+/// Check only the Cursor desktop app storage (not browsers).
+#[tauri::command]
+pub fn check_cursor_desktop_auth() -> Result<bool, String> {
+    Ok(read_cursor_key("cursorAuth/accessToken").is_some())
+}
+
+/// Scan all browsers for cursor.com session cookies.
+#[tauri::command]
+pub fn pull_cursor_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
+    Ok(scan_cursor_browsers())
+}
+
+/// Validate a cookie string by hitting the Cursor usage API.
+#[tauri::command]
+pub async fn test_cursor_connection(cookie: String) -> Result<bool, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://cursor.com/api/usage-summary")
+        .header("Cookie", &cookie)
+        .header("Origin", "https://cursor.com")
+        .header("Referer", "https://cursor.com/dashboard/usage")
+        .header("User-Agent", crate::USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("Cursor request failed: {e}"))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED
+        || response.status() == reqwest::StatusCode::FORBIDDEN
+    {
+        return Err("Cookie is invalid or expired.".to_string());
+    }
+    if !response.status().is_success() {
+        return Err(format!("Cursor API returned status {}", response.status()));
+    }
+    Ok(true)
+}
+
+/// Save a manually-entered Cursor access token / cookie to the credential store.
+#[tauri::command]
+pub fn save_cursor_token(
+    app: tauri::AppHandle,
+    token: String,
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<(), String> {
+    super::credentials::save_to_store(&app, CURSOR_MANUAL_TOKEN_KEY, &token)?;
+    cache.set_cursor_manual_token(token);
+    Ok(())
+}
+
+/// Read the manually-saved Cursor token from the credential store.
+#[tauri::command]
+pub fn get_cursor_token(
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<Option<String>, String> {
+    Ok(cache.get_cursor_manual_token())
 }
 
 #[tauri::command]
@@ -276,6 +398,8 @@ pub async fn get_cursor_email() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub async fn fetch_cursor_usage() -> Result<CursorUsageData, String> {
-    fetch_cursor_usage_internal().await
+pub async fn fetch_cursor_usage(
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<CursorUsageData, String> {
+    fetch_cursor_usage_internal(cache.get_cursor_manual_token()).await
 }

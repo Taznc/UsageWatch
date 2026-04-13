@@ -148,7 +148,24 @@ export interface AppMapping {
   provider: Provider;
 }
 
-export type TrayMode = "Dynamic" | { Static: Provider };
+export type TrayField =
+  | "SessionPct"
+  | "SessionTimer"
+  | "WeeklyPct"
+  | "WeeklyTimer"
+  | "SonnetPct"
+  | "OpusPct"
+  | "ExtraUsage";
+
+export type TraySegmentKind =
+  | { type: "ProviderData"; provider: Provider; field: TrayField }
+  | { type: "CustomText"; text: string };
+
+export interface TraySegmentDef {
+  kind: TraySegmentKind;
+}
+
+export type TrayMode = "Dynamic" | { Static: Provider } | { Multi: TraySegmentDef[] };
 
 export interface TrayConfig {
   mode: TrayMode;

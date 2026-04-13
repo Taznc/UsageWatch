@@ -6,7 +6,10 @@
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter};
 
-use crate::models::{CodexUsageData, CursorUsageData, Provider, TrayConfig, TrayFormat, UsageData};
+use crate::models::{
+    CodexUsageData, CursorUsageData, Provider, TrayConfig, TrayField, TrayFormat,
+    TrayMode, TraySegmentDef, TraySegmentKind, UsageData,
+};
 use crate::polling::{CodexUpdate, CursorUpdate, UsageUpdate};
 #[cfg(target_os = "macos")]
 use crate::tray_renderer;
@@ -41,6 +44,15 @@ pub fn refresh_tray() {
     let config = state.tray_config.lock().unwrap().clone();
     let format = state.tray_format.lock().unwrap().clone();
 
+    // Multi/Static mode: render from segment definitions
+    if let Some(segments) = config.effective_segments() {
+        let provider = resolve_current_provider(&config);
+        emit_provider_change_if_needed(&state.app_handle, provider);
+        render_multi_tray(&state.app_handle, state, &segments, &format);
+        return;
+    }
+
+    // Dynamic mode: single-provider rendering
     let provider = resolve_current_provider(&config);
     emit_provider_change_if_needed(&state.app_handle, provider);
 
@@ -82,8 +94,16 @@ fn emit_provider_change_if_needed(app: &AppHandle, provider: Provider) {
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn resolve_current_provider(config: &TrayConfig) -> Provider {
     match &config.mode {
-        crate::models::TrayMode::Static(provider) => *provider,
-        crate::models::TrayMode::Dynamic => {
+        TrayMode::Static(provider) => *provider,
+        TrayMode::Multi(segs) => {
+            segs.iter()
+                .find_map(|s| match &s.kind {
+                    TraySegmentKind::ProviderData { provider, .. } => Some(*provider),
+                    _ => None,
+                })
+                .unwrap_or(config.default_provider)
+        }
+        TrayMode::Dynamic => {
             let bid = crate::focus_monitor::current_bundle_id();
             let name = crate::focus_monitor::current_app_name();
 
@@ -108,8 +128,16 @@ fn resolve_current_provider(config: &TrayConfig) -> Provider {
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn resolve_current_provider(config: &TrayConfig) -> Provider {
     match &config.mode {
-        crate::models::TrayMode::Static(p) => *p,
-        crate::models::TrayMode::Dynamic => config.default_provider,
+        TrayMode::Static(p) => *p,
+        TrayMode::Multi(segs) => {
+            segs.iter()
+                .find_map(|s| match &s.kind {
+                    TraySegmentKind::ProviderData { provider, .. } => Some(*provider),
+                    _ => None,
+                })
+                .unwrap_or(config.default_provider)
+        }
+        TrayMode::Dynamic => config.default_provider,
     }
 }
 
@@ -213,6 +241,288 @@ fn render_tray(app: &AppHandle, data: &TrayDisplayData, format: &TrayFormat) {
             {
                 let _ = tray.set_title(Some(&title));
             }
+        }
+    }
+}
+
+// ── Multi-provider rendering ───────────────────────────────────────────────
+
+/// Cached display data for all providers, used by multi-provider rendering.
+struct MultiDisplayCache {
+    claude: Option<TrayDisplayData>,
+    codex: Option<TrayDisplayData>,
+    cursor: Option<TrayDisplayData>,
+}
+
+impl MultiDisplayCache {
+    fn get(&self, provider: &Provider) -> Option<&TrayDisplayData> {
+        match provider {
+            Provider::Claude => self.claude.as_ref(),
+            Provider::Codex => self.codex.as_ref(),
+            Provider::Cursor => self.cursor.as_ref(),
+        }
+    }
+}
+
+fn render_multi_tray(
+    app: &AppHandle,
+    state: &TrayState,
+    segments: &[TraySegmentDef],
+    format: &TrayFormat,
+) {
+    if app.tray_by_id("main-tray").is_none() {
+        return;
+    }
+
+    let cache = MultiDisplayCache {
+        claude: {
+            let lock = state.latest_usage.lock().unwrap();
+            lock.as_ref()
+                .and_then(|u| u.data.as_ref())
+                .map(TrayDisplayData::from_claude)
+        },
+        codex: {
+            let lock = state.latest_codex.lock().unwrap();
+            lock.as_ref()
+                .and_then(|u| u.data.as_ref())
+                .map(TrayDisplayData::from_codex)
+        },
+        cursor: {
+            let lock = state.latest_cursor.lock().unwrap();
+            lock.as_ref()
+                .and_then(|u| u.data.as_ref())
+                .map(TrayDisplayData::from_cursor)
+        },
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        let styled = build_multi_styled_segments(segments, format, &cache);
+        crate::styled_tray::set_native_styled_title(&styled);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let title = build_multi_plain_title(segments, format, &cache);
+        if let Some(tray) = app.tray_by_id("main-tray") {
+            #[cfg(target_os = "windows")]
+            {
+                let _ = tray.set_title(Option::<&str>::None);
+                let _ = tray.set_tooltip(Some(&title));
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = tray.set_title(Some(&title));
+            }
+        }
+    }
+}
+
+/// Resolve a single segment field to a plain-text string.
+fn resolve_field_plain(
+    field: &TrayField,
+    data: Option<&TrayDisplayData>,
+) -> Option<String> {
+    let dd = data?;
+    match field {
+        TrayField::SessionPct => dd.session_pct.map(|p| format!("S {}%", p.round() as i32)),
+        TrayField::SessionTimer => dd.session_reset.as_ref().and_then(|r| {
+            let cd = crate::tray_renderer::format_countdown_public(r);
+            if cd.is_empty() { None } else { Some(format!("S {}", cd)) }
+        }),
+        TrayField::WeeklyPct => dd.weekly_pct.map(|p| format!("W {}%", p.round() as i32)),
+        TrayField::WeeklyTimer => dd.weekly_reset.as_ref().and_then(|r| {
+            let cd = crate::tray_renderer::format_countdown_public(r);
+            if cd.is_empty() { None } else { Some(format!("W {}", cd)) }
+        }),
+        TrayField::SonnetPct => dd.sonnet_pct.filter(|&p| p > 0.0).map(|p| format!("So {}%", p.round() as i32)),
+        TrayField::OpusPct => dd.opus_pct.filter(|&p| p > 0.0).map(|p| format!("Op {}%", p.round() as i32)),
+        TrayField::ExtraUsage => {
+            if dd.extra_usage_enabled {
+                if let (Some(used), Some(limit)) = (dd.extra_used, dd.extra_limit) {
+                    return Some(format!(
+                        "${}/{}",
+                        (used / 100.0).round() as i32,
+                        (limit / 100.0).round() as i32
+                    ));
+                }
+            }
+            None
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn build_multi_plain_title(
+    segments: &[TraySegmentDef],
+    format: &TrayFormat,
+    cache: &MultiDisplayCache,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let mut last_provider: Option<Provider> = None;
+
+    for seg in segments {
+        match &seg.kind {
+            TraySegmentKind::ProviderData { provider, field } => {
+                if let Some(text) = resolve_field_plain(field, cache.get(provider)) {
+                    let needs_emoji = last_provider != Some(*provider);
+                    if needs_emoji {
+                        parts.push(format!("{} {}", provider.emoji(), text));
+                    } else {
+                        parts.push(text);
+                    }
+                    last_provider = Some(*provider);
+                }
+            }
+            TraySegmentKind::CustomText { text } => {
+                parts.push(text.clone());
+                last_provider = None;
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        "--".to_string()
+    } else {
+        parts.join(&format.separator)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn build_multi_styled_segments(
+    segments: &[TraySegmentDef],
+    format: &TrayFormat,
+    cache: &MultiDisplayCache,
+) -> Vec<crate::styled_tray::StyledSegment> {
+    use crate::styled_tray::StyledSegment;
+
+    let label_color = (185, 185, 200, 255);
+    let timer_color = (160, 210, 255, 255);
+    let sep_color = (110, 110, 125, 255);
+    let custom_color = (200, 200, 220, 255);
+
+    let mut groups: Vec<Vec<StyledSegment>> = Vec::new();
+    let mut last_provider: Option<Provider> = None;
+
+    for seg in segments {
+        match &seg.kind {
+            TraySegmentKind::ProviderData { provider, field } => {
+                let dd = cache.get(provider);
+                if let Some(segs) = resolve_field_styled(field, dd, label_color, timer_color) {
+                    let mut group = Vec::new();
+                    if last_provider != Some(*provider) {
+                        group.push(StyledSegment::from_rgba_u8(
+                            &format!("{} ", provider.emoji()),
+                            255, 255, 255, 255, 13.0, false,
+                        ));
+                    }
+                    group.extend(segs);
+                    groups.push(group);
+                    last_provider = Some(*provider);
+                }
+            }
+            TraySegmentKind::CustomText { text } => {
+                let (r, g, b, a) = custom_color;
+                groups.push(vec![StyledSegment::from_rgba_u8(text, r, g, b, a, 13.0, false)]);
+                last_provider = None;
+            }
+        }
+    }
+
+    let mut result = Vec::new();
+    for (i, group) in groups.iter().enumerate() {
+        if i > 0 {
+            let (r, g, b, a) = sep_color;
+            result.push(StyledSegment::from_rgba_u8(
+                &format!("  {}  ", format.separator.trim()),
+                r, g, b, a, 13.0, false,
+            ));
+        }
+        result.extend(group.iter().cloned());
+    }
+
+    result
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_field_styled(
+    field: &TrayField,
+    data: Option<&TrayDisplayData>,
+    label_color: (u8, u8, u8, u8),
+    timer_color: (u8, u8, u8, u8),
+) -> Option<Vec<crate::styled_tray::StyledSegment>> {
+    use crate::styled_tray::StyledSegment;
+
+    fn pct_color(pct: f64) -> (u8, u8, u8, u8) {
+        if pct >= 90.0 {
+            (255, 100, 100, 255)
+        } else if pct >= 75.0 {
+            (255, 200, 50, 255)
+        } else {
+            (80, 240, 140, 255)
+        }
+    }
+
+    let dd = data?;
+    match field {
+        TrayField::SessionPct => {
+            let pct = dd.session_pct?;
+            let (r, g, b, a) = label_color;
+            let (pr, pg, pb, pa) = pct_color(pct);
+            Some(vec![
+                StyledSegment::from_rgba_u8("S ", r, g, b, a, 13.0, false),
+                StyledSegment::from_rgba_u8(&format!("{}%", pct.round() as i32), pr, pg, pb, pa, 13.0, false),
+            ])
+        }
+        TrayField::SessionTimer => {
+            let reset = dd.session_reset.as_ref()?;
+            let cd = crate::tray_renderer::format_countdown_public(reset);
+            if cd.is_empty() { return None; }
+            let (r, g, b, a) = timer_color;
+            Some(vec![StyledSegment::from_rgba_u8(&cd, r, g, b, a, 13.0, false)])
+        }
+        TrayField::WeeklyPct => {
+            let pct = dd.weekly_pct?;
+            let (r, g, b, a) = label_color;
+            let (pr, pg, pb, pa) = pct_color(pct);
+            Some(vec![
+                StyledSegment::from_rgba_u8("W ", r, g, b, a, 13.0, false),
+                StyledSegment::from_rgba_u8(&format!("{}%", pct.round() as i32), pr, pg, pb, pa, 13.0, false),
+            ])
+        }
+        TrayField::WeeklyTimer => {
+            let reset = dd.weekly_reset.as_ref()?;
+            let cd = crate::tray_renderer::format_countdown_public(reset);
+            if cd.is_empty() { return None; }
+            let (r, g, b, a) = timer_color;
+            Some(vec![StyledSegment::from_rgba_u8(&cd, r, g, b, a, 13.0, false)])
+        }
+        TrayField::SonnetPct => {
+            let pct = dd.sonnet_pct.filter(|&p| p > 0.0)?;
+            let (r, g, b, a) = label_color;
+            let (pr, pg, pb, pa) = pct_color(pct);
+            Some(vec![
+                StyledSegment::from_rgba_u8("So ", r, g, b, a, 13.0, false),
+                StyledSegment::from_rgba_u8(&format!("{}%", pct.round() as i32), pr, pg, pb, pa, 13.0, false),
+            ])
+        }
+        TrayField::OpusPct => {
+            let pct = dd.opus_pct.filter(|&p| p > 0.0)?;
+            let (r, g, b, a) = label_color;
+            let (pr, pg, pb, pa) = pct_color(pct);
+            Some(vec![
+                StyledSegment::from_rgba_u8("Op ", r, g, b, a, 13.0, false),
+                StyledSegment::from_rgba_u8(&format!("{}%", pct.round() as i32), pr, pg, pb, pa, 13.0, false),
+            ])
+        }
+        TrayField::ExtraUsage => {
+            if !dd.extra_usage_enabled { return None; }
+            let used = dd.extra_used?;
+            let limit = dd.extra_limit?;
+            Some(vec![StyledSegment::from_rgba_u8(
+                &format!("${}/{}", (used / 100.0).round() as i32, (limit / 100.0).round() as i32),
+                139, 92, 246, 255, 13.0, false,
+            )])
         }
     }
 }
