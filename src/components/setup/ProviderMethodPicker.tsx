@@ -30,11 +30,13 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     browser: "idle",
     desktop_app: "idle",
     manual: "idle",
+    oauth_file: "idle",
   });
   const [methodErrors, setMethodErrors] = useState<Record<CollectionMethod, string>>({
     browser: "",
     desktop_app: "",
     manual: "",
+    oauth_file: "",
   });
 
   // Browser scan results
@@ -57,11 +59,20 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setConnected(null);
     try {
       if (provider === "Claude") {
+        // Check OAuth path first
+        const authMethod = await invoke<string>("get_claude_auth_method").catch(() => "session_key");
+        if (authMethod === "oauth") {
+          const ok = await invoke<boolean>("check_claude_oauth").catch(() => false);
+          if (ok) {
+            setConnected(true);
+            setConnectedInfo("Connected via Claude Code CLI");
+            return;
+          }
+        }
         const key = await invoke<string | null>("get_session_key");
         const org = await invoke<string | null>("get_org_id");
         if (key && org) {
           setConnected(true);
-          // Try to get org name
           try {
             const orgList = await invoke<Organization[]>("test_connection", { sessionKey: key });
             const match = orgList.find((o) => o.uuid === org);
@@ -101,8 +112,8 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setManualToken("");
     setOrgs([]);
     setSelectedOrg("");
-    setMethodStatuses({ browser: "idle", desktop_app: "idle", manual: "idle" });
-    setMethodErrors({ browser: "", desktop_app: "", manual: "" });
+    setMethodStatuses({ browser: "idle", desktop_app: "idle", manual: "idle", oauth_file: "idle" });
+    setMethodErrors({ browser: "", desktop_app: "", manual: "", oauth_file: "" });
   }
 
   // ── Method handlers ─────────────────────────────────────────────────────
@@ -201,6 +212,29 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
   function handleManual() {
     setActiveMethod("manual");
     setManualToken("");
+  }
+
+  async function handleOAuthFile() {
+    setActiveMethod("oauth_file");
+    setStatus("oauth_file", "loading");
+    try {
+      const ok = await invoke<boolean>("check_claude_oauth");
+      if (!ok) {
+        setStatus(
+          "oauth_file",
+          "error",
+          "~/.claude/.credentials.json not found or has no tokens. Sign in with the Claude CLI first (run 'claude' in a terminal)."
+        );
+        return;
+      }
+      await invoke("set_claude_auth_method", { method: "oauth" });
+      setConnected(true);
+      setConnectedInfo("Connected via Claude Code CLI");
+      setStatus("oauth_file", "success");
+      onConnected();
+    } catch (e: any) {
+      setStatus("oauth_file", "error", String(e));
+    }
   }
 
   // ── Save actions ────────────────────────────────────────────────────────
@@ -345,6 +379,7 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
                 if (m.method === "browser") handleBrowser();
                 else if (m.method === "desktop_app") handleDesktopApp();
                 else if (m.method === "manual") handleManual();
+                else if (m.method === "oauth_file") handleOAuthFile();
               }}
             />
           ))}

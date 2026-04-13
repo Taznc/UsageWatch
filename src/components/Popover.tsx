@@ -17,7 +17,7 @@ export function Popover() {
   const { usageData, lastUpdated, error, isLoading, isOffline, refresh } = useUsageData();
   const { state, dispatch } = useApp();
   const { show_remaining } = state.settings;
-  const { codexData, codexError, codexLastUpdated, cursorData, cursorError, cursorLastUpdated } = state;
+  const { codexData, codexError, codexLastUpdated, cursorData, cursorError, cursorLastUpdated, peakHours } = state;
   const [activeTab, setActiveTab] = useState<'claude' | 'codex' | 'cursor'>('claude');
   const [showHistory, setShowHistory] = useState(false);
   const hasCodex = !!(codexData || codexError);
@@ -247,6 +247,17 @@ export function Popover() {
                             showRemaining={show_remaining}
                           />
                         )}
+                    </div>
+                  )}
+
+                  {peakHours && (
+                    <div className="peak-hours-badge" title="Claude API peak hours status (via PromoClock)">
+                      <span className={`peak-dot ${peakHours.is_peak && !peakHours.is_weekend ? "peak" : "off-peak"}`} />
+                      {peakHours.is_weekend
+                        ? "Weekend (Off-Peak)"
+                        : peakHours.is_peak
+                        ? "Peak Hours"
+                        : "Off-Peak"}
                     </div>
                   )}
 

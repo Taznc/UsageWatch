@@ -1,4 +1,4 @@
-use crate::models::{BillingInfo, BundlesInfo, CreditGrant, PrepaidCredits, UsageData};
+use crate::models::{BillingInfo, BundlesInfo, CreditGrant, PeakHoursStatus, PrepaidCredits, UsageData};
 
 #[tauri::command]
 pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageData, String> {
@@ -98,6 +98,75 @@ pub async fn fetch_billing(session_key: String, org_id: String) -> Result<Billin
         prepaid_credits,
         credit_grant,
         bundles,
+    })
+}
+
+/// Fetch Claude usage via OAuth Bearer token from `api.anthropic.com`.
+/// Used when `claude_auth_method == "oauth"` (i.e. Claude Code CLI credentials).
+pub(crate) async fn fetch_usage_oauth(access_token: &str) -> Result<UsageData, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://api.anthropic.com/api/oauth/usage")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("anthropic-beta", "oauth-2025-04-20")
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .header("user-agent", crate::USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("OAuth usage request failed: {}", e))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED
+        || response.status() == reqwest::StatusCode::FORBIDDEN
+    {
+        return Err("Claude OAuth token expired or invalid. Reconnect via Claude Code CLI.".into());
+    }
+
+    if !response.status().is_success() {
+        return Err(format!("OAuth usage API returned status {}", response.status()));
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read OAuth usage response: {}", e))?;
+
+    serde_json::from_str::<UsageData>(&text)
+        .map_err(|e| format!("Failed to parse OAuth usage data: {}. Raw: {}", e, &text[..text.len().min(500)]))
+}
+
+/// Fetch peak/off-peak status from PromoClock's public API.
+/// Returns None on any error — this is always supplemental and never blocks usage display.
+pub(crate) async fn fetch_peak_hours() -> Option<PeakHoursStatus> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PromoClockResponse {
+        #[serde(default)]
+        is_peak: bool,
+        #[serde(default)]
+        is_off_peak: bool,
+        #[serde(default)]
+        is_weekend: bool,
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://promoclock.co/api/status")
+        .header("user-agent", crate::USER_AGENT)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let data: PromoClockResponse = resp.json().await.ok()?;
+    Some(PeakHoursStatus {
+        is_peak: data.is_peak,
+        is_off_peak: data.is_off_peak,
+        is_weekend: data.is_weekend,
     })
 }
 

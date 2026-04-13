@@ -411,6 +411,15 @@ impl Default for AlertConfig {
     }
 }
 
+// ── Peak hours status (from PromoClock supplemental API) ──────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeakHoursStatus {
+    pub is_peak: bool,
+    pub is_off_peak: bool,
+    pub is_weekend: bool,
+}
+
 // ── Browser scan result (shared by Claude + Cursor browser extraction) ─────
 
 #[derive(Debug, Clone, Serialize)]

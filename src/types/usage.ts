@@ -20,10 +20,17 @@ export interface UsageData {
   extra_usage: ExtraUsage | null;
 }
 
+export interface PeakHoursStatus {
+  is_peak: boolean;
+  is_off_peak: boolean;
+  is_weekend: boolean;
+}
+
 export interface UsageUpdate {
   data: UsageData | null;
   error: string | null;
   timestamp: string;
+  peak_hours?: PeakHoursStatus | null;
 }
 
 export interface PrepaidCredits {

@@ -12,7 +12,7 @@ export function useUsageData() {
     const unlisten = listen<UsageUpdate>("usage-update", (event) => {
       const update = event.payload;
       if (update.data) {
-        dispatch({ type: "SET_USAGE", data: update.data, timestamp: update.timestamp });
+        dispatch({ type: "SET_USAGE", data: update.data, timestamp: update.timestamp, peakHours: update.peak_hours });
       } else if (update.error) {
         dispatch({ type: "SET_ERROR", error: update.error, timestamp: update.timestamp });
       }

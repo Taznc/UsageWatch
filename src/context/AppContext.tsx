@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, ReactNode } from "react";
-import type { UsageData, AppSettings, AppView, CodexUsageData, CursorUsageData } from "../types/usage";
+import type { UsageData, AppSettings, AppView, CodexUsageData, CursorUsageData, PeakHoursStatus } from "../types/usage";
 
 interface AppState {
   view: AppView;
@@ -16,11 +16,12 @@ interface AppState {
   cursorData: CursorUsageData | null;
   cursorError: string | null;
   cursorLastUpdated: string | null;
+  peakHours: PeakHoursStatus | null;
 }
 
 type AppAction =
   | { type: "SET_VIEW"; view: AppView }
-  | { type: "SET_USAGE"; data: UsageData; timestamp: string }
+  | { type: "SET_USAGE"; data: UsageData; timestamp: string; peakHours?: PeakHoursStatus | null }
   | { type: "SET_ERROR"; error: string; timestamp: string }
   | { type: "SET_LOADING"; loading: boolean }
   | { type: "SET_OFFLINE"; offline: boolean }
@@ -56,6 +57,7 @@ const initialState: AppState = {
   cursorData: null,
   cursorError: null,
   cursorLastUpdated: null,
+  peakHours: null,
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -69,6 +71,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         lastUpdated: action.timestamp,
         error: null,
         isLoading: false,
+        peakHours: action.peakHours ?? state.peakHours,
       };
     case "SET_ERROR":
       return {

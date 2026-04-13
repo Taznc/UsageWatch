@@ -55,6 +55,11 @@ pub fn load_credentials_from_store(app: &AppHandle, cache: &CredentialsCache) {
                     cache.set_cursor_manual_token(s.to_string());
                 }
             }
+            if let Some(val) = store.get("claude_auth_method") {
+                if let Some(s) = val.as_str() {
+                    cache.set_claude_auth_method(s.to_string());
+                }
+            }
         }
         Err(e) => {
             eprintln!("[credentials] failed to open store: {}", e);

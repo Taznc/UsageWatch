@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::time::{interval, Duration};
 
 use crate::credentials_cache::CredentialsCache;
-use crate::models::{CodexUsageData, CursorUsageData, UsageData};
+use crate::models::{CodexUsageData, CursorUsageData, PeakHoursStatus, UsageData};
 use crate::commands;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -11,6 +11,7 @@ pub struct UsageUpdate {
     pub data: Option<UsageData>,
     pub error: Option<String>,
     pub timestamp: String,
+    pub peak_hours: Option<PeakHoursStatus>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -45,32 +46,47 @@ pub fn start_polling(
                 continue;
             }
 
-            let session_key = match cache.get_session_key() {
-                Some(key) => key,
-                None => {
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    continue;
+            let auth_method = cache.get_claude_auth_method();
+
+            // Fetch usage via the appropriate auth path
+            let usage_result: Result<UsageData, String> = if auth_method == "oauth" {
+                match commands::claude_oauth::get_claude_oauth_token().await {
+                    Ok(token) => commands::usage::fetch_usage_oauth(&token).await,
+                    Err(e) => Err(e),
                 }
+            } else {
+                let session_key = match cache.get_session_key() {
+                    Some(key) => key,
+                    None => {
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                };
+                let org_id = match cache.get_org_id() {
+                    Some(id) => id,
+                    None => {
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                };
+                fetch_usage_internal(&session_key, &org_id).await
             };
 
-            let org_id = match cache.get_org_id() {
-                Some(id) => id,
-                None => {
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    continue;
-                }
-            };
+            // Fetch peak hours supplementally — never blocks or propagates errors
+            let peak_hours = commands::usage::fetch_peak_hours().await;
 
-            let update = match fetch_usage_internal(&session_key, &org_id).await {
+            let update = match usage_result {
                 Ok(data) => UsageUpdate {
                     data: Some(data),
                     error: None,
                     timestamp: chrono::Utc::now().to_rfc3339(),
+                    peak_hours,
                 },
                 Err(e) => UsageUpdate {
                     data: None,
                     error: Some(e),
                     timestamp: chrono::Utc::now().to_rfc3339(),
+                    peak_hours,
                 },
             };
 

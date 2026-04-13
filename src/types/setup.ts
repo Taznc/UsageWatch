@@ -1,6 +1,6 @@
 import type { Provider } from "./usage";
 
-export type CollectionMethod = "browser" | "desktop_app" | "manual";
+export type CollectionMethod = "browser" | "desktop_app" | "manual" | "oauth_file";
 
 export interface MethodConfig {
   method: CollectionMethod;
@@ -12,6 +12,12 @@ export interface MethodConfig {
 
 export const PROVIDER_METHODS: Record<Provider, MethodConfig[]> = {
   Claude: [
+    {
+      method: "oauth_file",
+      label: "Claude Code CLI",
+      description: "Auto-read OAuth token from ~/.claude/.credentials.json (recommended for CLI users)",
+      available: true,
+    },
     {
       method: "browser",
       label: "Browser Auto-detect",

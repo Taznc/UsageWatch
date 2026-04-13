@@ -8,6 +8,8 @@ pub struct CredentialsCache {
     codex_manual_token: Mutex<Option<String>>,
     codex_browser_cookie: Mutex<Option<String>>,
     cursor_manual_token: Mutex<Option<String>>,
+    /// "session_key" (default) or "oauth"
+    claude_auth_method: Mutex<String>,
 }
 
 impl CredentialsCache {
@@ -18,6 +20,7 @@ impl CredentialsCache {
             codex_manual_token: Mutex::new(None),
             codex_browser_cookie: Mutex::new(None),
             cursor_manual_token: Mutex::new(None),
+            claude_auth_method: Mutex::new("session_key".to_string()),
         }
     }
 
@@ -63,5 +66,13 @@ impl CredentialsCache {
 
     pub fn set_cursor_manual_token(&self, token: String) {
         *self.cursor_manual_token.lock().unwrap() = Some(token);
+    }
+
+    pub fn get_claude_auth_method(&self) -> String {
+        self.claude_auth_method.lock().unwrap().clone()
+    }
+
+    pub fn set_claude_auth_method(&self, method: String) {
+        *self.claude_auth_method.lock().unwrap() = method;
     }
 }
