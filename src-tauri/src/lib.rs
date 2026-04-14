@@ -113,6 +113,7 @@ pub fn run() {
             commands::browser::pull_session_from_browsers,
             commands::browser::pull_codex_session_from_browsers,
             commands::browser::debug_claude_desktop_cookies,
+            commands::browser::scan_browsers,
             commands::usage::fetch_billing,
             commands::usage::fetch_status,
             commands::codex::check_codex_auth,

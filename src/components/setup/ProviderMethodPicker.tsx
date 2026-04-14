@@ -17,14 +17,18 @@ interface ProviderMethodPickerProps {
 
 type MethodStatus = "idle" | "loading" | "success" | "error";
 
+// Label shown for desktop-app source results in the browser picker
+const DESKTOP_LABEL: Partial<Record<Provider, string>> = {
+  Claude: "Claude Desktop",
+  Codex: "ChatGPT Desktop",
+};
+
 export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPickerProps) {
   const methods = PROVIDER_METHODS[provider];
 
-  // Connection status
   const [connected, setConnected] = useState<boolean | null>(null);
   const [connectedInfo, setConnectedInfo] = useState<string>("");
 
-  // Active method + states
   const [activeMethod, setActiveMethod] = useState<CollectionMethod | null>(null);
   const [methodStatuses, setMethodStatuses] = useState<Record<CollectionMethod, MethodStatus>>({
     browser: "idle",
@@ -39,18 +43,17 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     oauth_file: "",
   });
 
-  // Browser scan results
+  // Browser scan results shared between "browser" method display
   const [browserResults, setBrowserResults] = useState<BrowserResult[]>([]);
   const [selectedBrowser, setSelectedBrowser] = useState<string>("");
 
   // Manual entry
   const [manualToken, setManualToken] = useState("");
 
-  // Claude-specific: org selection
+  // Claude multi-org selection
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [selectedOrg, setSelectedOrg] = useState("");
 
-  // Check current connection status on mount
   useEffect(() => {
     checkStatus();
   }, [provider]);
@@ -59,7 +62,6 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setConnected(null);
     try {
       if (provider === "Claude") {
-        // Check OAuth path first
         const authMethod = await invoke<string>("get_claude_auth_method").catch(() => "session_key");
         if (authMethod === "oauth") {
           const ok = await invoke<boolean>("check_claude_oauth").catch(() => false);
@@ -124,25 +126,18 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setBrowserResults([]);
     setSelectedBrowser("");
     try {
-      let results: BrowserResult[];
-      if (provider === "Claude") {
-        results = await invoke<BrowserResult[]>("pull_session_from_browsers");
-      } else if (provider === "Codex") {
-        results = await invoke<BrowserResult[]>("pull_codex_session_from_browsers");
-      } else {
-        results = await invoke<BrowserResult[]>("pull_cursor_session_from_browsers");
-      }
+      const results = await invoke<BrowserResult[]>("scan_browsers", { provider });
       const valid = results.filter((r) => r.session_key);
       if (valid.length === 0) {
-        const loginSite = provider === "Claude" ? "claude.ai" : provider === "Codex" ? "chatgpt.com" : "cursor.com";
-        setStatus("browser", "error", `No session found in any browser. Make sure you're logged into ${loginSite}.`);
+        const site = provider === "Claude" ? "claude.ai" : provider === "Codex" ? "chatgpt.com" : "cursor.com";
+        setStatus("browser", "error", `No session found in any browser. Make sure you're signed into ${site}.`);
         return;
       }
       setBrowserResults(valid);
-      // Auto-select first (or prefer the desktop app for Claude/Codex)
-      const preferred =
-        provider === "Claude" ? (valid.find((r) => r.browser === "Claude Desktop") ?? valid[0])
-        : provider === "Codex" ? (valid.find((r) => r.browser === "ChatGPT Desktop") ?? valid[0])
+      // Auto-select preferred source (desktop app > first browser)
+      const desktopLabel = DESKTOP_LABEL[provider];
+      const preferred = desktopLabel
+        ? (valid.find((r) => r.browser === desktopLabel) ?? valid[0])
         : valid[0];
       setSelectedBrowser(preferred.browser);
       setStatus("browser", "idle");
@@ -155,34 +150,7 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setActiveMethod("desktop_app");
     setStatus("desktop_app", "loading");
     try {
-      if (provider === "Claude") {
-        // Claude Desktop is included in the browser scan (appears as "Claude Desktop")
-        let results: BrowserResult[];
-        try {
-          results = await invoke<BrowserResult[]>("pull_session_from_browsers");
-        } catch (e: any) {
-          const msg = String(e);
-          if (msg.includes("being used by another process") || msg.includes("sharing") || msg.includes("os error 32")) {
-            setStatus("desktop_app", "error", "Claude Desktop has its cookie file locked. Close Claude Desktop and try again, or use Browser Cookies instead (log into claude.ai in Chrome/Edge).");
-          } else {
-            setStatus("desktop_app", "error", msg);
-          }
-          return;
-        }
-        const desktop = results.find((r) => r.browser === "Claude Desktop" && r.session_key);
-        if (!desktop) {
-          const hasDesktopEntry = results.find((r) => r.browser === "Claude Desktop");
-          if (hasDesktopEntry) {
-            setStatus("desktop_app", "error", "Claude Desktop cookie file is locked. Close Claude Desktop and try again, or use Browser Cookies instead (log into claude.ai in Chrome/Edge).");
-          } else {
-            setStatus("desktop_app", "error", "Claude Desktop session not found. Make sure you're signed in, or close and reopen Claude Desktop.");
-          }
-          return;
-        }
-        setBrowserResults([desktop]);
-        setSelectedBrowser("Claude Desktop");
-        setStatus("desktop_app", "idle");
-      } else if (provider === "Codex") {
+      if (provider === "Codex") {
         const ok = await invoke<boolean>("check_codex_auth");
         if (!ok) {
           setStatus("desktop_app", "error", "~/.codex/auth.json not found or has no tokens. Run 'codex auth' first.");
@@ -242,9 +210,7 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
   async function saveBrowserSelection() {
     const result = browserResults.find((r) => r.browser === selectedBrowser);
     if (!result?.session_key) return;
-
-    const method = activeMethod ?? "browser";
-    setStatus(method, "loading");
+    setStatus("browser", "loading");
     try {
       if (provider === "Claude") {
         const orgList = await invoke<Organization[]>("test_connection", { sessionKey: result.session_key });
@@ -252,15 +218,14 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
         if (orgList.length === 1) {
           await finishClaudeSetup(result.session_key, orgList[0].uuid, orgList[0].name);
         } else {
-          // Need org selection
-          setStatus(method, "idle");
+          setStatus("browser", "idle");
         }
       } else if (provider === "Codex") {
         await invoke<boolean>("test_codex_browser_cookie", { cookie: result.session_key });
         await invoke("save_codex_browser_cookie", { cookie: result.session_key });
         setConnected(true);
-        setConnectedInfo(`Authenticated via ${selectedBrowser} (chatgpt.com)`);
-        setStatus(method, "success");
+        setConnectedInfo(`Authenticated via ${selectedBrowser}`);
+        setStatus("browser", "success");
         onConnected();
       } else if (provider === "Cursor") {
         await invoke<boolean>("test_cursor_connection", { cookie: result.session_key });
@@ -268,11 +233,11 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
         setConnected(true);
         const email = await invoke<string | null>("get_cursor_email");
         setConnectedInfo(email ?? `Authenticated via ${selectedBrowser}`);
-        setStatus(method, "success");
+        setStatus("browser", "success");
         onConnected();
       }
     } catch (e: any) {
-      setStatus(method, "error", String(e));
+      setStatus("browser", "error", String(e));
     }
   }
 
@@ -315,7 +280,7 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setConnected(true);
     setConnectedInfo(name);
     setSelectedOrg(orgId);
-    const method = activeMethod ?? "browser";
+    const method = activeMethod ?? "manual";
     setStatus(method, "success");
     onConnected();
   }
@@ -323,7 +288,6 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
   async function selectClaudeOrg(orgId: string) {
     const org = orgs.find((o) => o.uuid === orgId);
     if (!org) return;
-    // Get the key from the browser result or manual entry
     const key =
       browserResults.find((r) => r.browser === selectedBrowser)?.session_key ??
       manualToken.trim();
@@ -331,12 +295,12 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     await finishClaudeSetup(key, orgId, org.name);
   }
 
-  // ── Manual entry hints ──────────────────────────────────────────────────
+  // ── Per-provider hints ──────────────────────────────────────────────────
 
   const manualHint: Record<Provider, string> = {
     Claude: "Open claude.ai \u2192 DevTools (F12) \u2192 Application \u2192 Cookies \u2192 copy sessionKey",
     Codex: "Run 'codex auth' in a terminal, then copy the access_token from ~/.codex/auth.json",
-    Cursor: "Open cursor.com/dashboard in a browser \u2192 DevTools (F12) \u2192 Application \u2192 Cookies \u2192 copy all cookies as header string",
+    Cursor: "Open cursor.com/dashboard \u2192 DevTools (F12) \u2192 Application \u2192 Cookies \u2192 copy all cookies as a header string",
   };
 
   const manualPlaceholder: Record<Provider, string> = {
@@ -344,6 +308,8 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     Codex: "eyJhbGciOi...",
     Cursor: "WorkosCursorSessionToken=...",
   };
+
+  const desktopLabel = DESKTOP_LABEL[provider];
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -387,12 +353,12 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
       )}
 
       {/* Browser scan results */}
-      {!connected && browserResults.length > 0 && (activeMethod === "browser" || activeMethod === "desktop_app") && (
+      {!connected && activeMethod === "browser" && browserResults.length > 0 && (
         <div className="scan-results">
           <p className="card-label">
             {browserResults.length === 1
-              ? "Found a session \u2014 click to use it:"
-              : "Found sessions \u2014 select one:"}
+              ? "Session found \u2014 click to use it:"
+              : "Sessions found \u2014 select one:"}
           </p>
           {browserResults.map((r) => (
             <button
@@ -401,10 +367,10 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
               onClick={() => setSelectedBrowser(r.browser)}
             >
               <span className="scan-source-icon">
-                {r.browser === "Claude Desktop" ? "\u25C6" : "\u25C9"}
+                {desktopLabel && r.browser === desktopLabel ? "\u25C6" : "\u25C9"}
               </span>
               {r.browser}
-              {r.browser === "Claude Desktop" && (
+              {desktopLabel && r.browser === desktopLabel && (
                 <span className="scan-source-recommended">recommended</span>
               )}
             </button>
@@ -414,9 +380,9 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
               className="btn primary"
               style={{ marginTop: 8, width: "100%" }}
               onClick={saveBrowserSelection}
-              disabled={methodStatuses[activeMethod!] === "loading"}
+              disabled={methodStatuses.browser === "loading"}
             >
-              {methodStatuses[activeMethod!] === "loading" ? "Verifying..." : "Use selected & save"}
+              {methodStatuses.browser === "loading" ? "Verifying..." : "Use selected \u2014 save"}
             </button>
           )}
         </div>
@@ -447,7 +413,7 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
         </div>
       )}
 
-      {/* Claude org selector (when multiple orgs returned) */}
+      {/* Claude org selector */}
       {!connected && provider === "Claude" && orgs.length > 1 && (
         <div className="form-group" style={{ marginTop: 12 }}>
           <label>Organization</label>
@@ -466,7 +432,7 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
         </div>
       )}
 
-      {/* Reconnect button when already connected */}
+      {/* Reconnect */}
       {connected && (
         <button
           className="account-text-btn"

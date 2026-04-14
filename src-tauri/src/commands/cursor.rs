@@ -83,7 +83,7 @@ fn read_cursor_key(key: &str) -> Option<String> {
     None
 }
 
-// ── Browser cookie extraction ─────────────────────────────────────────────
+// ── Browser cookie extraction (kept for potential debug use, not surfaced in UI) ──
 
 use crate::models::{BrowserResult, CursorUsageData};
 use rookie::common::enums::Cookie;
@@ -106,30 +106,8 @@ fn cursor_browser_list() -> Vec<(&'static str, BrowserFn)> {
     ]
 }
 
-/// Build a cookie header string from all cookies for cursor.com found in any browser.
-/// Returns the first browser that has cookies (used by polling).
-fn get_cursor_session_cookie() -> Option<String> {
-    let domains = Some(vec!["cursor.com".to_string()]);
-
-    for (_name, fetch_fn) in cursor_browser_list() {
-        match fetch_fn(domains.clone()) {
-            Ok(cookies) if !cookies.is_empty() => {
-                let cookie_str: String = cookies
-                    .iter()
-                    .map(|c| format!("{}={}", c.name, c.value))
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                return Some(cookie_str);
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
-
 /// Scan all browsers for cursor.com session cookies, returning per-browser results.
-fn scan_cursor_browsers() -> Vec<BrowserResult> {
+pub fn scan_cursor_browsers() -> Vec<BrowserResult> {
     let domains = Some(vec!["cursor.com".to_string()]);
     let mut results = Vec::new();
 
@@ -189,15 +167,17 @@ fn extract_bearer_from_cookie(cookie_str: &str) -> Option<String> {
 //   3. Desktop token   → read cursorAuth/accessToken from storage.json / state.vscdb
 
 pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) -> Result<CursorUsageData, String> {
-    // Resolve session cookie (for Stripe endpoint) and bearer token (for RPC) separately.
-    let session_cookie: Option<String> = get_cursor_session_cookie()
-        .or_else(|| manual_token.as_ref().filter(|t| t.contains('=') || t.contains(';')).cloned());
+    // Session cookie only from manual entry (cookie string) — not from browser scanning,
+    // which triggers macOS keychain prompts on every call.
+    let session_cookie: Option<String> = manual_token.as_ref()
+        .filter(|t| t.contains('=') || t.contains(';'))
+        .cloned();
 
     let bearer: String = session_cookie.as_deref()
         .and_then(extract_bearer_from_cookie)
         .or_else(|| manual_token.as_ref().filter(|t| !t.contains('=') && !t.contains(';')).cloned())
         .or_else(|| read_cursor_key("cursorAuth/accessToken"))
-        .ok_or_else(|| "No Cursor auth found — sign into the Cursor desktop app, log into cursor.com/dashboard in your browser, or enter a token manually.".to_string())?;
+        .ok_or_else(|| "No Cursor auth found — sign into the Cursor desktop app or enter a token manually.".to_string())?;
 
     let email = read_cursor_key("cursorAuth/cachedEmail");
     let client = reqwest::Client::new();
@@ -316,9 +296,7 @@ const CURSOR_MANUAL_TOKEN_KEY: &str = "cursor_manual_token";
 pub async fn check_cursor_auth(
     cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
 ) -> Result<bool, String> {
-    // Check: Cursor app auth token, browser session cookies, or manual token
     Ok(read_cursor_key("cursorAuth/accessToken").is_some()
-        || get_cursor_session_cookie().is_some()
         || cache.get_cursor_manual_token().is_some())
 }
 

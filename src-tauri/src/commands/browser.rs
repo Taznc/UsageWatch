@@ -434,3 +434,16 @@ pub fn pull_codex_session_from_browsers() -> Result<Vec<BrowserResult>, String> 
 
     Ok(results)
 }
+
+/// Unified browser scan for all providers.
+/// Dispatches to the correct scanner based on `provider` ("Claude", "Codex", or "Cursor").
+/// Returns a list of browsers where a session was found, each with the extracted credential.
+#[tauri::command]
+pub fn scan_browsers(provider: String) -> Result<Vec<BrowserResult>, String> {
+    match provider.as_str() {
+        "Claude" => pull_session_from_browsers(),
+        "Codex"  => pull_codex_session_from_browsers(),
+        "Cursor" => Ok(crate::commands::cursor::scan_cursor_browsers()),
+        other    => Err(format!("Unknown provider: {other}")),
+    }
+}

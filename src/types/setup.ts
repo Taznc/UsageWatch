@@ -15,19 +15,13 @@ export const PROVIDER_METHODS: Record<Provider, MethodConfig[]> = {
     {
       method: "oauth_file",
       label: "Claude Code CLI",
-      description: "Auto-read OAuth token from ~/.claude/.credentials.json (recommended for CLI users)",
+      description: "Auto-read OAuth token from Claude Code CLI credentials (recommended)",
       available: true,
     },
     {
       method: "browser",
-      label: "Browser Auto-detect",
-      description: "Scan installed browsers for a claude.ai session cookie",
-      available: true,
-    },
-    {
-      method: "desktop_app",
-      label: "Claude Desktop App",
-      description: "Read session from the Claude Desktop Electron app",
+      label: "Browser Scan",
+      description: "Search installed browsers and Claude Desktop for a saved session",
       available: true,
     },
     {
@@ -40,14 +34,14 @@ export const PROVIDER_METHODS: Record<Provider, MethodConfig[]> = {
   Codex: [
     {
       method: "desktop_app",
-      label: "Desktop Session File",
+      label: "Codex Auth File",
       description: "Read OAuth tokens from ~/.codex/auth.json",
       available: true,
     },
     {
       method: "browser",
-      label: "Browser Cookies",
-      description: "Scan installed browsers for a chatgpt.com session cookie",
+      label: "Browser Scan",
+      description: "Search installed browsers for a saved ChatGPT session",
       available: true,
     },
     {
@@ -61,13 +55,13 @@ export const PROVIDER_METHODS: Record<Provider, MethodConfig[]> = {
     {
       method: "desktop_app",
       label: "Cursor App Storage",
-      description: "Read credentials from Cursor's local auth storage",
+      description: "Read credentials from Cursor's local app storage",
       available: true,
     },
     {
       method: "browser",
-      label: "Browser Cookies",
-      description: "Scan installed browsers for a cursor.com session",
+      label: "Browser Scan",
+      description: "Search installed browsers for a saved Cursor session",
       available: true,
     },
     {
