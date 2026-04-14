@@ -106,6 +106,9 @@ export interface CodexUsageData {
   plan_type: string | null;
   allowed: boolean;
   limit_reached: boolean;
+  account_id: string | null;
+  auth_source: string | null;
+  last_refresh_at: string | null;
   session_window: CodexUsageWindow | null;
   weekly_window: CodexUsageWindow | null;
   credits: CodexCredits | null;
@@ -122,15 +125,28 @@ export interface CodexUpdate {
 
 export interface CursorUsageData {
   plan_name: string | null;
+  plan_price: string | null;
+  plan_included_amount_cents: number | null;
   current_spend_cents: number;
+  total_spend_cents: number | null;
+  bonus_spend_cents: number | null;
   limit_cents: number;
   spend_pct: number;
   auto_pct: number | null;
   api_pct: number | null;
   remaining_bonus: boolean;
+  bonus_tooltip: string | null;
+  display_message: string | null;
   on_demand_used_cents: number | null;
   on_demand_limit_cents: number | null;
+  on_demand_remaining_cents: number | null;
+  on_demand_pooled_used_cents: number | null;
+  on_demand_pooled_limit_cents: number | null;
+  on_demand_pooled_remaining_cents: number | null;
+  on_demand_limit_type: string | null;
   is_team: boolean;
+  membership_type: string | null;
+  subscription_status: string | null;
   stripe_balance_cents: number | null;
   cycle_resets_at: string | null;
   email: string | null;

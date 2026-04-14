@@ -218,6 +218,9 @@ pub struct CodexUsageData {
     pub plan_type: Option<String>,
     pub allowed: bool,
     pub limit_reached: bool,
+    pub account_id: Option<String>,
+    pub auth_source: Option<String>,
+    pub last_refresh_at: Option<String>,
     pub session_window: Option<CodexUsageWindow>,
     pub weekly_window: Option<CodexUsageWindow>,
     pub credits: Option<CodexCredits>,
@@ -238,7 +241,12 @@ fn convert_api_window(w: CodexApiWindow) -> CodexUsageWindow {
 }
 
 impl CodexUsageData {
-    pub fn from_api(api: CodexApiResponse) -> Self {
+    pub fn from_api(
+        api: CodexApiResponse,
+        account_id: Option<String>,
+        auth_source: Option<String>,
+        last_refresh_at: Option<String>,
+    ) -> Self {
         let (allowed, limit_reached, session_window, weekly_window) =
             if let Some(rl) = api.rate_limit {
                 (
@@ -264,6 +272,9 @@ impl CodexUsageData {
             plan_type: api.plan_type,
             allowed,
             limit_reached,
+            account_id,
+            auth_source,
+            last_refresh_at,
             session_window,
             weekly_window,
             credits,
@@ -277,8 +288,14 @@ impl CodexUsageData {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CursorUsageData {
     pub plan_name: Option<String>,
+    pub plan_price: Option<String>,
+    pub plan_included_amount_cents: Option<f64>,
     /// Current included spend in cents (counts against plan limit)
     pub current_spend_cents: f64,
+    /// Total plan spend in cents (included + bonus/provider credits)
+    pub total_spend_cents: Option<f64>,
+    /// Bonus/provider-credit spend in cents for this cycle
+    pub bonus_spend_cents: Option<f64>,
     /// Plan included-amount limit in cents
     pub limit_cents: f64,
     /// Spend as a percentage of plan limit
@@ -289,12 +306,21 @@ pub struct CursorUsageData {
     pub api_pct: Option<f64>,
     /// True when bonus credits from model providers are still available
     pub remaining_bonus: bool,
+    pub bonus_tooltip: Option<String>,
+    pub display_message: Option<String>,
     /// On-demand individual spend this cycle in cents (>0 means over-plan usage)
     pub on_demand_used_cents: Option<f64>,
     /// On-demand individual limit in cents (None = no on-demand budget set)
     pub on_demand_limit_cents: Option<f64>,
+    pub on_demand_remaining_cents: Option<f64>,
+    pub on_demand_pooled_used_cents: Option<f64>,
+    pub on_demand_pooled_limit_cents: Option<f64>,
+    pub on_demand_pooled_remaining_cents: Option<f64>,
+    pub on_demand_limit_type: Option<String>,
     /// True when the account is a Team plan
     pub is_team: bool,
+    pub membership_type: Option<String>,
+    pub subscription_status: Option<String>,
     /// Stripe prepaid credit balance in cents (positive = credit available)
     pub stripe_balance_cents: Option<f64>,
     /// When the billing cycle resets (ISO-8601)
@@ -305,17 +331,30 @@ pub struct CursorUsageData {
 
 impl CursorUsageData {
     pub fn build(
+        plan_name: Option<String>,
+        plan_price: Option<String>,
+        plan_included_amount_cents: Option<f64>,
         spend_cents: f64,
+        total_spend_cents: Option<f64>,
+        bonus_spend_cents: Option<f64>,
         limit_cents: f64,
         auto_pct: Option<f64>,
         api_pct: Option<f64>,
         total_pct: Option<f64>,
         remaining_bonus: bool,
+        bonus_tooltip: Option<String>,
+        display_message: Option<String>,
         on_demand_used_cents: Option<f64>,
         on_demand_limit_cents: Option<f64>,
+        on_demand_remaining_cents: Option<f64>,
+        on_demand_pooled_used_cents: Option<f64>,
+        on_demand_pooled_limit_cents: Option<f64>,
+        on_demand_pooled_remaining_cents: Option<f64>,
+        on_demand_limit_type: Option<String>,
         is_team: bool,
+        membership_type: Option<String>,
+        subscription_status: Option<String>,
         stripe_balance_cents: Option<f64>,
-        plan: Option<String>,
         cycle_end: Option<String>,
         email: Option<String>,
     ) -> Self {
@@ -329,16 +368,29 @@ impl CursorUsageData {
                 }
             });
         Self {
-            plan_name: plan,
+            plan_name,
+            plan_price,
+            plan_included_amount_cents,
             current_spend_cents: spend_cents,
+            total_spend_cents,
+            bonus_spend_cents,
             limit_cents,
             spend_pct,
             auto_pct,
             api_pct,
             remaining_bonus,
+            bonus_tooltip,
+            display_message,
             on_demand_used_cents,
             on_demand_limit_cents,
+            on_demand_remaining_cents,
+            on_demand_pooled_used_cents,
+            on_demand_pooled_limit_cents,
+            on_demand_pooled_remaining_cents,
+            on_demand_limit_type,
             is_team,
+            membership_type,
+            subscription_status,
             stripe_balance_cents,
             cycle_resets_at: cycle_end,
             email,

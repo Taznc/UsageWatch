@@ -100,6 +100,36 @@ export function Popover() {
       : cursorData && cursorData.spend_pct >= 75
         ? "warning"
         : "healthy";
+  const cursorPlanLimitCents = cursorData
+    ? (cursorData.plan_included_amount_cents ?? cursorData.limit_cents)
+    : 0;
+  const cursorHasMonetaryPlan = !!cursorData && (
+    cursorPlanLimitCents > 0 || cursorData.current_spend_cents > 0 || (cursorData.total_spend_cents ?? 0) > 0
+  );
+  const cursorNormalizedPlan = cursorData?.plan_name?.trim().toLowerCase() ?? null;
+  const cursorNormalizedMembership = cursorData?.membership_type?.trim().toLowerCase() ?? null;
+  const cursorNormalizedPrice = cursorData?.plan_price?.trim().toLowerCase() ?? null;
+  const cursorShowPlanPrice =
+    !!cursorData?.plan_price &&
+    cursorNormalizedPrice !== cursorNormalizedPlan &&
+    cursorNormalizedPrice !== cursorNormalizedMembership;
+  const cursorShowMembership =
+    !!cursorData?.membership_type &&
+    cursorNormalizedMembership !== cursorNormalizedPlan;
+  const cursorOnDemandLimit =
+    cursorData?.is_team && (cursorData.on_demand_pooled_limit_cents ?? 0) > 0
+      ? cursorData.on_demand_pooled_limit_cents
+      : cursorData?.on_demand_limit_cents;
+  const cursorOnDemandUsed =
+    cursorData?.is_team
+      ? cursorData.on_demand_pooled_used_cents ?? cursorData.on_demand_used_cents ?? 0
+      : cursorData?.on_demand_used_cents ?? 0;
+  const cursorOnDemandScope =
+    cursorData?.is_team
+      ? "team pool"
+      : cursorData?.on_demand_limit_type === "team"
+        ? "team cap"
+        : "personal cap";
 
   // Monitor thresholds and fire native notifications
   useAlertEngine(usageData, burnRate);
@@ -380,6 +410,15 @@ export function Popover() {
                         </span>
                       )}
                     </h2>
+                    {(codexData.auth_source || codexData.last_refresh_at || codexData.account_id) && (
+                      <div className="extra-usage-details" style={{ marginBottom: '8px' }}>
+                        {codexData.auth_source && <span>{codexData.auth_source}</span>}
+                        {codexData.last_refresh_at && (
+                          <span>Refreshed {new Date(codexData.last_refresh_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                        )}
+                        {codexData.account_id && <span title={codexData.account_id}>Account bound</span>}
+                      </div>
+                    )}
                     <UsageBar
                       label="Current Session"
                       percentage={codexData.session_window.used_percent}
@@ -418,7 +457,9 @@ export function Popover() {
                         <span className="billing-value">
                           ${parseFloat(codexData.credits.balance ?? '0').toFixed(2)}
                         </span>
-                        <span className="billing-label">Available balance</span>
+                        <span className="billing-label">
+                          {codexData.credits.overage_limit_reached ? "Balance exhausted" : "Available balance"}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -474,17 +515,35 @@ export function Popover() {
                       </span>
                     )}
                   </h2>
+                  {(cursorShowPlanPrice || cursorShowMembership || cursorData.subscription_status) && (
+                    <div className="extra-usage-details" style={{ marginBottom: '8px' }}>
+                      {cursorShowPlanPrice && <span>{cursorData.plan_price}</span>}
+                      {cursorShowMembership && <span>Tier {cursorData.membership_type}</span>}
+                      {cursorData.subscription_status && <span>{cursorData.subscription_status}</span>}
+                    </div>
+                  )}
 
                   <div className="extra-usage cursor-usage-card">
                     <div className="cursor-usage-topline">
                       <div className="cursor-usage-amounts">
-                        <span className="cursor-usage-amount">
-                          {formatCurrencyFromCents(cursorData.current_spend_cents)}
-                        </span>
-                        <span className="cursor-usage-divider">of</span>
-                        <span className="cursor-usage-limit">
-                          {formatCurrencyFromCents(cursorData.limit_cents)}
-                        </span>
+                        {cursorHasMonetaryPlan ? (
+                          <>
+                            <span className="cursor-usage-amount">
+                              {formatCurrencyFromCents(cursorData.current_spend_cents)}
+                            </span>
+                            <span className="cursor-usage-divider">of</span>
+                            <span className="cursor-usage-limit">
+                              {formatCurrencyFromCents(cursorPlanLimitCents)}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="cursor-usage-amount">
+                              {cursorData.spend_pct.toFixed(0)}%
+                            </span>
+                            <span className="cursor-usage-divider">used this cycle</span>
+                          </>
+                        )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {cursorData.remaining_bonus && (
@@ -496,9 +555,11 @@ export function Popover() {
                             +bonus
                           </span>
                         )}
-                        <span className={`cursor-usage-badge ${cursorUsageTone}`}>
-                          {cursorData.spend_pct.toFixed(0)}%
-                        </span>
+                        {cursorHasMonetaryPlan && (
+                          <span className={`cursor-usage-badge ${cursorUsageTone}`}>
+                            {cursorData.spend_pct.toFixed(0)}%
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="usage-bar-track">
@@ -527,10 +588,39 @@ export function Popover() {
                       </div>
                     )}
 
-                    <div className="extra-usage-details">
-                      <span>{formatCurrencyFromCents(cursorData.current_spend_cents)} used</span>
-                      <span>{formatCurrencyFromCents(cursorData.limit_cents)} included</span>
-                    </div>
+                    {cursorHasMonetaryPlan ? (
+                      <div className="extra-usage-details">
+                        <span>{formatCurrencyFromCents(cursorData.current_spend_cents)} used</span>
+                        <span>{formatCurrencyFromCents(cursorPlanLimitCents)} included</span>
+                      </div>
+                    ) : (
+                      <div className="extra-usage-details">
+                        <span>{cursorData.plan_name ?? "Usage tracked by percent"}</span>
+                        <span>{cursorData.display_message ?? "Cursor did not return a dollar limit for this plan."}</span>
+                      </div>
+                    )}
+                    {(cursorData.total_spend_cents != null || cursorData.bonus_spend_cents != null) && (
+                      <div className="extra-usage-details">
+                        {cursorData.total_spend_cents != null && (
+                          <span>Total {formatCurrencyFromCents(cursorData.total_spend_cents)}</span>
+                        )}
+                        {cursorData.bonus_spend_cents != null && (
+                          <span title={cursorData.bonus_tooltip ?? "Bonus credits from model providers"}>
+                            Bonus {formatCurrencyFromCents(cursorData.bonus_spend_cents)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {cursorData.display_message && cursorHasMonetaryPlan && (
+                      <div className="extra-usage-details">
+                        <span>{cursorData.display_message}</span>
+                      </div>
+                    )}
+                    {cursorData.bonus_tooltip && cursorData.remaining_bonus && (
+                      <div className="extra-usage-details">
+                        <span>{cursorData.bonus_tooltip}</span>
+                      </div>
+                    )}
                   </div>
 
                   {cursorData.cycle_resets_at && (
@@ -543,28 +633,51 @@ export function Popover() {
                 </div>
 
                 {/* ── On-demand budget (shown only when set) ── */}
-                {cursorData.on_demand_limit_cents != null && (
+                {cursorOnDemandLimit != null && (
                   <div className="usage-section">
                     <h2 className="section-heading">
                       On-Demand Budget
                       <span className="section-heading-meta" style={{ opacity: 0.5 }} title="Extra spending after the plan limit is exhausted">
-                        over-plan
+                        {cursorOnDemandScope}
                       </span>
                     </h2>
                     <UsageBar
                       label="Budget used"
                       percentage={
-                        cursorData.on_demand_limit_cents > 0
-                          ? Math.min(((cursorData.on_demand_used_cents ?? 0) / cursorData.on_demand_limit_cents) * 100, 100)
+                        cursorOnDemandLimit > 0
+                          ? Math.min((cursorOnDemandUsed / cursorOnDemandLimit) * 100, 100)
                           : 0
                       }
                       resetAt={cursorData.cycle_resets_at}
                       showRemaining={show_remaining}
                     />
                     <div className="extra-usage-details" style={{ marginTop: '4px' }}>
-                      <span>{formatCurrencyFromCents(cursorData.on_demand_used_cents ?? 0)} used</span>
-                      <span>{formatCurrencyFromCents(cursorData.on_demand_limit_cents)} limit</span>
+                      <span>{formatCurrencyFromCents(cursorOnDemandUsed)} used</span>
+                      <span>{formatCurrencyFromCents(cursorOnDemandLimit)} limit</span>
                     </div>
+                    {((cursorData.is_team && cursorData.on_demand_pooled_remaining_cents != null)
+                      || (!cursorData.is_team && cursorData.on_demand_remaining_cents != null)) && (
+                      <div className="extra-usage-details" style={{ marginTop: '4px' }}>
+                        <span>
+                          {formatCurrencyFromCents(
+                            cursorData.is_team
+                              ? cursorData.on_demand_pooled_remaining_cents ?? 0
+                              : cursorData.on_demand_remaining_cents ?? 0
+                          )} remaining
+                        </span>
+                        {cursorData.is_team && cursorData.on_demand_limit_cents != null && (
+                          <span>Personal cap {formatCurrencyFromCents(cursorData.on_demand_limit_cents)}</span>
+                        )}
+                      </div>
+                    )}
+                    {cursorData.is_team && cursorData.on_demand_limit_cents != null && cursorData.on_demand_used_cents != null && (
+                      <div className="extra-usage-details" style={{ marginTop: '4px' }}>
+                        <span>Personal used {formatCurrencyFromCents(cursorData.on_demand_used_cents)}</span>
+                        {cursorData.on_demand_remaining_cents != null && (
+                          <span>Personal remaining {formatCurrencyFromCents(cursorData.on_demand_remaining_cents)}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 

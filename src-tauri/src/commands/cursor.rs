@@ -180,6 +180,8 @@ pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) ->
         .ok_or_else(|| "No Cursor auth found — sign into the Cursor desktop app or enter a token manually.".to_string())?;
 
     let email = read_cursor_key("cursorAuth/cachedEmail");
+    let stored_membership_type = read_cursor_key("cursorAuth/stripeMembershipType");
+    let stored_subscription_status = read_cursor_key("cursorAuth/stripeSubscriptionStatus");
     let client = reqwest::Client::new();
 
     // Helper: POST a Connect RPC method and parse as JSON.
@@ -236,51 +238,110 @@ pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) ->
     let plan_usage = usage_json.as_ref().and_then(|v| v.get("planUsage"));
 
     let included_spend = plan_usage.and_then(|p| p.get("includedSpend")?.as_f64()).unwrap_or(0.0);
-    let limit_cents    = plan_usage.and_then(|p| p.get("limit")?.as_f64()).unwrap_or(0.0);
+    let total_spend = plan_usage.and_then(|p| p.get("totalSpend")?.as_f64()).filter(|v| v.is_finite());
+    let bonus_spend = plan_usage.and_then(|p| p.get("bonusSpend")?.as_f64()).filter(|v| v.is_finite() && *v > 0.0);
+    let bonus_tooltip = plan_usage
+        .and_then(|p| p.get("bonusTooltip")?.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
+    let raw_limit_cents = plan_usage.and_then(|p| p.get("limit")?.as_f64()).filter(|v| v.is_finite() && *v > 0.0);
     let total_pct      = plan_usage.and_then(|p| p.get("totalPercentUsed")?.as_f64()).filter(|v| v.is_finite());
     let auto_pct       = plan_usage.and_then(|p| p.get("autoPercentUsed")?.as_f64()).filter(|v| v.is_finite());
     let api_pct        = plan_usage.and_then(|p| p.get("apiPercentUsed")?.as_f64()).filter(|v| v.is_finite());
     let remaining_bonus = plan_usage.and_then(|p| p.get("remainingBonus")?.as_bool()).unwrap_or(false);
+    let display_message = usage_json.as_ref()
+        .and_then(|v| v.get("displayMessage")?.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
 
     let spend_limit = usage_json.as_ref().and_then(|v| v.get("spendLimitUsage"));
-    let on_demand_used  = spend_limit.and_then(|s| s.get("individualUsed")?.as_f64()).filter(|&v| v > 0.0);
-    let on_demand_limit = spend_limit.and_then(|s| s.get("individualLimit")?.as_f64()).filter(|&v| v > 0.0);
-    let is_team = spend_limit.map(|s| {
-        s.get("limitType").and_then(|v| v.as_str()) == Some("team")
-        || s.get("pooledLimit").is_some()
-    }).unwrap_or(false);
-
-    // billingCycleEnd is a unix-millisecond string ("1771077734000")
-    let cycle_end: Option<String> = usage_json.as_ref()
-        .and_then(|v| v.get("billingCycleEnd")?.as_str()?.parse::<i64>().ok())
-        .and_then(|ms| chrono::DateTime::from_timestamp(ms / 1000, 0))
-        .map(|dt| dt.to_rfc3339());
+    let on_demand_used  = spend_limit.and_then(|s| s.get("individualUsed")?.as_f64()).filter(|v| v.is_finite());
+    let on_demand_limit = spend_limit.and_then(|s| s.get("individualLimit")?.as_f64()).filter(|v| v.is_finite() && *v > 0.0);
+    let on_demand_remaining = spend_limit.and_then(|s| s.get("individualRemaining")?.as_f64()).filter(|v| v.is_finite());
+    let on_demand_pooled_used = spend_limit.and_then(|s| s.get("pooledUsed")?.as_f64()).filter(|v| v.is_finite());
+    let on_demand_pooled_limit = spend_limit.and_then(|s| s.get("pooledLimit")?.as_f64()).filter(|v| v.is_finite() && *v > 0.0);
+    let on_demand_pooled_remaining = spend_limit.and_then(|s| s.get("pooledRemaining")?.as_f64()).filter(|v| v.is_finite());
+    let on_demand_limit_type = spend_limit
+        .and_then(|s| s.get("limitType")?.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
 
     // ── Parse GetPlanInfo ─────────────────────────────────────────────────
 
-    let plan_name: Option<String> = plan_json
-        .and_then(|v| v.get("planInfo")?.get("planName")?.as_str().map(|s| s.to_string()));
+    let plan_info = plan_json.as_ref().and_then(|v| v.get("planInfo"));
+    let plan_name: Option<String> = plan_info
+        .and_then(|p| p.get("planName")?.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
+    let plan_price: Option<String> = plan_info
+        .and_then(|p| p.get("price")?.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
+    let plan_included_amount_cents = plan_info
+        .and_then(|p| p.get("includedAmountCents")?.as_f64())
+        .filter(|v| v.is_finite() && *v > 0.0);
+    let limit_cents = raw_limit_cents
+        .or(plan_included_amount_cents)
+        .unwrap_or(0.0);
+    let is_team = plan_name.as_deref() == Some("Team")
+        || on_demand_limit_type.as_deref() == Some("team")
+        || on_demand_pooled_limit.is_some();
+
+    fn parse_cursor_ms(value: Option<&serde_json::Value>) -> Option<String> {
+        value
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|ms| chrono::DateTime::from_timestamp(ms / 1000, 0))
+            .map(|dt| dt.to_rfc3339())
+    }
+
+    // billingCycleEnd is a unix-millisecond string ("1771077734000")
+    let cycle_end = parse_cursor_ms(usage_json.as_ref().and_then(|v| v.get("billingCycleEnd")))
+        .or_else(|| parse_cursor_ms(plan_info.and_then(|p| p.get("billingCycleEnd"))));
 
     // ── Parse Stripe balance ──────────────────────────────────────────────
     // customerBalance is in cents; negative = prepaid credit available.
 
+    let membership_type: Option<String> = stripe_json.as_ref()
+        .and_then(|v| v.get("membershipType")?.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .or(stored_membership_type);
+    let subscription_status: Option<String> = stripe_json.as_ref()
+        .and_then(|v| v.get("subscriptionStatus")?.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .or(stored_subscription_status);
     let stripe_balance_cents: Option<f64> = stripe_json
         .and_then(|v| v.get("customerBalance")?.as_f64())
         .map(|cents| -cents)           // negate: negative balance = positive credit
         .filter(|&v| v > 0.0);
 
     Ok(CursorUsageData::build(
+        plan_name,
+        plan_price,
+        plan_included_amount_cents,
         included_spend,
+        total_spend,
+        bonus_spend,
         limit_cents,
         auto_pct,
         api_pct,
         total_pct,
         remaining_bonus,
+        bonus_tooltip,
+        display_message,
         on_demand_used,
         on_demand_limit,
+        on_demand_remaining,
+        on_demand_pooled_used,
+        on_demand_pooled_limit,
+        on_demand_pooled_remaining,
+        on_demand_limit_type,
         is_team,
+        membership_type,
+        subscription_status,
         stripe_balance_cents,
-        plan_name,
         cycle_end,
         email,
     ))
