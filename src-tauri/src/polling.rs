@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, Instant};
 
 use crate::credentials_cache::CredentialsCache;
 use crate::models::{CodexUsageData, CursorUsageData, PeakHoursStatus, UsageData};
@@ -28,81 +28,105 @@ pub struct CursorUpdate {
     pub timestamp: String,
 }
 
-pub fn start_polling(
-    app: &AppHandle,
-    poll_interval: Arc<Mutex<u64>>,
-    cache: Arc<CredentialsCache>,
-    latest_usage: Arc<Mutex<Option<UsageUpdate>>>,
-) {
-    let app_handle = app.clone();
+async fn fetch_claude_update(cache: &CredentialsCache) -> Option<UsageUpdate> {
+    let auth_method = cache.get_claude_auth_method();
 
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-
-        loop {
-            let secs = { *poll_interval.lock().unwrap() };
-            if secs == 0 {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                continue;
-            }
-
-            let auth_method = cache.get_claude_auth_method();
-
-            // Fetch usage via the appropriate auth path
-            let usage_result: Result<UsageData, String> = if auth_method == "oauth" {
-                match commands::claude_oauth::get_claude_oauth_token().await {
-                    Ok(token) => commands::usage::fetch_usage_oauth(&token).await,
-                    Err(e) => Err(e),
-                }
-            } else {
-                let session_key = match cache.get_session_key() {
-                    Some(key) => key,
-                    None => {
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        continue;
-                    }
-                };
-                let org_id = match cache.get_org_id() {
-                    Some(id) => id,
-                    None => {
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        continue;
-                    }
-                };
-                fetch_usage_internal(&session_key, &org_id).await
-            };
-
-            // Fetch peak hours supplementally — never blocks or propagates errors
-            let peak_hours = commands::usage::fetch_peak_hours().await;
-
-            let update = match usage_result {
-                Ok(data) => UsageUpdate {
-                    data: Some(data),
-                    error: None,
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                    peak_hours,
-                },
-                Err(e) => UsageUpdate {
-                    data: None,
-                    error: Some(e),
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                    peak_hours,
-                },
-            };
-
-            // Update the shared cache so the HTTP server can serve latest data
-            *latest_usage.lock().unwrap() = Some(update.clone());
-
-            // Re-render tray for current provider (may be Claude or Codex)
-            crate::tray_state::refresh_tray();
-
-            let _ = app_handle.emit("usage-update", &update);
-
-            let mut tick = interval(Duration::from_secs(secs));
-            tick.tick().await;
-            tick.tick().await;
+    let usage_result: Result<UsageData, String> = if auth_method == "oauth" {
+        match commands::claude_oauth::get_claude_oauth_token().await {
+            Ok(token) => commands::usage::fetch_usage_oauth(&token).await,
+            Err(e) => Err(e),
         }
-    });
+    } else {
+        let (session_key, org_id) = match (cache.get_session_key(), cache.get_org_id()) {
+            (Some(sk), Some(oid)) => (sk, oid),
+            _ => return None,
+        };
+        fetch_usage_internal(&session_key, &org_id).await
+    };
+
+    let peak_hours = commands::usage::fetch_peak_hours().await;
+
+    Some(match usage_result {
+        Ok(data) => UsageUpdate {
+            data: Some(data),
+            error: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            peak_hours,
+        },
+        Err(e) => UsageUpdate {
+            data: None,
+            error: Some(e),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            peak_hours,
+        },
+    })
+}
+
+async fn fetch_codex_update(cache: &CredentialsCache) -> CodexUpdate {
+    let browser_cookie = cache.get_codex_browser_cookie();
+    let manual_token = cache.get_codex_manual_token();
+    match commands::codex::fetch_codex_usage_with_fallbacks(browser_cookie, manual_token).await {
+        Ok(data) => CodexUpdate {
+            data: Some(data),
+            error: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        },
+        Err(e) => {
+            eprintln!("[Codex] Usage fetch failed: {e}");
+            CodexUpdate {
+                data: None,
+                error: Some(e),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            }
+        }
+    }
+}
+
+async fn fetch_cursor_update(cache: &CredentialsCache) -> CursorUpdate {
+    let manual_token = cache.get_cursor_manual_token();
+    match commands::cursor::fetch_cursor_usage_internal(manual_token).await {
+        Ok(data) => CursorUpdate {
+            data: Some(data),
+            error: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        },
+        Err(e) => {
+            eprintln!("[Cursor] Usage fetch failed: {e}");
+            CursorUpdate {
+                data: None,
+                error: Some(e),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            }
+        }
+    }
+}
+
+/// Fetches Claude, Codex, and Cursor usage concurrently, updates caches, emits events, and refreshes the tray.
+pub async fn poll_all_providers(
+    app: &AppHandle,
+    cache: &CredentialsCache,
+    latest_usage: &Arc<Mutex<Option<UsageUpdate>>>,
+    latest_codex: &Arc<Mutex<Option<CodexUpdate>>>,
+    latest_cursor: &Arc<Mutex<Option<CursorUpdate>>>,
+) {
+    let (claude_opt, codex_update, cursor_update) = tokio::join!(
+        fetch_claude_update(cache),
+        fetch_codex_update(cache),
+        fetch_cursor_update(cache),
+    );
+
+    if let Some(update) = claude_opt {
+        *latest_usage.lock().unwrap() = Some(update.clone());
+        let _ = app.emit("usage-update", &update);
+    }
+
+    *latest_codex.lock().unwrap() = Some(codex_update.clone());
+    let _ = app.emit("codex-update", &codex_update);
+
+    *latest_cursor.lock().unwrap() = Some(cursor_update.clone());
+    let _ = app.emit("cursor-update", &cursor_update);
+
+    crate::tray_state::refresh_tray();
 }
 
 async fn fetch_usage_internal(session_key: &str, org_id: &str) -> Result<UsageData, String> {
@@ -128,102 +152,47 @@ async fn fetch_usage_internal(session_key: &str, org_id: &str) -> Result<UsageDa
         .map_err(|e| format!("Failed to parse usage data: {}", e))
 }
 
-pub fn start_codex_polling(
+/// Single background loop: one aligned tick for all providers (parallel fetches), same interval as user settings.
+pub fn start_unified_polling(
     app: &AppHandle,
     poll_interval: Arc<Mutex<u64>>,
+    cache: Arc<CredentialsCache>,
+    latest_usage: Arc<Mutex<Option<UsageUpdate>>>,
     latest_codex: Arc<Mutex<Option<CodexUpdate>>>,
-    cache: Arc<CredentialsCache>,
-) {
-    let app_handle = app.clone();
-
-    tauri::async_runtime::spawn(async move {
-        // Slight offset from Claude's 2s delay to avoid simultaneous API bursts
-        tokio::time::sleep(Duration::from_secs(5)).await;
-
-        loop {
-            let secs = { *poll_interval.lock().unwrap() };
-            if secs == 0 {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                continue;
-            }
-
-            let browser_cookie = cache.get_codex_browser_cookie();
-            let manual_token = cache.get_codex_manual_token();
-            let update = match commands::codex::fetch_codex_usage_with_fallbacks(browser_cookie, manual_token).await {
-                Ok(data) => CodexUpdate {
-                    data: Some(data),
-                    error: None,
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                },
-                Err(e) => {
-                    eprintln!("[Codex] Usage fetch failed: {e}");
-                    CodexUpdate {
-                        data: None,
-                        error: Some(e),
-                        timestamp: chrono::Utc::now().to_rfc3339(),
-                    }
-                }
-            };
-
-            *latest_codex.lock().unwrap() = Some(update.clone());
-
-            // Re-render tray for current provider
-            crate::tray_state::refresh_tray();
-
-            let _ = app_handle.emit("codex-update", &update);
-
-            let mut tick = interval(Duration::from_secs(secs));
-            tick.tick().await;
-            tick.tick().await;
-        }
-    });
-}
-
-pub fn start_cursor_polling(
-    app: &AppHandle,
-    poll_interval: Arc<Mutex<u64>>,
     latest_cursor: Arc<Mutex<Option<CursorUpdate>>>,
-    cache: Arc<CredentialsCache>,
 ) {
     let app_handle = app.clone();
 
     tauri::async_runtime::spawn(async move {
-        // Offset from Claude (2s) and Codex (5s) to avoid simultaneous API bursts
-        tokio::time::sleep(Duration::from_secs(8)).await;
+        // Let tray and credential store finish settling, then refresh all providers once at startup.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+
+        let mut next_tick = Instant::now();
 
         loop {
             let secs = { *poll_interval.lock().unwrap() };
             if secs == 0 {
                 tokio::time::sleep(Duration::from_secs(2)).await;
+                next_tick = Instant::now();
                 continue;
             }
 
-            let manual_token = cache.get_cursor_manual_token();
-            let update = match commands::cursor::fetch_cursor_usage_internal(manual_token).await {
-                Ok(data) => CursorUpdate {
-                    data: Some(data),
-                    error: None,
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                },
-                Err(e) => {
-                    eprintln!("[Cursor] Usage fetch failed: {e}");
-                    CursorUpdate {
-                        data: None,
-                        error: Some(e),
-                        timestamp: chrono::Utc::now().to_rfc3339(),
-                    }
-                }
-            };
+            // Align to the configured interval even if a poll runs long.
+            tokio::time::sleep_until(next_tick).await;
 
-            *latest_cursor.lock().unwrap() = Some(update.clone());
+            poll_all_providers(
+                &app_handle,
+                cache.as_ref(),
+                &latest_usage,
+                &latest_codex,
+                &latest_cursor,
+            )
+            .await;
 
-            crate::tray_state::refresh_tray();
-
-            let _ = app_handle.emit("cursor-update", &update);
-
-            let mut tick = interval(Duration::from_secs(secs));
-            tick.tick().await;
-            tick.tick().await;
+            next_tick += Duration::from_secs(secs);
+            if next_tick <= Instant::now() {
+                next_tick = Instant::now();
+            }
         }
     });
 }

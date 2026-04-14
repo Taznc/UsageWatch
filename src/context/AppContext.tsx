@@ -43,7 +43,7 @@ const defaultSettings: AppSettings = {
 };
 
 const initialState: AppState = {
-  view: "settings",
+  view: "popover",
   usageData: null,
   lastUpdated: null,
   error: null,

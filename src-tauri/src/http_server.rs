@@ -9,17 +9,26 @@ use axum::{
 use tauri::{AppHandle, Emitter, Manager};
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::polling::UsageUpdate;
+use crate::polling::{CodexUpdate, CursorUpdate, UsageUpdate};
 
 #[derive(Clone)]
 struct ServerState {
     latest_usage: Arc<Mutex<Option<UsageUpdate>>>,
+    latest_codex: Arc<Mutex<Option<CodexUpdate>>>,
+    latest_cursor: Arc<Mutex<Option<CursorUpdate>>>,
     app_handle: AppHandle,
 }
 
-pub fn start(app_handle: AppHandle, latest_usage: Arc<Mutex<Option<UsageUpdate>>>) {
+pub fn start(
+    app_handle: AppHandle,
+    latest_usage: Arc<Mutex<Option<UsageUpdate>>>,
+    latest_codex: Arc<Mutex<Option<CodexUpdate>>>,
+    latest_cursor: Arc<Mutex<Option<CursorUpdate>>>,
+) {
     let state = ServerState {
         latest_usage,
+        latest_codex,
+        latest_cursor,
         app_handle,
     };
 
@@ -31,6 +40,8 @@ pub fn start(app_handle: AppHandle, latest_usage: Arc<Mutex<Option<UsageUpdate>>
 
         let router = Router::new()
             .route("/api/usage", get(get_usage))
+            .route("/api/codex", get(get_codex))
+            .route("/api/cursor", get(get_cursor))
             .route("/api/open", post(open_window))
             .layer(cors)
             .with_state(state);
@@ -54,6 +65,24 @@ async fn get_usage(
     State(s): State<ServerState>,
 ) -> Result<Json<UsageUpdate>, StatusCode> {
     match s.latest_usage.lock().unwrap().clone() {
+        Some(update) => Ok(Json(update)),
+        None => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn get_codex(
+    State(s): State<ServerState>,
+) -> Result<Json<CodexUpdate>, StatusCode> {
+    match s.latest_codex.lock().unwrap().clone() {
+        Some(update) => Ok(Json(update)),
+        None => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn get_cursor(
+    State(s): State<ServerState>,
+) -> Result<Json<CursorUpdate>, StatusCode> {
+    match s.latest_cursor.lock().unwrap().clone() {
         Some(update) => Ok(Json(update)),
         None => Err(StatusCode::SERVICE_UNAVAILABLE),
     }

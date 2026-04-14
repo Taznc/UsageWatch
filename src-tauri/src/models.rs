@@ -358,15 +358,17 @@ impl CursorUsageData {
         cycle_end: Option<String>,
         email: Option<String>,
     ) -> Self {
-        let spend_pct = total_pct
-            .filter(|v| v.is_finite())
-            .unwrap_or_else(|| {
-                if limit_cents > 0.0 {
-                    (spend_cents / limit_cents * 100.0).clamp(0.0, 999.0)
-                } else {
-                    0.0
-                }
-            });
+        let computed_pct = if limit_cents > 0.0 {
+            (spend_cents / limit_cents * 100.0).clamp(0.0, 999.0)
+        } else {
+            0.0
+        };
+        // Cursor sometimes returns totalPercentUsed: 0 while planUsage still has spend vs limit.
+        let spend_pct = match total_pct.filter(|v| v.is_finite()) {
+            Some(api_pct) if api_pct > 0.0 || spend_cents <= f64::EPSILON => api_pct,
+            Some(_) => computed_pct,
+            None => computed_pct,
+        };
         Self {
             plan_name,
             plan_price,

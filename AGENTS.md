@@ -9,7 +9,7 @@ UsageWatch is a cross-provider, tray-first app (Tauri 2.x + React + TypeScript) 
 - The shipped product name and bundle metadata still use `Claude Usage Tracker`.
 - The app monitors Claude usage directly from `claude.ai`.
 - It also detects Codex auth, polls Codex usage, and can switch tray rendering based on the frontmost app.
-- Cursor is supported for auth detection and provider switching, but there is no Cursor usage polling yet.
+- Cursor is supported for auth detection, provider switching, and usage polling (manual token or pulled session).
 
 ## Build & Run
 
@@ -40,20 +40,20 @@ The repo contains `.claude`, but it is config, not a skill library.
 - The app is tray-first: no dock icon, hidden main window, popover shown under the tray icon on left click.
 - A second frameless `widget` window is defined in `src-tauri/tauri.conf.json`.
 - On macOS, the tray can render styled text and switch the displayed provider based on the frontmost app.
-- A local HTTP server exposes the latest Claude usage for Stream Deck integrations.
+- A local HTTP server exposes the latest Claude, Codex, and Cursor snapshots for Stream Deck and similar integrations.
 
 ### Backend (`src-tauri/src/`)
 
-- `lib.rs` wires plugins, windows, tray/menu behavior, provider-aware tray state, focus monitoring, HTTP server startup, and both polling loops.
+- `lib.rs` wires plugins, windows, tray/menu behavior, provider-aware tray state, focus monitoring, HTTP server startup, unified usage polling, and the `refresh_all_providers` command.
 - `commands/credentials.rs` persists `session_key` and `org_id` in `tauri-plugin-store` and hydrates the in-memory cache on startup.
 - `commands/usage.rs` fetches Claude usage, raw usage JSON, billing endpoints, and Anthropic system status.
 - `commands/browser.rs` scans installed browsers plus Claude Desktop cookie stores for `sessionKey`.
 - `commands/codex.rs` reads `~/.codex/auth.json` or `$CODEX_HOME/auth.json`, refreshes OpenAI OAuth tokens when stale, and polls Codex usage from `chatgpt.com`.
-- `commands/cursor.rs` checks Cursor auth state from the VS Code-style `globalStorage/storage.json` file and returns the cached email/path.
-- `polling.rs` runs separate Claude and Codex polling tasks and emits `usage-update` and `codex-update`.
-- `http_server.rs` runs an Axum server on `127.0.0.1:52700` with `/api/usage` and `/api/open`.
+- `commands/cursor.rs` reads Cursor `globalStorage` (`storage.json` or Windows `state.vscdb`), resolves auth, and fetches usage from Cursor’s HTTP APIs when a token is available.
+- `polling.rs` runs a **single** background loop (`start_unified_polling`): on each tick it fetches Claude, Codex, and Cursor **in parallel** (`tokio::join!` via `poll_all_providers`), updates shared caches, emits events, and refreshes the tray. After a short boot delay (~400ms) it runs an immediate first poll, then repeats on the user-configured interval (`poll_interval_secs`, minimum 30s).
+- `http_server.rs` runs an Axum server on `127.0.0.1:52700` with `GET /api/usage`, `GET /api/codex`, `GET /api/cursor`, and `POST /api/open`.
 - `credentials_cache.rs` avoids repeated store reads by keeping session/org values in memory.
-- `models.rs` holds resilient Claude response types plus frontend-ready Codex/tray/provider models.
+- `models.rs` holds resilient Claude response types plus frontend-ready Codex/Cursor/tray/provider models.
 - `tray_state.rs` decides which provider to render and pushes styled/native tray updates.
 - `tray_renderer.rs` contains countdown/title formatting helpers.
 - `focus_monitor.rs` watches the frontmost macOS application and triggers tray refreshes.
@@ -62,26 +62,27 @@ The repo contains `.claude`, but it is config, not a skill library.
 ### Frontend (`src/`)
 
 - `App.tsx` mounts the app provider, checks whether credentials exist, and routes between setup, settings, and popover views.
-- `context/AppContext.tsx` stores Claude data, Codex data, settings, view state, and offline/loading flags.
-- `hooks/useUsageData.ts` listens for Rust events, handles manual refresh, and tracks online/offline state.
+- `context/AppContext.tsx` stores Claude, Codex, and Cursor data, settings, view state, and offline/loading flags.
+- `hooks/useUsageData.ts` listens for Rust events, calls `refresh_all_providers` for manual refresh (popover / UI), and tracks online/offline state.
 - `hooks/useHistoryRecorder.ts` writes Claude usage snapshots into SQLite.
 - `hooks/useBurnRate.ts` and `hooks/useAlertEngine.ts` derive burn-rate and native alert behavior from stored history/current usage.
 - `components/SetupWizard.tsx` supports browser auto-detect and manual session key entry.
 - `components/Settings.tsx` manages Claude credentials, tray format, provider mappings, alerts, autostart/polling, debug info, and Codex/Cursor connection checks.
-- `components/Popover.tsx` renders Claude and Codex tabs, billing, history, pin behavior, and refresh/settings actions.
+- `components/Popover.tsx` renders Claude, Codex, and Cursor tabs (when configured), billing, history, pin behavior, and refresh/settings actions.
 - `components/DebugPanel.tsx`, `HistoryChart.tsx`, `StatusIndicator.tsx`, and `UsageBar.tsx` support diagnostics and visualization.
 
 ### Widget frontend (`src/widget/` + `src/context/WidgetContext.tsx` + `src/hooks/useWidget*.ts`)
 
-- `widget/WidgetApp.tsx` is the widget entrypoint.
-- `WidgetWindow.tsx` restores position, auto-resizes via `ResizeObserver`, and persists movement.
-- `useWidgetData.ts` listens for Claude/Codex events and fetches usage, billing, and status immediately on mount.
-- `useWidgetStore.ts` stores layout state under `widget_layout` in the same `credentials.json` store file.
-- `WidgetGrid.tsx`, `WidgetHeader.tsx`, `TilePalette.tsx`, and `widget/tiles/*` implement the drag-and-drop widget surface.
+- `widget/WidgetApp.tsx` is the widget entrypoint (mounts `WidgetOverlay`).
+- `widget/WidgetOverlay.tsx` implements glass-style deck/ticker UI, click-through, header drag, and window auto-resize.
+- `widget/selectors.ts` and `widget/WidgetCard.tsx` build and render usage cards from shared app state.
+- `useWidgetData.ts` listens for Claude/Codex/Cursor events and primes from `get_latest_*_update` plus supplemental billing/status fetches on mount.
+- `useWidgetStore.ts` persists `widget_layout` in `credentials.json` (see `widget/layout.ts`).
 
 ## Communication Pattern
 
-- Rust emits `usage-update`, `codex-update`, `refresh-requested`, `open-settings`, and `window-opened`.
+- Rust emits `usage-update` (Claude), `codex-update`, `cursor-update`, `provider-changed`, `open-settings`, and `window-opened`.
+- Tray **Refresh** runs `poll_all_providers` directly in Rust (no `refresh-requested` event). The UI uses the `refresh_all_providers` command so all providers update together.
 - The main React app listens to those events with `@tauri-apps/api/event`.
 - The frontend calls Rust commands through `invoke()`.
 - Widget and main window share the same backend event stream.
@@ -117,12 +118,17 @@ Important response fields:
 - Usage endpoint: `https://chatgpt.com/backend-api/wham/usage`
 - Auth source: `~/.codex/auth.json` unless `$CODEX_HOME` overrides it
 
+### Cursor
+
+- Auth: `cursorAuth/accessToken` and related keys in Cursor `User/globalStorage` (`storage.json` or Windows `state.vscdb`).
+- Usage: dashboard/usage HTTP endpoints on `cursor.com` (and related `api2.cursor.sh` calls where applicable); see `commands/cursor.rs` for the exact routes and headers.
+
 ### Other
 
 - Anthropic status: `https://status.anthropic.com/api/v2/status.json`
-- Local Stream Deck API: `http://127.0.0.1:52700/api/usage` and `POST /api/open`
+- Local Stream Deck API: `http://127.0.0.1:52700/api/usage`, `/api/codex`, `/api/cursor`, and `POST /api/open`
 - Browser import uses `rookie` to read browser cookie stores.
-- Cursor auth is file-based only; no Cursor API fetch exists yet.
+- Cursor usage uses Bearer auth against Cursor’s APIs (e.g. usage summary on `cursor.com`); see `commands/cursor.rs` for URLs and headers.
 
 ## Key Design Decisions
 
@@ -130,13 +136,13 @@ Important response fields:
 - Credentials are copied into an in-memory cache at startup to avoid repeated store I/O.
 - Window focus auto-hides on focus loss unless “pinned”; 300ms focus guard prevents immediate dismissal; only `MouseButtonState::Up` is handled to avoid double-toggle.
 - macOS Accessory mode (`set_activation_policy(Accessory)`) hides the dock icon.
-- Claude and Codex poll independently; both refresh the tray after each update.
+- Claude, Codex, and Cursor share one poll schedule; each tick runs three fetches in parallel, then the tray refreshes once.
 - The menu bar can be static or dynamic by provider, using app/bundle mappings from settings.
 - The widget and main window intentionally consume the same shared usage events.
 - Parsing is defensive: most Claude API fields are optional with `#[serde(default)]`.
-- **Widget is now fixed-layout**: The live widget is one fixed vertical “reference glass stack” mapped from existing UsageWatch data.
-- **No in-widget controls in normal mode**: Widget show/hide comes from the tray menu; do not reintroduce edit/theme/header chrome unless explicitly requested.
-- **Transparent gaps are intentional**: Space between widget slabs must stay fully transparent — avoid shared backing panels, stack-level shadows, or enclosing cards.
+- **Widget layout**: `WidgetOverlay.tsx` renders selectable **deck** or **ticker** layouts; card copy comes from `selectors.ts` (Claude session/weekly/extra/prepaid/status plus Codex and Cursor when data exists).
+- **Click-through**: Only the header strip is a mouse hitbox; cards stay click-through (see `WidgetOverlay.tsx` + `hook.rs`).
+- Widget show/hide comes from the tray menu.
 
 ## macOS Tray Behavior
 
@@ -156,24 +162,11 @@ If tray clicks regress:
 
 ## Widget Notes
 
-The widget was rebuilt to visually match a desktop-widget reference instead of the old theme/tile system.
-
-- `src/widget/ReferenceGlassWidget.tsx` is the only runtime renderer for the widget strip. It builds a fixed ordered set of rows from existing app data:
-  - session usage
-  - weekly usage
-  - extra usage
-  - prepaid balance
-  - Codex session
-  - Codex credits
-  - Anthropic/API status
-- `src/widget/widget.css` intentionally styles each row as an independent frosted slab with:
-  - overlapping circular badge on the left
-  - higher-opacity readable glass surface
-  - no shared container shadow
-  - no slab shadow or edge glow outside the material
-  - transparent gaps between rows
-- `src/widget/WidgetWindow.tsx` auto-sizes the widget window to the rendered strip and starts dragging from the widget body itself, so no visible header bar is required.
-- `src/hooks/useWidgetStore.ts` now persists only widget position. Older saved layout/theme/tile data may still exist in the store, but the live widget no longer uses it.
+- `src/widget/WidgetApp.tsx` mounts `WidgetOverlay` inside `WidgetProvider`.
+- `src/widget/WidgetOverlay.tsx` owns click-through toggling (`setIgnoreCursorEvents`), header hitboxes, `ResizeObserver` + `setSize` for auto-height, drag via `startDragging`, and `widget-geometry-sync` for `hook.rs` geometry.
+- `src/widget/selectors.ts` maps Claude/Codex/Cursor/widget state into `WidgetCardViewModel` lists; `WidgetCard.tsx` renders each card.
+- `src/hooks/useWidgetStore.ts` persists `WidgetOverlayLayout` (position, theme, density, layout mode, per-card visibility) under `widget_layout` in `credentials.json`.
+- `src/widget/widget.css` styles deck/ticker surfaces; keep card areas non-interactive so click-through behavior stays correct.
 
 ## Windows Widget Shadow Regression
 

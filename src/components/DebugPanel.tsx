@@ -32,6 +32,11 @@ export function DebugPanel() {
     return lines.join("\n");
   });
 
+  const debugCursorApi = () => run("Cursor API…", async () => {
+    const text = await invoke<string>("debug_cursor_api");
+    return text;
+  });
+
   return (
     <div className="debug-panel">
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -41,7 +46,19 @@ export function DebugPanel() {
         <button className="btn secondary" onClick={debugClaudeDesktop} disabled={loading}>
           {loading && activeAction === "Diagnosing..." ? "Diagnosing..." : "Diagnose Claude Desktop (Windows)"}
         </button>
+        <button className="btn secondary" onClick={debugCursorApi} disabled={loading}>
+          {loading && activeAction === "Cursor API…" ? "Running…" : "Cursor API diagnostics"}
+        </button>
       </div>
+      <p style={{ marginTop: 10, fontSize: 12, color: "var(--muted)", maxWidth: 640, lineHeight: 1.45 }}>
+        Cursor diagnostics mirror UsageWatch: Connect RPCs on <code>api2.cursor.sh</code>,{" "}
+        <code>GET cursor.com/api/usage-summary</code> (desktop bearer or browser cookie), plus <code>GetHardLimit</code>{" "}
+        and <code>GetUsageLimitPolicyStatus</code>. Compare field names with{" "}
+        <a href="https://github.com/janekbaraniewski/openusage/tree/main/internal/providers/cursor" target="_blank" rel="noreferrer">
+          openusage&apos;s Cursor provider
+        </a>
+        .
+      </p>
       {raw && (
         <pre className="debug-output">{raw}</pre>
       )}

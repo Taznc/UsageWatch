@@ -43,16 +43,6 @@ export function useUsageData() {
     };
   }, [dispatch]);
 
-  // Listen for refresh requests from tray menu
-  useEffect(() => {
-    const unlisten = listen("refresh-requested", () => {
-      refresh();
-    });
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
-
   // Listen for settings open requests from tray menu
   useEffect(() => {
     const unlisten = listen("open-settings", () => {
@@ -82,16 +72,15 @@ export function useUsageData() {
   const refresh = useCallback(async () => {
     dispatch({ type: "SET_LOADING", loading: true });
     try {
-      const sessionKey = await invoke<string | null>("get_session_key");
-      const orgId = await invoke<string | null>("get_org_id");
-      if (!sessionKey || !orgId) {
-        dispatch({ type: "SET_ERROR", error: "No credentials configured", timestamp: new Date().toISOString() });
-        return;
-      }
-      const data = await invoke("fetch_usage", { sessionKey, orgId });
-      dispatch({ type: "SET_USAGE", data: data as any, timestamp: new Date().toISOString() });
-    } catch (e: any) {
-      dispatch({ type: "SET_ERROR", error: String(e), timestamp: new Date().toISOString() });
+      await invoke("refresh_all_providers");
+    } catch (e: unknown) {
+      dispatch({
+        type: "SET_ERROR",
+        error: String(e),
+        timestamp: new Date().toISOString(),
+      });
+    } finally {
+      dispatch({ type: "SET_LOADING", loading: false });
     }
   }, [dispatch]);
 

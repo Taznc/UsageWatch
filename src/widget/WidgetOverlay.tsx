@@ -73,7 +73,6 @@ export function WidgetOverlay() {
   const { state } = useWidget();
   const rootRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  const restoredPositionRef = useRef(false);
   const dragRef = useRef(false);
   const ignoreStateRef = useRef<boolean | null>(null);
   const [hitboxes, setHitboxes] = useState<Hitbox[]>([]);
@@ -111,12 +110,13 @@ export function WidgetOverlay() {
     setHitboxes(next);
   }
 
+  // Keep the native window aligned with persisted layout whenever the store hydrates or the user moves.
+  // (Previously we only applied position once on mount, so the default layout won before credentials.json loaded.)
   useEffect(() => {
     if (!tauri) return;
-    if (!restoredPositionRef.current) {
-      restoredPositionRef.current = true;
-      getCurrentWindow().setPosition(new LogicalPosition(state.layout.position.x, state.layout.position.y)).catch(() => {});
-    }
+    getCurrentWindow()
+      .setPosition(new LogicalPosition(state.layout.position.x, state.layout.position.y))
+      .catch(() => {});
     getCurrentWindow().setIgnoreCursorEvents(true).catch(() => {});
     ignoreStateRef.current = true;
   }, [state.layout.position.x, state.layout.position.y, tauri]);

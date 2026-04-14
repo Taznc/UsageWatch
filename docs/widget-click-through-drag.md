@@ -2,6 +2,10 @@
 
 This document explains exactly how to implement a transparent always-on-top overlay widget in Tauri 2 that is **click-through by default** (clicks pass to the desktop/apps behind it) while keeping a **draggable header bar**. This is harder than it looks — three independent bugs must all be solved together.
 
+## UsageWatch
+
+In this repo, the live widget is wired through `src/widget/WidgetOverlay.tsx` and `src-tauri/src/hook.rs` (`start_global_mouse_stream`). **Only the header** is registered as a hitbox (`recalcHitboxes()`), matching the “header only” pattern below; cards remain click-through. macOS also forwards the header rect to `set_widget_drag_rect` for the native tray drag bridge.
+
 ---
 
 ## What We're Building

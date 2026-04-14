@@ -31,13 +31,9 @@ use polling::{CodexUpdate, CursorUpdate, UsageUpdate};
 pub fn run() {
     let poll_interval = Arc::new(Mutex::new(60u64));
     let poll_interval_clone = poll_interval.clone();
-    let poll_interval_clone2 = poll_interval.clone();
-    let poll_interval_clone3 = poll_interval.clone();
 
     let cache = Arc::new(CredentialsCache::new());
     let cache_for_polling = cache.clone();
-    let cache_for_codex_polling = cache.clone();
-    let cache_for_cursor_polling = cache.clone();
 
     let tray_format = Arc::new(Mutex::new(TrayFormat::default()));
 
@@ -107,6 +103,7 @@ pub fn run() {
             commands::credentials::delete_session_key,
             commands::credentials::save_org_id,
             commands::credentials::get_org_id,
+            refresh_all_providers,
             commands::credentials::test_connection,
             commands::usage::fetch_usage,
             commands::usage::fetch_usage_raw,
@@ -133,6 +130,7 @@ pub fn run() {
             commands::cursor::fetch_cursor_usage,
             commands::cursor::get_cursor_email,
             commands::cursor::get_cursor_auth_path,
+            commands::cursor::debug_cursor_api,
             commands::claude_oauth::check_claude_oauth,
             commands::claude_oauth::set_claude_auth_method,
             commands::claude_oauth::get_claude_auth_method,
@@ -177,8 +175,8 @@ pub fn run() {
             load_tray_config_from_store(handle, &tray_config);
             load_alert_config_from_store(handle, &alert_config);
 
-            // Restore widget visibility from previous session
-            restore_widget_visible_from_store(handle);
+            // Restore widget position + visibility from previous session (see widget_layout / widget_visible in credentials.json)
+            restore_widget_window_from_store(handle);
 
             // Build tray menu
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
@@ -198,7 +196,21 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "refresh" => {
-                        let _ = app.emit("refresh-requested", ());
+                        let app = app.clone();
+                        let cache = (*app.state::<Arc<CredentialsCache>>()).clone();
+                        let latest_usage = (*app.state::<Arc<Mutex<Option<UsageUpdate>>>>()).clone();
+                        let latest_codex = (*app.state::<Arc<Mutex<Option<CodexUpdate>>>>()).clone();
+                        let latest_cursor = (*app.state::<Arc<Mutex<Option<CursorUpdate>>>>()).clone();
+                        tauri::async_runtime::spawn(async move {
+                            polling::poll_all_providers(
+                                &app,
+                                cache.as_ref(),
+                                &latest_usage,
+                                &latest_codex,
+                                &latest_cursor,
+                            )
+                            .await;
+                        });
                     }
                     "settings" => {
                         let _ = app.emit("open-settings", ());
@@ -319,12 +331,17 @@ pub fn run() {
             }
 
             // Start Stream Deck HTTP API server
-            http_server::start(handle.clone(), latest_usage_for_server);
+            http_server::start(handle.clone(), latest_usage_for_server, latest_codex.clone(), latest_cursor.clone());
 
-            // Start background polling
-            polling::start_polling(handle, poll_interval_clone, cache_for_polling, latest_usage_for_polling);
-            polling::start_codex_polling(handle, poll_interval_clone2, latest_codex_for_polling, cache_for_codex_polling);
-            polling::start_cursor_polling(handle, poll_interval_clone3, latest_cursor_for_polling, cache_for_cursor_polling);
+            // Start background polling (Claude, Codex, Cursor refresh together on each tick)
+            polling::start_unified_polling(
+                handle,
+                poll_interval_clone,
+                cache_for_polling,
+                latest_usage_for_polling,
+                latest_codex_for_polling,
+                latest_cursor_for_polling,
+            );
 
             Ok(())
         })
@@ -464,6 +481,25 @@ fn set_alert_config(
 }
 
 #[tauri::command]
+async fn refresh_all_providers(
+    app: tauri::AppHandle,
+    cache: tauri::State<'_, Arc<CredentialsCache>>,
+    latest_usage: tauri::State<'_, Arc<Mutex<Option<UsageUpdate>>>>,
+    latest_codex: tauri::State<'_, Arc<Mutex<Option<CodexUpdate>>>>,
+    latest_cursor: tauri::State<'_, Arc<Mutex<Option<CursorUpdate>>>>,
+) -> Result<(), String> {
+    polling::poll_all_providers(
+        &app,
+        &**cache,
+        &*latest_usage,
+        &*latest_codex,
+        &*latest_cursor,
+    )
+    .await;
+    Ok(())
+}
+
+#[tauri::command]
 fn get_latest_usage_update(
     state: tauri::State<'_, Arc<Mutex<Option<UsageUpdate>>>>,
 ) -> Result<Option<UsageUpdate>, String> {
@@ -569,15 +605,38 @@ fn save_widget_visible_to_store(app: &tauri::AppHandle, visible: bool) {
     }
 }
 
-fn restore_widget_visible_from_store(app: &tauri::AppHandle) {
+fn json_value_as_f64(v: &serde_json::Value) -> Option<f64> {
+    match v {
+        serde_json::Value::Number(n) => n.as_f64().filter(|x| x.is_finite()),
+        serde_json::Value::String(s) => s.parse::<f64>().ok().filter(|x| x.is_finite()),
+        _ => None,
+    }
+}
+
+/// `widget_layout` from the frontend store (`WIDGET_LAYOUT_STORE_KEY`).
+fn widget_layout_logical_position(layout: &serde_json::Value) -> Option<(f64, f64)> {
+    let pos = layout.get("position")?;
+    let x = json_value_as_f64(pos.get("x")?)?;
+    let y = json_value_as_f64(pos.get("y")?)?;
+    Some((x, y))
+}
+
+fn restore_widget_window_from_store(app: &tauri::AppHandle) {
     use tauri_plugin_store::StoreExt;
-    if let Ok(store) = app.store("credentials.json") {
-        if let Some(val) = store.get("widget_visible") {
-            if val.as_bool() == Some(true) {
-                if let Some(w) = app.get_webview_window("widget") {
-                    let _ = w.show();
-                }
-            }
+    let Ok(store) = app.store("credentials.json") else {
+        return;
+    };
+    let Some(w) = app.get_webview_window("widget") else {
+        return;
+    };
+
+    if let Some(layout) = store.get("widget_layout") {
+        if let Some((x, y)) = widget_layout_logical_position(&layout) {
+            let _ = w.set_position(tauri::LogicalPosition::new(x, y));
         }
+    }
+
+    if store.get("widget_visible").and_then(|v| v.as_bool()) == Some(true) {
+        let _ = w.show();
     }
 }
