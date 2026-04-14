@@ -164,6 +164,9 @@ pub fn run() {
             commands::credentials::load_credentials_from_store(handle, &cache);
 
             if let Some(widget_window) = app.get_webview_window("widget") {
+                #[cfg(target_os = "windows")]
+                configure_widget_hwnd(&widget_window);
+
                 hook::start_global_mouse_stream(widget_window);
             }
 
@@ -355,6 +358,58 @@ fn set_widget_drag_rect(x: f32, y: f32, w: f32, h: f32) {
     styled_tray::update_widget_drag_rect(x, y, w, h);
     #[cfg(not(target_os = "macos"))]
     let _ = (x, y, w, h);
+}
+
+/// On Windows, strip the resize frame and maximize style to prevent Aero Snap,
+/// mark the window as a tool window, and remove the Win11 DWM 1px border.
+#[cfg(target_os = "windows")]
+fn configure_widget_hwnd(_widget: &tauri::WebviewWindow) {
+    use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWINDOWATTRIBUTE};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        FindWindowW, GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, GWL_STYLE,
+        WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_THICKFRAME,
+    };
+
+    // Find the widget HWND by title (set in tauri.conf.json).
+    let title: Vec<u16> = "UsageWatch Widget\0".encode_utf16().collect();
+    let hwnd = unsafe {
+        match FindWindowW(
+            windows::core::PCWSTR::null(),
+            windows::core::PCWSTR(title.as_ptr()),
+        ) {
+            Ok(h) => h,
+            Err(_) => return,
+        }
+    };
+
+    unsafe {
+        // Remove WS_MAXIMIZEBOX and WS_THICKFRAME → prevents Aero Snap and
+        // the resize-frame border that Windows draws even with decorations:false.
+        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+        SetWindowLongW(
+            hwnd,
+            GWL_STYLE,
+            (style & !WS_MAXIMIZEBOX.0 & !WS_THICKFRAME.0) as i32,
+        );
+
+        // Add WS_EX_TOOLWINDOW → skips taskbar and prevents snap.
+        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+        SetWindowLongW(
+            hwnd,
+            GWL_EXSTYLE,
+            (ex_style | WS_EX_TOOLWINDOW.0) as i32,
+        );
+
+        // Remove the 1px DWM border that Windows 11 adds to borderless windows.
+        // DWMWA_BORDER_COLOR (34) set to DWMWA_COLOR_NONE (0xFFFFFFFE).
+        let color_none: u32 = 0xFFFF_FFFE;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWINDOWATTRIBUTE(34),
+            &color_none as *const u32 as *const std::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+    }
 }
 
 #[tauri::command]

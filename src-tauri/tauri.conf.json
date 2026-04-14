@@ -29,7 +29,7 @@
         "url": "widget/index.html",
         "width": 380,
         "height": 300,
-        "resizable": true,
+        "resizable": false,
         "visible": false,
         "decorations": false,
         "transparent": true,

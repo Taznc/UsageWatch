@@ -198,11 +198,9 @@ export function WidgetOverlay() {
 
     window.addEventListener("pointerup", stopDragging);
     window.addEventListener("mouseup", stopDragging);
-    window.addEventListener("blur", stopDragging);
     return () => {
       window.removeEventListener("pointerup", stopDragging);
       window.removeEventListener("mouseup", stopDragging);
-      window.removeEventListener("blur", stopDragging);
     };
   }, []);
 
@@ -211,9 +209,12 @@ export function WidgetOverlay() {
     ignoreStateRef.current = false;
     if (!tauri) return;
     getCurrentWindow().setIgnoreCursorEvents(false).catch(() => {});
-    // On macOS, a native NSEvent local monitor calls performWindowDragWithEvent:
-    // before this handler fires, so startDragging() is redundant there.
-    // On other platforms, data-tauri-drag-region on the header handles it.
+    getCurrentWindow()
+      .startDragging()
+      .catch(() => {})
+      .finally(() => {
+        dragRef.current = false;
+      });
   }
 
   return (
@@ -235,7 +236,6 @@ export function WidgetOverlay() {
       <div
         ref={headerRef}
         className="widget-overlay__provider"
-        data-tauri-drag-region
         onPointerDown={handleHeaderPointerDown}
       >
         <span className="widget-overlay__provider-dot" />
