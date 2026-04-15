@@ -151,4 +151,4 @@ All settings are accessible from the tray icon's Settings panel:
 
 ## License
 
-See the repository's license file if present.
+[MIT](LICENSE)
