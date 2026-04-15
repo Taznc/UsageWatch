@@ -2,6 +2,12 @@
 
 A native desktop app that tracks your AI usage limits across **Claude**, **Codex (OpenAI)**, and **Cursor** in one place. Built with Tauri 2, React, and TypeScript, it lives in your system tray and gives you a constant read on rate limits, resets, and spend — so you never get caught off guard mid-session.
 
+<p align="center">
+  <img src="docs/screenshots/popover-claude.png" alt="Claude usage view" width="280" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/popover-codex.png" alt="Codex usage view" width="280" />
+</p>
+
 ## Highlights
 
 - **Unified monitoring** — session windows, weekly limits, per-model breakdowns, billing, and live reset countdowns across three providers
