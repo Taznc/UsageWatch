@@ -207,7 +207,7 @@ pub fn run() {
 
             // Build tray icon
             let tray_menu = menu;
-            let _tray = TrayIconBuilder::with_id("main-tray")
+            let tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
                 .title("--")
@@ -316,7 +316,7 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             {
-                let _ = tray.with_inner_tray_icon(|inner| {
+                let _: tauri::Result<()> = tray.with_inner_tray_icon(|inner| {
                     if let Some(status_item) = inner.ns_status_item() {
                         let ptr = Retained::as_ptr(&status_item) as *mut std::ffi::c_void;
                         crate::styled_tray::register_native_status_item(ptr);
