@@ -4,12 +4,14 @@ A native desktop app that tracks your AI usage limits across **Claude**, **Codex
 
 ## Highlights
 
-- **Unified monitoring** — session windows, weekly limits, per-model breakdowns, and billing across three providers
-- **Smart tray** — auto-switches the displayed provider based on your focused app (macOS + Windows)
-- **Desktop widget** — transparent always-on-top overlay with 6 visual themes and configurable density
-- **Threshold alerts** — native notifications when session or weekly usage crosses a configurable limit
+- **Unified monitoring** — session windows, weekly limits, per-model breakdowns, billing, and live reset countdowns across three providers
+- **Context-aware switching** — the menu bar and desktop widget automatically switch providers based on your focused app (macOS + Windows)
+- **Always-on-top widget** — transparent desktop overlay showing usage, limits, and reset countdowns with 6 visual themes
+- **Menu bar display** — styled usage percentages and reset countdowns rendered directly in the macOS menu bar or Windows system tray
+- **Customizable alerts** — native notifications for session/weekly thresholds, burn rate warnings, and limit reset events
+- **MCP server** — lets any LLM or AI assistant query your live usage data (Claude Code, Cursor, or any MCP-compatible client)
 - **Automation-ready** — local HTTP API on port 52700 plus a Stream Deck plugin for hardware integration
-- **MCP server** — exposes live usage data to Claude Code and other MCP-compatible clients
+- **Zero-config auth** — auto-detects credentials from 10+ browsers, desktop apps, and OAuth sources
 
 ## Monitoring
 
@@ -22,7 +24,7 @@ Each provider is polled on a shared background loop and the results are surfaced
 
 ## Desktop Widget
 
-An always-on-top transparent overlay that floats above your desktop. Cards are click-through so they never block your work — only the header is draggable.
+An always-on-top transparent overlay that floats above your desktop showing usage percentages, limits, and live reset countdowns for each provider. Cards are click-through so they never block your work — only the header is draggable.
 
 Six themes: **rainmeter-stack**, **gauge-tower**, **side-rail**, **mono-ticker**, **signal-deck**, and **matrix-rain**. Each supports three density levels (ultra-compact, compact, comfortable) and configurable scale. Cards can be drag-reordered and toggled per-provider.
 
@@ -51,7 +53,7 @@ UsageWatch serves cached provider snapshots on `http://127.0.0.1:52700`:
 
 ### MCP Server
 
-The built-in MCP server exposes these tools to Claude Code and compatible clients:
+The built-in MCP server lets any LLM or AI assistant query your usage data in real time — Claude Code, Cursor, or any MCP-compatible client:
 
 | Tool | Description |
 |------|-------------|
