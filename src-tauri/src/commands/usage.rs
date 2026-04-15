@@ -169,19 +169,3 @@ pub(crate) async fn fetch_peak_hours() -> Option<PeakHoursStatus> {
         is_weekend: data.is_weekend,
     })
 }
-
-#[tauri::command]
-pub async fn fetch_status() -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
-    let response = client
-        .get("https://status.claude.com/api/v2/summary.json")
-        .header("user-agent", crate::USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("Status fetch failed: {}", e))?;
-
-    response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse status: {}", e))
-}

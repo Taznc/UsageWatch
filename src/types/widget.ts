@@ -1,12 +1,5 @@
 import type { Provider } from "./usage";
 
-export interface APIStatusResponse {
-  status: {
-    indicator: string;
-    description: string;
-  };
-}
-
 export interface APIStatus {
   indicator: string;
   description: string;

@@ -112,7 +112,6 @@ pub fn run() {
             commands::browser::debug_claude_desktop_cookies,
             commands::browser::scan_browsers,
             commands::usage::fetch_billing,
-            commands::usage::fetch_status,
             commands::codex::check_codex_auth,
             commands::codex::fetch_codex_usage,
             commands::codex::test_codex_connection,

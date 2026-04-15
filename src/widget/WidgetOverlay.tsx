@@ -30,6 +30,14 @@ function clampProgress(progress?: number | null) {
   return Math.max(0, Math.min(100, progress));
 }
 
+function measureScaledSize(element: HTMLDivElement, scale: number) {
+  const normalizedScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  return {
+    width: Math.ceil(element.scrollWidth * normalizedScale),
+    height: Math.ceil(element.scrollHeight * normalizedScale),
+  };
+}
+
 function compactLabel(card: WidgetCardViewModel) {
   return card.shortTitle ?? card.title.slice(0, 3).toUpperCase();
 }
@@ -104,6 +112,16 @@ export function WidgetOverlay() {
   const customization = state.layout.themeCustomizations[theme.id] ?? {};
   const resetDisplayMode = customization.resetDisplayMode ?? "time";
 
+  function syncWindowSize(target: HTMLDivElement) {
+    if (!tauri) return;
+    const { width, height } = measureScaledSize(target, state.layout.scale);
+    if (width <= 0 || height <= 0) return;
+    getCurrentWindow()
+      .setSize(new LogicalSize(width, height))
+      .then(() => emit("widget-geometry-sync"))
+      .catch(() => {});
+  }
+
   // Only the header is an interactive hitbox — cards are display-only (click-through).
   function recalcHitboxes() {
     const next: Hitbox[] = [];
@@ -151,14 +169,7 @@ export function WidgetOverlay() {
 
     const observer = new ResizeObserver(() => {
       recalc();
-      if (tauri) {
-        const rect = root.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          getCurrentWindow().setSize(new LogicalSize(Math.ceil(rect.width), Math.ceil(rect.height)))
-            .then(() => emit("widget-geometry-sync"))
-            .catch(() => {});
-        }
-      }
+      syncWindowSize(root);
     });
 
     observer.observe(root);
@@ -167,11 +178,8 @@ export function WidgetOverlay() {
 
     if (tauri) {
       requestAnimationFrame(() => {
-        const rect = root.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          getCurrentWindow().setSize(new LogicalSize(Math.ceil(rect.width), Math.ceil(rect.height)))
-            .then(() => emit("widget-geometry-sync"))
-            .catch(() => {});
+        if (root.isConnected) {
+          syncWindowSize(root);
         }
       });
     }

@@ -10,7 +10,6 @@ import type {
   BillingInfo,
   Provider,
 } from "../types/usage";
-import type { APIStatusResponse } from "../types/widget";
 
 export function useWidgetData() {
   const { dispatch } = useWidget();
@@ -104,16 +103,6 @@ export function useWidgetData() {
         }
       } catch {
         // Non-critical — widget shows what it can
-      }
-
-      try {
-        // fetch_status returns { status: { indicator, description }, page: {...} }
-        const raw = await invoke<APIStatusResponse>("fetch_status");
-        if (raw?.status) {
-          dispatch({ type: "SET_STATUS", data: raw.status });
-        }
-      } catch {
-        // Non-critical
       }
     }
 

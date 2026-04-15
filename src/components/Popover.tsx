@@ -8,7 +8,6 @@ import { useBurnRate } from "../hooks/useBurnRate";
 import { useAlertEngine } from "../hooks/useAlertEngine";
 import { useApp } from "../context/AppContext";
 import { UsageBar } from "./UsageBar";
-import { StatusIndicator } from "./StatusIndicator";
 import { formatCurrencyFromCents, formatTimestamp } from "../utils/format";
 import type { BillingInfo } from "../types/usage";
 import { CursorAccountLimitBadge, CursorIncludedRemainingBar } from "./CursorVisualExtras";
@@ -164,8 +163,6 @@ export function Popover() {
             </button>
           </div>
         </div>
-
-        <StatusIndicator />
       </div>
 
       {/* Tab bar — shown as soon as any secondary provider is configured */}
