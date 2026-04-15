@@ -12,11 +12,7 @@ import { HistoryChart } from "./HistoryChart";
 import { StatusIndicator } from "./StatusIndicator";
 import { formatCurrencyFromCents, formatTimestamp } from "../utils/format";
 import type { BillingInfo } from "../types/usage";
-import {
-  CursorAccountLimitBadge,
-  CursorEnterpriseVisualSection,
-  CursorIncludedRemainingBar,
-} from "./CursorVisualExtras";
+import { CursorAccountLimitBadge, CursorIncludedRemainingBar } from "./CursorVisualExtras";
 
 export function Popover() {
   const { usageData, lastUpdated, error, isLoading, isOffline, refresh } = useUsageData();
@@ -731,14 +727,6 @@ export function Popover() {
                     </div>
                   </div>
                 )}
-
-                {cursorData.enterprise_usage != null &&
-                  Object.keys(cursorData.enterprise_usage).length > 0 && (
-                    <CursorEnterpriseVisualSection
-                      data={cursorData.enterprise_usage}
-                      cycleResetsAt={cursorData.cycle_resets_at}
-                    />
-                  )}
 
               </>
             ) : cursorError ? (
