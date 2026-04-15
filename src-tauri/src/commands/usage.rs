@@ -174,7 +174,7 @@ pub(crate) async fn fetch_peak_hours() -> Option<PeakHoursStatus> {
 pub async fn fetch_status() -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
     let response = client
-        .get("https://status.anthropic.com/api/v2/status.json")
+        .get("https://status.claude.com/api/v2/summary.json")
         .header("user-agent", crate::USER_AGENT)
         .send()
         .await

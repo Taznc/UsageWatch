@@ -1589,7 +1589,7 @@ select.input {
 /* Status indicator */
 .status-indicator {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   margin-bottom: 12px;
   padding: 6px 10px;
@@ -1603,10 +1603,29 @@ select.input {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.status-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .status-text {
   color: var(--text-muted);
+  font-weight: 500;
+}
+
+.status-detail,
+.status-components {
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
+.status-components {
+  font-size: 10px;
 }
 
 /* History chart */
