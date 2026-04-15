@@ -12,6 +12,7 @@ import { HistoryChart } from "./HistoryChart";
 import { StatusIndicator } from "./StatusIndicator";
 import { formatCurrencyFromCents, formatTimestamp } from "../utils/format";
 import type { BillingInfo } from "../types/usage";
+import { CursorConnectExtrasFriendly, CursorEnterpriseUsageFriendly } from "./CursorExtrasFriendly";
 
 export function Popover() {
   const { usageData, lastUpdated, error, isLoading, isOffline, refresh } = useUsageData();
@@ -750,42 +751,10 @@ export function Popover() {
                       </div>
                     )}
                     {cursorData.connect_extras != null && Object.keys(cursorData.connect_extras).length > 0 && (
-                      <details style={{ marginTop: 8 }}>
-                        <summary style={{ cursor: "pointer", fontSize: 12 }}>Connect RPC extras (JSON)</summary>
-                        <pre
-                          style={{
-                            marginTop: 6,
-                            fontSize: 10,
-                            maxHeight: 180,
-                            overflow: "auto",
-                            padding: 8,
-                            borderRadius: 6,
-                            background: "var(--surface-elevated, rgba(255,255,255,0.04))",
-                            border: "1px solid var(--border)",
-                          }}
-                        >
-                          {JSON.stringify(cursorData.connect_extras, null, 2)}
-                        </pre>
-                      </details>
+                      <CursorConnectExtrasFriendly data={cursorData.connect_extras} />
                     )}
                     {cursorData.enterprise_usage != null && Object.keys(cursorData.enterprise_usage).length > 0 && (
-                      <details style={{ marginTop: 8 }}>
-                        <summary style={{ cursor: "pointer", fontSize: 12 }}>Enterprise usage API (JSON)</summary>
-                        <pre
-                          style={{
-                            marginTop: 6,
-                            fontSize: 10,
-                            maxHeight: 180,
-                            overflow: "auto",
-                            padding: 8,
-                            borderRadius: 6,
-                            background: "var(--surface-elevated, rgba(255,255,255,0.04))",
-                            border: "1px solid var(--border)",
-                          }}
-                        >
-                          {JSON.stringify(cursorData.enterprise_usage, null, 2)}
-                        </pre>
-                      </details>
+                      <CursorEnterpriseUsageFriendly data={cursorData.enterprise_usage} />
                     )}
                   </div>
                 )}
