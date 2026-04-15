@@ -19,7 +19,12 @@ mod macos {
     }
 
     extern "C" {
-        fn set_styled_tray_title(segments: *const CTraySegment, count: c_int);
+        fn set_styled_tray_title_with_icon(
+            segments: *const CTraySegment,
+            count: c_int,
+            icon_data: *const u8,
+            icon_len: c_int,
+        );
         fn register_tray_status_item(status_item: *mut c_void);
         fn register_mouse_move_callback(cb: extern "C" fn(f64, f64));
         fn start_native_mouse_monitor();
@@ -54,12 +59,22 @@ mod macos {
         }
     }
 
-    pub fn set_native_styled_title(segments: &[StyledSegment]) {
+    pub fn set_native_styled_title_with_icon(segments: &[StyledSegment], icon_name: Option<&str>) {
         if segments.is_empty() {
             return;
         }
 
-        // Convert to C strings (must keep them alive during the call)
+        static CLAUDE_ICON: &[u8] = include_bytes!("../icons/providers/claude.png");
+        static CODEX_ICON: &[u8] = include_bytes!("../icons/providers/codex.png");
+        static CURSOR_ICON: &[u8] = include_bytes!("../icons/providers/cursor.png");
+
+        let icon_bytes: Option<&[u8]> = icon_name.and_then(|name| match name {
+            "claude" => Some(CLAUDE_ICON),
+            "codex" => Some(CODEX_ICON),
+            "cursor" => Some(CURSOR_ICON),
+            _ => None,
+        });
+
         let c_strings: Vec<CString> = segments
             .iter()
             .map(|s| CString::new(s.text.as_str()).unwrap_or_default())
@@ -79,8 +94,16 @@ mod macos {
             })
             .collect();
 
+        let icon_ptr = icon_bytes.map(|b| b.as_ptr()).unwrap_or(std::ptr::null());
+        let icon_len = icon_bytes.map(|b| b.len() as c_int).unwrap_or(0);
+
         unsafe {
-            set_styled_tray_title(c_segments.as_ptr(), c_segments.len() as c_int);
+            set_styled_tray_title_with_icon(
+                c_segments.as_ptr(),
+                c_segments.len() as c_int,
+                icon_ptr,
+                icon_len,
+            );
         }
     }
 

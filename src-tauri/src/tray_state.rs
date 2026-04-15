@@ -78,7 +78,7 @@ pub fn refresh_tray() {
     };
 
     if let Some(dd) = display {
-        render_tray(&state.app_handle, &dd, &format);
+        render_tray(&state.app_handle, provider, &dd, &format);
     }
 }
 
@@ -218,7 +218,7 @@ impl TrayDisplayData {
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 
-fn render_tray(app: &AppHandle, data: &TrayDisplayData, format: &TrayFormat) {
+fn render_tray(app: &AppHandle, provider: Provider, data: &TrayDisplayData, format: &TrayFormat) {
     if app.tray_by_id("main-tray").is_none() {
         return;
     }
@@ -226,7 +226,7 @@ fn render_tray(app: &AppHandle, data: &TrayDisplayData, format: &TrayFormat) {
     #[cfg(target_os = "macos")]
     {
         let segments = build_styled_segments(data, format);
-        crate::styled_tray::set_native_styled_title(&segments);
+        crate::styled_tray::set_native_styled_title_with_icon(&segments, Some(provider.icon_name()));
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -299,7 +299,14 @@ fn render_multi_tray(
     #[cfg(target_os = "macos")]
     {
         let styled = build_multi_styled_segments(segments, format, &cache);
-        crate::styled_tray::set_native_styled_title(&styled);
+        let icon_provider = segments.iter().find_map(|s| match &s.kind {
+            TraySegmentKind::ProviderData { provider, .. } => Some(*provider),
+            _ => None,
+        });
+        crate::styled_tray::set_native_styled_title_with_icon(
+            &styled,
+            icon_provider.map(|p| p.icon_name()),
+        );
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -404,7 +411,6 @@ fn build_multi_styled_segments(
     let custom_color = (200, 200, 220, 255);
 
     let mut groups: Vec<Vec<StyledSegment>> = Vec::new();
-    let mut last_provider: Option<Provider> = None;
 
     for seg in segments {
         match &seg.kind {
@@ -412,21 +418,13 @@ fn build_multi_styled_segments(
                 let dd = cache.get(provider);
                 if let Some(segs) = resolve_field_styled(field, dd, label_color, timer_color) {
                     let mut group = Vec::new();
-                    if last_provider != Some(*provider) {
-                        group.push(StyledSegment::from_rgba_u8(
-                            &format!("{} ", provider.emoji()),
-                            255, 255, 255, 255, 13.0, false,
-                        ));
-                    }
                     group.extend(segs);
                     groups.push(group);
-                    last_provider = Some(*provider);
                 }
             }
             TraySegmentKind::CustomText { text } => {
                 let (r, g, b, a) = custom_color;
                 groups.push(vec![StyledSegment::from_rgba_u8(text, r, g, b, a, 13.0, false)]);
-                last_provider = None;
             }
         }
     }

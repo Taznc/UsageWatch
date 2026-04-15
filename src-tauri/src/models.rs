@@ -498,11 +498,20 @@ pub struct TraySegmentDef {
 }
 
 impl Provider {
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub fn emoji(&self) -> &'static str {
         match self {
             Provider::Claude => "\u{1F7E0}",  // 🟠
             Provider::Codex => "\u{1F7E2}",   // 🟢
             Provider::Cursor => "\u{1F7E3}",  // 🟣
+        }
+    }
+
+    pub fn icon_name(&self) -> &'static str {
+        match self {
+            Provider::Claude => "claude",
+            Provider::Codex => "codex",
+            Provider::Cursor => "cursor",
         }
     }
 

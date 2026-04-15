@@ -11,6 +11,15 @@ import { MatrixRain } from "./MatrixRain";
 import { isTauriRuntime } from "./preview";
 import { selectWidgetCardModels } from "./selectors";
 import { getWidgetTheme } from "./themes";
+import claudeIcon from '../assets/providers/claude.png';
+import codexIcon from '../assets/providers/codex.png';
+import cursorIcon from '../assets/providers/cursor.png';
+
+const PROVIDER_ICONS: Record<string, string> = {
+  Claude: claudeIcon,
+  Codex: codexIcon,
+  Cursor: cursorIcon,
+};
 
 type Hitbox = {
   left: number;
@@ -238,7 +247,11 @@ export function WidgetOverlay() {
         className="widget-overlay__provider"
         onPointerDown={handleHeaderPointerDown}
       >
-        <span className="widget-overlay__provider-dot" />
+        <img
+          src={PROVIDER_ICONS[state.activeProvider]}
+          alt={state.activeProvider}
+          className="widget-overlay__provider-icon"
+        />
         <span className="widget-overlay__provider-name">{state.activeProvider}</span>
       </div>
       {theme.id === "matrix-rain" && (

@@ -244,6 +244,96 @@ void set_styled_tray_title(const TraySegment *segments, int count) {
     });
 }
 
+__attribute__((used))
+__attribute__((visibility("default")))
+void set_styled_tray_title_with_icon(const TraySegment *segments, int count, const uint8_t *icon_data, int icon_len) {
+    if (count == 0) return;
+
+    NSMutableAttributedString *attrStr = [[NSMutableAttributedString alloc] init];
+    CGFloat fontSize = [NSFont systemFontSize];
+
+    for (int i = 0; i < count; i++) {
+        NSString *text = [NSString stringWithUTF8String:segments[i].text];
+        if (!text) continue;
+
+        NSFont *font = segments[i].is_bold
+            ? [NSFont boldSystemFontOfSize:fontSize]
+            : [NSFont systemFontOfSize:fontSize];
+
+        NSColor *color = [NSColor colorWithSRGBRed:segments[i].r
+                                             green:segments[i].g
+                                              blue:segments[i].b
+                                             alpha:segments[i].a];
+
+        [attrStr appendAttributedString:[[NSAttributedString alloc]
+            initWithString:text
+                attributes:@{NSFontAttributeName: font,
+                             NSForegroundColorAttributeName: color}]];
+    }
+
+    if (attrStr.length == 0) return;
+    NSAttributedString *capturedAttr = [attrStr copy];
+
+    // Create provider icon from embedded bytes
+    NSImage *providerIcon = nil;
+    if (icon_data != NULL && icon_len > 0) {
+        NSData *data = [NSData dataWithBytes:icon_data length:(NSUInteger)icon_len];
+        providerIcon = [[NSImage alloc] initWithData:data];
+    }
+    NSImage *capturedIcon = providerIcon;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            @try {
+                NSStatusBarButton *button = findOurButton();
+                if (!button) return;
+
+                setupClickHandling(button);
+                registerFrameObserverIfNeeded(button);
+
+                CGFloat barHeight = [[NSStatusBar systemStatusBar] thickness];
+                NSSize  textSize  = [capturedAttr size];
+                CGFloat iconPt    = (capturedIcon != nil) ? 16.0 : 0.0;
+                CGFloat iconGap   = (capturedIcon != nil) ? 4.0  : 0.0;
+                CGFloat hPad      = 4.0;
+                CGFloat totalW    = hPad + iconPt + iconGap + textSize.width + hPad;
+                NSSize  imgSize   = NSMakeSize(totalW, barHeight);
+
+                NSImage *image = [NSImage imageWithSize:imgSize
+                                               flipped:NO
+                                        drawingHandler:^BOOL(NSRect dstRect) {
+                    // Draw provider icon
+                    if (capturedIcon) {
+                        CGFloat yOff = (dstRect.size.height - iconPt) / 2.0;
+                        NSRect iconRect = NSMakeRect(hPad, yOff, iconPt, iconPt);
+                        [capturedIcon drawInRect:iconRect
+                                       fromRect:NSZeroRect
+                                      operation:NSCompositingOperationSourceOver
+                                       fraction:1.0
+                                 respectFlipped:YES
+                                           hints:nil];
+                    }
+                    // Draw text
+                    CGFloat xText = hPad + iconPt + iconGap;
+                    CGFloat yText = (dstRect.size.height - textSize.height) / 2.0;
+                    [capturedAttr drawInRect:NSMakeRect(xText, yText, textSize.width, textSize.height)];
+                    return YES;
+                }];
+                image.template = NO;
+
+                [button setImage:image];
+                [button setImagePosition:NSImageOnly];
+                [button setTitle:@""];
+
+                ensureSubviewCoverage(button);
+
+            } @catch (NSException *e) {
+                NSLog(@"[UsageWatch] Exception in set_styled_tray_title_with_icon: %@", e);
+            }
+        }
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Global mouse monitor (replaces rdev on macOS to avoid TSM thread assertion)
 // ---------------------------------------------------------------------------
