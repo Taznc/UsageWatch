@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::time::{Duration, Instant};
 
 use crate::credentials_cache::CredentialsCache;
-use crate::models::{CodexUsageData, CursorUsageData, PeakHoursStatus, UsageData};
+use crate::models::{BillingInfo, CodexUsageData, CursorUsageData, PeakHoursStatus, UsageData};
 use crate::commands;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -26,6 +26,36 @@ pub struct CursorUpdate {
     pub data: Option<CursorUsageData>,
     pub error: Option<String>,
     pub timestamp: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BillingUpdate {
+    pub data: Option<BillingInfo>,
+    pub error: Option<String>,
+    pub timestamp: String,
+}
+
+async fn fetch_billing_update(cache: &CredentialsCache) -> Option<BillingUpdate> {
+    let auth_method = cache.get_claude_auth_method();
+    if auth_method == "oauth" {
+        return None; // billing fetch requires session key, not available via OAuth
+    }
+    let (session_key, org_id) = match (cache.get_session_key(), cache.get_org_id()) {
+        (Some(sk), Some(oid)) => (sk, oid),
+        _ => return None,
+    };
+    match commands::usage::fetch_billing(session_key, org_id).await {
+        Ok(info) => Some(BillingUpdate {
+            data: Some(info),
+            error: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }),
+        Err(e) => Some(BillingUpdate {
+            data: None,
+            error: Some(e),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }),
+    }
 }
 
 async fn fetch_claude_update(cache: &CredentialsCache) -> Option<UsageUpdate> {
@@ -108,11 +138,13 @@ pub async fn poll_all_providers(
     latest_usage: &Arc<Mutex<Option<UsageUpdate>>>,
     latest_codex: &Arc<Mutex<Option<CodexUpdate>>>,
     latest_cursor: &Arc<Mutex<Option<CursorUpdate>>>,
+    latest_billing: &Arc<Mutex<Option<BillingUpdate>>>,
 ) {
-    let (claude_opt, codex_update, cursor_update) = tokio::join!(
+    let (claude_opt, codex_update, cursor_update, billing_opt) = tokio::join!(
         fetch_claude_update(cache),
         fetch_codex_update(cache),
         fetch_cursor_update(cache),
+        fetch_billing_update(cache),
     );
 
     if let Some(update) = claude_opt {
@@ -125,6 +157,10 @@ pub async fn poll_all_providers(
 
     *latest_cursor.lock().unwrap() = Some(cursor_update.clone());
     let _ = app.emit("cursor-update", &cursor_update);
+
+    if let Some(update) = billing_opt {
+        *latest_billing.lock().unwrap() = Some(update);
+    }
 
     crate::tray_state::refresh_tray();
 }
@@ -163,6 +199,7 @@ pub fn start_unified_polling(
     latest_usage: Arc<Mutex<Option<UsageUpdate>>>,
     latest_codex: Arc<Mutex<Option<CodexUpdate>>>,
     latest_cursor: Arc<Mutex<Option<CursorUpdate>>>,
+    latest_billing: Arc<Mutex<Option<BillingUpdate>>>,
 ) {
     let app_handle = app.clone();
 
@@ -189,6 +226,7 @@ pub fn start_unified_polling(
                 &latest_usage,
                 &latest_codex,
                 &latest_cursor,
+                &latest_billing,
             )
             .await;
 

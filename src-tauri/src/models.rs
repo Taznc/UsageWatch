@@ -551,6 +551,7 @@ impl Provider {
         }
     }
 
+    #[allow(dead_code)]
     pub fn icon_name(&self) -> &'static str {
         match self {
             Provider::Claude => "claude",

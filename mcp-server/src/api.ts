@@ -1,10 +1,15 @@
-import type { UsageUpdate, CodexUpdate, CursorUpdate } from "./types.js";
+import type { UsageUpdate, CodexUpdate, CursorUpdate, BillingUpdate } from "./types.js";
 
 const BASE = "http://127.0.0.1:52700";
 
 export type FetchResult<T> =
   | { status: "ok"; data: T }
   | { status: "unavailable" }
+  | { status: "app_not_running" }
+  | { status: "http_error"; code: number };
+
+export type PostResult =
+  | { status: "ok" }
   | { status: "app_not_running" }
   | { status: "http_error"; code: number };
 
@@ -23,6 +28,16 @@ async function fetchEndpoint<T>(path: string): Promise<FetchResult<T>> {
   }
 }
 
+async function postEndpoint(path: string): Promise<PostResult> {
+  try {
+    const res = await fetch(`${BASE}${path}`, { method: "POST" });
+    if (!res.ok) return { status: "http_error", code: res.status };
+    return { status: "ok" };
+  } catch {
+    return { status: "app_not_running" };
+  }
+}
+
 export function fetchClaude(): Promise<FetchResult<UsageUpdate>> {
   return fetchEndpoint<UsageUpdate>("/api/usage");
 }
@@ -33,4 +48,12 @@ export function fetchCodex(): Promise<FetchResult<CodexUpdate>> {
 
 export function fetchCursor(): Promise<FetchResult<CursorUpdate>> {
   return fetchEndpoint<CursorUpdate>("/api/cursor");
+}
+
+export function fetchBilling(): Promise<FetchResult<BillingUpdate>> {
+  return fetchEndpoint<BillingUpdate>("/api/billing");
+}
+
+export function postOpen(): Promise<PostResult> {
+  return postEndpoint("/api/open");
 }

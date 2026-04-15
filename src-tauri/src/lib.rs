@@ -52,6 +52,10 @@ pub fn run() {
     let latest_cursor: Arc<Mutex<Option<CursorUpdate>>> = Arc::new(Mutex::new(None));
     let latest_cursor_for_polling = latest_cursor.clone();
 
+    let latest_billing: Arc<Mutex<Option<polling::BillingUpdate>>> = Arc::new(Mutex::new(None));
+    let latest_billing_for_polling = latest_billing.clone();
+    let latest_billing_for_server = latest_billing.clone();
+
     let tray_format_for_state = tray_format.clone();
     let latest_usage_for_state = latest_usage.clone();
     let latest_codex_for_state = latest_codex.clone();
@@ -97,6 +101,7 @@ pub fn run() {
         .manage(latest_usage.clone())
         .manage(latest_codex.clone())
         .manage(latest_cursor.clone())
+        .manage(latest_billing.clone())
         .invoke_handler(tauri::generate_handler![
             commands::credentials::save_session_key,
             commands::credentials::get_session_key,
@@ -141,6 +146,8 @@ pub fn run() {
             get_running_apps,
             get_alert_config,
             set_alert_config,
+            get_http_server_enabled,
+            set_http_server_enabled,
             get_latest_usage_update,
             get_latest_codex_update,
             get_latest_cursor_update,
@@ -162,7 +169,14 @@ pub fn run() {
             // Load saved credentials from store file into memory cache
             commands::credentials::load_credentials_from_store(handle, &cache);
 
+            if let Some(main_window) = app.get_webview_window("main") {
+                let _ = main_window.set_maximizable(false);
+                #[cfg(target_os = "windows")]
+                configure_main_hwnd(&main_window);
+            }
+
             if let Some(widget_window) = app.get_webview_window("widget") {
+                let _ = widget_window.set_maximizable(false);
                 #[cfg(target_os = "windows")]
                 configure_widget_hwnd(&widget_window);
 
@@ -189,7 +203,7 @@ pub fn run() {
 
             // Build tray icon
             let tray_menu = menu;
-            let tray = TrayIconBuilder::with_id("main-tray")
+            let _tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
                 .title("--")
@@ -203,6 +217,7 @@ pub fn run() {
                         let latest_usage = (*app.state::<Arc<Mutex<Option<UsageUpdate>>>>()).clone();
                         let latest_codex = (*app.state::<Arc<Mutex<Option<CodexUpdate>>>>()).clone();
                         let latest_cursor = (*app.state::<Arc<Mutex<Option<CursorUpdate>>>>()).clone();
+                        let latest_billing = (*app.state::<Arc<Mutex<Option<polling::BillingUpdate>>>>()).clone();
                         tauri::async_runtime::spawn(async move {
                             polling::poll_all_providers(
                                 &app,
@@ -210,6 +225,7 @@ pub fn run() {
                                 &latest_usage,
                                 &latest_codex,
                                 &latest_cursor,
+                                &latest_billing,
                             )
                             .await;
                         });
@@ -332,8 +348,10 @@ pub fn run() {
                 }
             }
 
-            // Start Stream Deck HTTP API server
-            http_server::start(handle.clone(), latest_usage_for_server, latest_codex.clone(), latest_cursor.clone());
+            // Start local HTTP API if enabled (used by MCP server and Stream Deck integrations)
+            if is_http_server_enabled(handle) {
+                http_server::start(handle.clone(), latest_usage_for_server, latest_codex.clone(), latest_cursor.clone(), latest_billing_for_server);
+            }
 
             // Start background polling (Claude, Codex, Cursor refresh together on each tick)
             polling::start_unified_polling(
@@ -343,6 +361,7 @@ pub fn run() {
                 latest_usage_for_polling,
                 latest_codex_for_polling,
                 latest_cursor_for_polling,
+                latest_billing_for_polling,
             );
 
             Ok(())
@@ -359,31 +378,20 @@ fn set_widget_drag_rect(x: f32, y: f32, w: f32, h: f32) {
     let _ = (x, y, w, h);
 }
 
-/// On Windows, strip the resize frame and maximize style to prevent Aero Snap,
-/// mark the window as a tool window, and remove the Win11 DWM 1px border.
+/// On Windows, strip the resize frame and maximize style to prevent double-click
+/// maximize, Aero Snap, and the resize-frame border with `decorations: false`.
 #[cfg(target_os = "windows")]
-fn configure_widget_hwnd(_widget: &tauri::WebviewWindow) {
+fn apply_win32_borderless_styles(hwnd_raw: *mut std::ffi::c_void, tool_window: bool) {
+    use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWINDOWATTRIBUTE};
     use windows::Win32::UI::WindowsAndMessaging::{
-        FindWindowW, GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, GWL_STYLE,
-        WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_THICKFRAME,
+        GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, GWL_STYLE, WS_EX_TOOLWINDOW,
+        WS_MAXIMIZEBOX, WS_THICKFRAME,
     };
 
-    // Find the widget HWND by title (set in tauri.conf.json).
-    let title: Vec<u16> = "UsageWatch Widget\0".encode_utf16().collect();
-    let hwnd = unsafe {
-        match FindWindowW(
-            windows::core::PCWSTR::null(),
-            windows::core::PCWSTR(title.as_ptr()),
-        ) {
-            Ok(h) => h,
-            Err(_) => return,
-        }
-    };
+    let hwnd = HWND(hwnd_raw);
 
     unsafe {
-        // Remove WS_MAXIMIZEBOX and WS_THICKFRAME → prevents Aero Snap and
-        // the resize-frame border that Windows draws even with decorations:false.
         let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
         SetWindowLongW(
             hwnd,
@@ -391,13 +399,15 @@ fn configure_widget_hwnd(_widget: &tauri::WebviewWindow) {
             (style & !WS_MAXIMIZEBOX.0 & !WS_THICKFRAME.0) as i32,
         );
 
-        // Add WS_EX_TOOLWINDOW → skips taskbar and prevents snap.
-        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
-        SetWindowLongW(
-            hwnd,
-            GWL_EXSTYLE,
-            (ex_style | WS_EX_TOOLWINDOW.0) as i32,
-        );
+        if tool_window {
+            // Skips taskbar and reduces snap behavior for the overlay widget.
+            let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+            SetWindowLongW(
+                hwnd,
+                GWL_EXSTYLE,
+                (ex_style | WS_EX_TOOLWINDOW.0) as i32,
+            );
+        }
 
         // Remove the 1px DWM border that Windows 11 adds to borderless windows.
         // DWMWA_BORDER_COLOR (34) set to DWMWA_COLOR_NONE (0xFFFFFFFE).
@@ -408,6 +418,21 @@ fn configure_widget_hwnd(_widget: &tauri::WebviewWindow) {
             &color_none as *const u32 as *const std::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         );
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn configure_main_hwnd(main: &tauri::WebviewWindow) {
+    if let Ok(hwnd) = main.hwnd() {
+        apply_win32_borderless_styles(hwnd.0, false);
+    }
+}
+
+/// Widget: same as main, plus tool-window exstyle (existing behavior).
+#[cfg(target_os = "windows")]
+fn configure_widget_hwnd(widget: &tauri::WebviewWindow) {
+    if let Ok(hwnd) = widget.hwnd() {
+        apply_win32_borderless_styles(hwnd.0, true);
     }
 }
 
@@ -535,12 +560,27 @@ fn set_alert_config(
 }
 
 #[tauri::command]
+fn get_http_server_enabled(app: tauri::AppHandle) -> bool {
+    is_http_server_enabled(&app)
+}
+
+#[tauri::command]
+fn set_http_server_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_store::StoreExt;
+    let store = app.store("credentials.json").map_err(|e| e.to_string())?;
+    store.set("http_server_enabled", serde_json::Value::Bool(enabled));
+    let _ = store.save();
+    Ok(())
+}
+
+#[tauri::command]
 async fn refresh_all_providers(
     app: tauri::AppHandle,
     cache: tauri::State<'_, Arc<CredentialsCache>>,
     latest_usage: tauri::State<'_, Arc<Mutex<Option<UsageUpdate>>>>,
     latest_codex: tauri::State<'_, Arc<Mutex<Option<CodexUpdate>>>>,
     latest_cursor: tauri::State<'_, Arc<Mutex<Option<CursorUpdate>>>>,
+    latest_billing: tauri::State<'_, Arc<Mutex<Option<polling::BillingUpdate>>>>,
 ) -> Result<(), String> {
     polling::poll_all_providers(
         &app,
@@ -548,6 +588,7 @@ async fn refresh_all_providers(
         &*latest_usage,
         &*latest_codex,
         &*latest_cursor,
+        &*latest_billing,
     )
     .await;
     Ok(())
@@ -649,6 +690,16 @@ fn save_alert_config_to_store(app: &tauri::AppHandle, config: &AlertConfig) {
             let _ = store.save();
         }
     }
+}
+
+fn is_http_server_enabled(app: &tauri::AppHandle) -> bool {
+    use tauri_plugin_store::StoreExt;
+    if let Ok(store) = app.store("credentials.json") {
+        if let Some(val) = store.get("http_server_enabled") {
+            return val.as_bool().unwrap_or(false);
+        }
+    }
+    false
 }
 
 fn save_widget_visible_to_store(app: &tauri::AppHandle, visible: bool) {

@@ -286,6 +286,7 @@ export function Settings() {
     burn_rate_mins: 30,
     notify_on_reset: true,
   });
+  const [httpServerEnabled, setHttpServerEnabled] = useState(false);
 
   useEffect(() => {
     async function loadTrayFormat() {
@@ -312,10 +313,17 @@ export function Settings() {
         setWidgetLayout(normalizeWidgetOverlayLayout(await store.get(WIDGET_LAYOUT_STORE_KEY)));
       } catch {}
     }
+    async function loadHttpServerEnabled() {
+      try {
+        const enabled = await invoke<boolean>("get_http_server_enabled");
+        setHttpServerEnabled(enabled);
+      } catch {}
+    }
     loadTrayFormat();
     loadTrayConfig();
     loadAlertConfig();
     loadWidgetLayout();
+    loadHttpServerEnabled();
     if (isMacPlatform) checkAccessibility();
   }, []);
 
@@ -1175,6 +1183,27 @@ export function Settings() {
                       }
                     />
                     Launch at login
+                  </label>
+                </div>
+              </div>
+
+              <div className="settings-card" style={{ marginTop: 10 }}>
+                <p className="card-label">Local API server</p>
+                <p className="form-hint">Serves usage data on port 52700 for MCP and Stream Deck integrations. Changes take effect on next launch.</p>
+                <div className="toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={httpServerEnabled}
+                      onChange={async (e) => {
+                        const enabled = e.target.checked;
+                        setHttpServerEnabled(enabled);
+                        try {
+                          await invoke("set_http_server_enabled", { enabled });
+                        } catch {}
+                      }}
+                    />
+                    Enable local API server
                   </label>
                 </div>
               </div>

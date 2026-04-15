@@ -49,18 +49,23 @@ UsageWatch serves cached provider snapshots on `http://127.0.0.1:52700`:
 | `/api/usage` | GET | Claude usage data |
 | `/api/codex` | GET | Codex usage data |
 | `/api/cursor` | GET | Cursor usage data |
+| `/api/billing` | GET | Claude billing (prepaid credits, promotion credit, bundles) |
 | `/api/open` | POST | Show/focus the main window |
+
+The local API server is **off by default**. To enable it, go to **Settings > General > Enable local API server** and restart the app. The MCP server and Stream Deck plugin both require this to be enabled.
 
 ### MCP Server
 
-The built-in MCP server lets any LLM or AI assistant query your usage data in real time — Claude Code, Cursor, or any MCP-compatible client:
+The built-in MCP server lets any LLM or AI assistant query your usage data in real time — Claude Code, Cursor, or any MCP-compatible client. It connects to the local HTTP API, so the API server must be enabled (see above).
 
 | Tool | Description |
 |------|-------------|
 | `get_usage_overview` | Combined summary across all providers |
 | `get_claude_usage` | Session/weekly limits, extra usage, peak hours, reset timers |
+| `get_claude_billing` | Prepaid credits, promotion credit, bundle reset date |
 | `get_codex_usage` | Session/weekly limits, code review, credits, plan type |
 | `get_cursor_usage` | Plan spend, on-demand usage, bonus credits, billing cycle |
+| `open_app` | Show and focus the UsageWatch window |
 
 ### Stream Deck
 
@@ -89,7 +94,7 @@ npm install
 npm run build
 ```
 
-The `.mcp.json` in the repo root auto-registers the server with Claude Code.
+The `.mcp.json` in the repo root auto-registers the server with Claude Code. Before using MCP tools, enable the local API server in **Settings > General > Enable local API server** and restart the app — the MCP server reads from the HTTP API on port 52700.
 
 ## Setup
 
@@ -109,6 +114,7 @@ All settings are accessible from the tray icon's Settings panel:
 - **Widget** — theme, density, scale, card order, and per-provider card visibility
 - **Alerts** — session and weekly thresholds, burn rate warnings, reset notifications
 - **Polling interval** — configurable refresh rate (minimum 30 seconds)
+- **Local API server** — enables the HTTP API on port 52700 for MCP and Stream Deck integrations (off by default, requires restart)
 
 ## Tech Stack
 

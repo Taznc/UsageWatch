@@ -138,7 +138,7 @@ Auth is read from `~/.codex/auth.json` or `$CODEX_HOME/auth.json`.
 ### Other endpoints
 
 - Anthropic status: `https://status.anthropic.com/api/v2/status.json`
-- Local API: `http://127.0.0.1:52700/api/usage`, `/api/codex`, `/api/cursor`, and `POST /api/open`
+- Local API: `http://127.0.0.1:52700/api/usage`, `/api/codex`, `/api/cursor`, `/api/billing`, and `POST /api/open`
 
 ## Important Behaviors
 
@@ -147,6 +147,7 @@ Auth is read from `~/.codex/auth.json` or `$CODEX_HOME/auth.json`.
 - Dynamic provider switching depends on app mappings and the frontmost-app monitor (macOS/Windows where enabled).
 - Cursor can be selected as a provider in tray settings and receives the same polling cadence as the other providers.
 - The widget intentionally reuses main-window data flows instead of introducing a separate backend.
+- The local HTTP API server (port 52700) is opt-in via `http_server_enabled` in `credentials.json`. It starts at launch if enabled; changes require a restart.
 
 ## macOS Tray Notes
 
@@ -201,7 +202,9 @@ An MCP server at `mcp-server/` is configured via `.mcp.json` and provides real-t
 Tools:
 - `get_usage_overview`: combined summary across all providers
 - `get_claude_usage`: detailed Claude session/weekly/extra data
+- `get_claude_billing`: prepaid credits, promotion credit, bundle reset date
 - `get_codex_usage`: detailed Codex session/weekly/credits data
 - `get_cursor_usage`: detailed Cursor spend/plan/billing data
+- `open_app`: show and focus the UsageWatch window
 
 Built with `@modelcontextprotocol/sdk`; run `npm run build` inside `mcp-server/` to compile.

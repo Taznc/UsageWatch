@@ -115,3 +115,37 @@ export interface CursorUpdate {
   error?: string;
   timestamp: string;
 }
+
+// ── Billing ─────────────────────────────────────────────────────────────────
+
+export interface PrepaidCredits {
+  amount: number;
+  currency?: string;
+  auto_reload_settings?: unknown;
+}
+
+export interface CreditGrant {
+  available: boolean;
+  eligible: boolean;
+  granted: boolean;
+  amount_minor_units: number;
+  currency?: string;
+}
+
+export interface BundlesInfo {
+  purchases_reset_at?: string;
+  bundle_paid_this_month_minor_units: number;
+  bundle_monthly_cap_minor_units: number;
+}
+
+export interface BillingInfo {
+  prepaid_credits?: PrepaidCredits;
+  credit_grant?: CreditGrant;
+  bundles?: BundlesInfo;
+}
+
+export interface BillingUpdate {
+  data?: BillingInfo;
+  error?: string;
+  timestamp: string;
+}

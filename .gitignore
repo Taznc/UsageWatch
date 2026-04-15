@@ -28,3 +28,9 @@ dist-ssr
 
 # Claude Code session memory
 .remember/
+
+# Screenshots / one-off artifacts
+playwright-widget.png
+
+# MCP server build output
+mcp-server/dist

@@ -1,10 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { fetchClaude, fetchCodex, fetchCursor, type FetchResult } from "./api.js";
+import { fetchClaude, fetchCodex, fetchCursor, fetchBilling, postOpen, type FetchResult } from "./api.js";
 import type {
   UsageUpdate,
   CodexUpdate,
   CursorUpdate,
+  BillingUpdate,
   UsageWindow,
   CodexUsageWindow,
 } from "./types.js";
@@ -193,16 +194,28 @@ server.tool(
   "Get a combined usage summary across all AI providers (Claude, Codex, Cursor) from UsageWatch. Shows rate-limit percentages, spend, and reset times.",
   {},
   async () => {
-    const [claude, codex, cursor] = await Promise.all([
+    const [claude, codex, cursor, billing] = await Promise.all([
       fetchClaude(),
       fetchCodex(),
       fetchCursor(),
+      fetchBilling(),
     ]);
 
     let text = "=== UsageWatch — AI Provider Usage ===\n\n";
 
     if (claude.status === "ok") {
-      text += formatClaude(claude.data) + "\n";
+      text += formatClaude(claude.data);
+      // Append billing summary inline
+      if (billing.status === "ok" && billing.data.data) {
+        const b = billing.data.data;
+        if (b.prepaid_credits) {
+          text += `  Prepaid balance: ${cents(b.prepaid_credits.amount)}\n`;
+        }
+        if (b.credit_grant?.granted) {
+          text += `  Promotion credit: ${cents(b.credit_grant.amount_minor_units)}\n`;
+        }
+      }
+      text += "\n";
     } else {
       text += errorMessage("CLAUDE", claude) + "\n";
     }
@@ -273,6 +286,60 @@ server.tool(
     }
     const text = JSON.stringify(result.data, null, 2);
     return { content: [{ type: "text", text }] };
+  }
+);
+
+server.tool(
+  "get_claude_billing",
+  "Get Claude billing details: prepaid credits balance, promotion credit, and extra-usage bundle reset date.",
+  {},
+  async () => {
+    const result = await fetchBilling();
+    if (result.status !== "ok") {
+      return { content: [{ type: "text", text: errorMessage("CLAUDE BILLING", result).trim() }] };
+    }
+    const update = result.data;
+    if (update.error && !update.data) {
+      return { content: [{ type: "text", text: `CLAUDE BILLING (error at ${update.timestamp}):\n  ${update.error}` }] };
+    }
+    const d = update.data!;
+    let out = `CLAUDE BILLING (as of ${update.timestamp}):\n`;
+
+    if (d.prepaid_credits) {
+      out += `  Prepaid balance: ${cents(d.prepaid_credits.amount)}\n`;
+    } else {
+      out += `  Prepaid balance: none\n`;
+    }
+
+    if (d.credit_grant?.granted) {
+      out += `  Promotion credit: ${cents(d.credit_grant.amount_minor_units)}\n`;
+    }
+
+    if (d.bundles) {
+      if (d.bundles.purchases_reset_at) {
+        out += `  Extra-usage resets: ${new Date(d.bundles.purchases_reset_at).toLocaleDateString()}\n`;
+      }
+      out += `  Bundle paid this month: ${cents(d.bundles.bundle_paid_this_month_minor_units)}\n`;
+      out += `  Bundle monthly cap: ${cents(d.bundles.bundle_monthly_cap_minor_units)}\n`;
+    }
+
+    return { content: [{ type: "text", text: out.trim() }] };
+  }
+);
+
+server.tool(
+  "open_app",
+  "Show and focus the UsageWatch app window.",
+  {},
+  async () => {
+    const result = await postOpen();
+    if (result.status === "ok") {
+      return { content: [{ type: "text", text: "UsageWatch window opened." }] };
+    }
+    if (result.status === "app_not_running") {
+      return { content: [{ type: "text", text: "UsageWatch app is not running. Launch it first." }] };
+    }
+    return { content: [{ type: "text", text: `Failed to open window: HTTP ${result.code}` }] };
   }
 );
 

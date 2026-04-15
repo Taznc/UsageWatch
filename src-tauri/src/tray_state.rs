@@ -218,7 +218,7 @@ impl TrayDisplayData {
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 
-fn render_tray(app: &AppHandle, provider: Provider, data: &TrayDisplayData, format: &TrayFormat) {
+fn render_tray(app: &AppHandle, _provider: Provider, data: &TrayDisplayData, format: &TrayFormat) {
     if app.tray_by_id("main-tray").is_none() {
         return;
     }
