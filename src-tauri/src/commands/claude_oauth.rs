@@ -221,7 +221,8 @@ pub async fn get_claude_oauth_token() -> Result<String, String> {
         }
     }
 
-    eprintln!("[ClaudeOAuth] Token expiring soon, refreshing...");
+    let ts = chrono::Local::now().format("%H:%M:%S");
+    eprintln!("[{ts}][ClaudeOAuth] Token expiring soon, refreshing...");
     let refreshed = match do_oauth_refresh(&oauth.refresh_token).await {
         Ok(r) => r,
         Err(e) => {
@@ -251,7 +252,7 @@ pub async fn get_claude_oauth_token() -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
         if let Err(e) = write_oauth_to_keychain(&oauth) {
-            eprintln!("[ClaudeOAuth] Failed to write keychain: {e}");
+            eprintln!("[{ts}][ClaudeOAuth] Failed to write keychain: {e}");
         }
     }
     #[cfg(not(target_os = "macos"))]
@@ -263,7 +264,7 @@ pub async fn get_claude_oauth_token() -> Result<String, String> {
         }
     }
 
-    eprintln!("[ClaudeOAuth] Token refreshed.");
+    eprintln!("[{ts}][ClaudeOAuth] Token refreshed.");
     Ok(refreshed.access_token)
 }
 

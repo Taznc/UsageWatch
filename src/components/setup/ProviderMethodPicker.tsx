@@ -83,15 +83,16 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
           return;
         }
         if (key && org) {
+          // Mark connected immediately — don't gate on test_connection succeeding.
           setConnected(true);
-          try {
-            const orgList = await invoke<Organization[]>("test_connection", { sessionKey: key });
-            const match = orgList.find((o) => o.uuid === org);
-            if (match) setConnectedInfo(match.name);
-            else setConnectedInfo("Connected");
-          } catch {
-            setConnectedInfo("Connected");
-          }
+          setConnectedInfo("Connected");
+          // Best-effort org name lookup (non-blocking, failures are silent).
+          invoke<Organization[]>("test_connection", { sessionKey: key })
+            .then((orgList) => {
+              const match = orgList.find((o) => o.uuid === org);
+              if (match) setConnectedInfo(match.name);
+            })
+            .catch(() => {/* keep "Connected" */});
         } else {
           setConnected(false);
         }

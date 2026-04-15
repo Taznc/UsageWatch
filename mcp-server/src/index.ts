@@ -48,9 +48,9 @@ function codexWindowLine(label: string, w: CodexUsageWindow | undefined): string
 function errorMessage(provider: string, result: FetchResult<unknown>): string {
   switch (result.status) {
     case "app_not_running":
-      return `${provider}: UsageWatch app is not running. Launch it to get usage data.\n`;
+      return `${provider}: Could not connect to UsageWatch. Make sure the app is running and the HTTP Server is enabled (Settings → General → HTTP Server).\n`;
     case "unavailable":
-      return `${provider}: Not connected in UsageWatch. Set up credentials in the app.\n`;
+      return `${provider}: Not connected in UsageWatch. Set up credentials in the app (Settings → Connections).\n`;
     case "http_error":
       return `${provider}: HTTP error ${result.code} from UsageWatch API.\n`;
     default:
@@ -337,7 +337,7 @@ server.tool(
       return { content: [{ type: "text", text: "UsageWatch window opened." }] };
     }
     if (result.status === "app_not_running") {
-      return { content: [{ type: "text", text: "UsageWatch app is not running. Launch it first." }] };
+      return { content: [{ type: "text", text: "Could not connect to UsageWatch. Make sure the app is running and the HTTP Server is enabled (Settings → General → HTTP Server)." }] };
     }
     return { content: [{ type: "text", text: `Failed to open window: HTTP ${result.code}` }] };
   }

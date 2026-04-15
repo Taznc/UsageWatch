@@ -66,12 +66,15 @@ async fn fetch_claude_update(cache: &CredentialsCache) -> Option<UsageUpdate> {
             Ok(token) => commands::usage::fetch_usage_oauth(&token).await,
             Err(e) => Err(e),
         };
-        // If OAuth failed but session_key + org_id exist, fall back silently.
+        // If OAuth failed but session_key + org_id exist, fall back silently
+        // and switch the in-memory auth method so future ticks skip OAuth entirely.
         match oauth_result {
             Ok(data) => Ok(data),
             Err(oauth_err) => match (cache.get_session_key(), cache.get_org_id()) {
                 (Some(sk), Some(oid)) => {
-                    eprintln!("[Claude] OAuth failed ({oauth_err}), falling back to session_key");
+                    let now = chrono::Local::now().format("%H:%M:%S");
+                    eprintln!("[{now}][Claude] OAuth failed, switching to session_key for this session");
+                    cache.set_claude_auth_method("session_key".to_string());
                     fetch_usage_internal(&sk, &oid).await
                 }
                 _ => Err(oauth_err),
@@ -113,7 +116,7 @@ async fn fetch_codex_update(cache: &CredentialsCache) -> CodexUpdate {
             timestamp: chrono::Utc::now().to_rfc3339(),
         },
         Err(e) => {
-            eprintln!("[Codex] Usage fetch failed: {e}");
+            eprintln!("[{}][Codex] Usage fetch failed: {e}", chrono::Local::now().format("%H:%M:%S"));
             CodexUpdate {
                 data: None,
                 error: Some(e),
@@ -132,7 +135,7 @@ async fn fetch_cursor_update(cache: &CredentialsCache) -> CursorUpdate {
             timestamp: chrono::Utc::now().to_rfc3339(),
         },
         Err(e) => {
-            eprintln!("[Cursor] Usage fetch failed: {e}");
+            eprintln!("[{}][Cursor] Usage fetch failed: {e}", chrono::Local::now().format("%H:%M:%S"));
             CursorUpdate {
                 data: None,
                 error: Some(e),
