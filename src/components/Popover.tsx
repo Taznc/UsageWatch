@@ -12,7 +12,12 @@ import { HistoryChart } from "./HistoryChart";
 import { StatusIndicator } from "./StatusIndicator";
 import { formatCurrencyFromCents, formatTimestamp } from "../utils/format";
 import type { BillingInfo } from "../types/usage";
-import { CursorConnectExtrasFriendly, CursorEnterpriseUsageFriendly } from "./CursorExtrasFriendly";
+import {
+  CursorAccountLimitBadge,
+  CursorEnterpriseVisualSection,
+  CursorIncludedRemainingBar,
+  CursorTechnicalDetailsCollapsible,
+} from "./CursorVisualExtras";
 
 export function Popover() {
   const { usageData, lastUpdated, error, isLoading, isOffline, refresh } = useUsageData();
@@ -95,12 +100,6 @@ export function Popover() {
     usageData?.seven_day?.utilization ?? null
   );
 
-  const cursorUsageTone =
-    cursorData && cursorData.spend_pct >= 90
-      ? "danger"
-      : cursorData && cursorData.spend_pct >= 75
-        ? "warning"
-        : "healthy";
   const cursorPlanLimitCents = cursorData
     ? (cursorData.plan_included_amount_cents ?? cursorData.limit_cents)
     : 0;
@@ -497,10 +496,10 @@ export function Popover() {
           <div className="usage-list">
             {cursorData ? (
               <>
-                {/* ── Plan usage ── */}
+                {/* ── Plan usage (Claude-style UsageBar + cards) ── */}
                 <div className="usage-section">
                   <h2 className="section-heading">
-                    {cursorData.is_team ? 'Team Usage' : 'Plan Usage'}
+                    Plan Usage Limits
                     {cursorData.plan_name && (
                       <span className="section-heading-meta section-heading-plan">
                         {cursorData.plan_name}
@@ -513,121 +512,162 @@ export function Popover() {
                     )}
                   </h2>
                   {(cursorShowPlanPrice || cursorShowMembership || cursorData.subscription_status) && (
-                    <div className="extra-usage-details" style={{ marginBottom: '8px' }}>
+                    <div className="extra-usage-details" style={{ marginBottom: 8 }}>
                       {cursorShowPlanPrice && <span>{cursorData.plan_price}</span>}
                       {cursorShowMembership && <span>Tier {cursorData.membership_type}</span>}
                       {cursorData.subscription_status && <span>{cursorData.subscription_status}</span>}
                     </div>
                   )}
 
-                  <div className="extra-usage cursor-usage-card">
-                    <div className="cursor-usage-topline">
-                      <div className="cursor-usage-amounts">
-                        {cursorHasMonetaryPlan ? (
-                          <>
-                            <span className="cursor-usage-amount">
-                              {formatCurrencyFromCents(cursorData.current_spend_cents)}
-                            </span>
-                            <span className="cursor-usage-divider">of</span>
-                            <span className="cursor-usage-limit">
-                              {formatCurrencyFromCents(cursorPlanLimitCents)}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="cursor-usage-amount">
-                              {cursorData.spend_pct.toFixed(0)}%
-                            </span>
-                            <span className="cursor-usage-divider">used this cycle</span>
-                          </>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {cursorData.remaining_bonus && (
-                          <span
-                            className="cursor-usage-badge"
-                            style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--green)', border: '1px solid rgba(34,197,94,0.3)' }}
-                            title="Bonus credits from model providers are still available"
-                          >
-                            +bonus
-                          </span>
-                        )}
-                        {cursorHasMonetaryPlan && (
-                          <span className={`cursor-usage-badge ${cursorUsageTone}`}>
-                            {cursorData.spend_pct.toFixed(0)}%
-                          </span>
-                        )}
-                      </div>
+                  {cursorData.remaining_bonus && (
+                    <div
+                      className="peak-hours-badge"
+                      style={{ cursor: "default", marginBottom: 8 }}
+                      title="Bonus credits from model providers are still available"
+                    >
+                      <span style={{ color: "var(--green)" }}>Bonus credits available</span>
                     </div>
-                    <div className="usage-bar-track">
-                      <div
-                        className="usage-bar-fill"
-                        style={{
-                          width: `${Math.min(cursorData.spend_pct, 100)}%`,
-                          backgroundColor: cursorData.spend_pct >= 90 ? 'var(--red)' : cursorData.spend_pct >= 75 ? 'var(--orange)' : 'var(--green)',
-                        }}
-                      />
+                  )}
+
+                  <UsageBar
+                    label={cursorData.is_team ? "Team included spend" : "Included spend"}
+                    percentage={Math.min(cursorData.spend_pct, 100)}
+                    resetAt={cursorData.cycle_resets_at}
+                    showRemaining={show_remaining}
+                  />
+
+                  {cursorHasMonetaryPlan && (
+                    <div className="extra-usage-details" style={{ marginTop: 6 }}>
+                      <span>{formatCurrencyFromCents(cursorData.current_spend_cents)} used</span>
+                      <span>{formatCurrencyFromCents(cursorPlanLimitCents)} allowance</span>
                     </div>
+                  )}
 
-                    {/* Auto / API breakdown */}
-                    {(cursorData.auto_pct != null || cursorData.api_pct != null) && (
-                      <div className="extra-usage-details" style={{ marginTop: '6px' }}>
-                        {cursorData.auto_pct != null && (
-                          <span title="Usage from Auto mode (Cursor selects the model)">
-                            Auto {cursorData.auto_pct.toFixed(1)}%
-                          </span>
-                        )}
-                        {cursorData.api_pct != null && (
-                          <span title="Usage from API/manual model selection">
-                            API {cursorData.api_pct.toFixed(1)}%
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {cursorHasMonetaryPlan ? (
-                      <div className="extra-usage-details">
-                        <span>{formatCurrencyFromCents(cursorData.current_spend_cents)} used</span>
-                        <span>{formatCurrencyFromCents(cursorPlanLimitCents)} included</span>
-                      </div>
-                    ) : (
-                      <div className="extra-usage-details">
-                        <span>{cursorData.plan_name ?? "Usage tracked by percent"}</span>
-                        <span>{cursorData.display_message ?? "Cursor did not return a dollar limit for this plan."}</span>
-                      </div>
-                    )}
-                    {(cursorData.total_spend_cents != null || cursorData.bonus_spend_cents != null) && (
-                      <div className="extra-usage-details">
-                        {cursorData.total_spend_cents != null && (
-                          <span>Total {formatCurrencyFromCents(cursorData.total_spend_cents)}</span>
-                        )}
-                        {cursorData.bonus_spend_cents != null && (
-                          <span title={cursorData.bonus_tooltip ?? "Bonus credits from model providers"}>
-                            Bonus {formatCurrencyFromCents(cursorData.bonus_spend_cents)}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {cursorData.display_message && cursorHasMonetaryPlan && (
-                      <div className="extra-usage-details">
-                        <span>{cursorData.display_message}</span>
-                      </div>
-                    )}
-                    {cursorData.bonus_tooltip && cursorData.remaining_bonus && (
-                      <div className="extra-usage-details">
-                        <span>{cursorData.bonus_tooltip}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {cursorData.cycle_resets_at && (
-                    <div className="usage-bar-footer" style={{ marginTop: '8px' }}>
-                      <span className="usage-bar-reset">
-                        Resets {new Date(cursorData.cycle_resets_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {!cursorHasMonetaryPlan && (
+                    <div className="extra-usage-details" style={{ marginTop: 6 }}>
+                      <span>{cursorData.plan_name ?? "Usage"}</span>
+                      <span>
+                        {cursorData.display_message ??
+                          "No dollar limit from Cursor for this plan — percentage only."}
                       </span>
                     </div>
                   )}
+
+                  {cursorData.billing_cycle_start && (
+                    <div className="usage-bar-footer" style={{ marginTop: 6 }}>
+                      <span className="usage-bar-reset">
+                        Cycle started{" "}
+                        {new Date(cursorData.billing_cycle_start).toLocaleDateString([], {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                    </div>
+                  )}
+
+                  {cursorData.plan_remaining_cents != null && cursorPlanLimitCents > 0 && (
+                    <CursorIncludedRemainingBar
+                      planRemainingCents={cursorData.plan_remaining_cents}
+                      limitCents={cursorPlanLimitCents}
+                      cycleResetsAt={cursorData.cycle_resets_at}
+                      showRemaining={show_remaining}
+                    />
+                  )}
+
+                  {(cursorData.total_spend_cents != null || (cursorData.bonus_spend_cents ?? 0) > 0) && (
+                    <>
+                      <h2 className="section-heading" style={{ marginTop: 14 }}>
+                        Spend breakdown
+                      </h2>
+                      <div className="billing-cards">
+                        {cursorData.total_spend_cents != null && (
+                          <div className="billing-card">
+                            <span className="billing-value">
+                              {formatCurrencyFromCents(cursorData.total_spend_cents)}
+                            </span>
+                            <span className="billing-label">Total this cycle</span>
+                          </div>
+                        )}
+                        {cursorData.bonus_spend_cents != null && cursorData.bonus_spend_cents > 0 && (
+                          <div className="billing-card">
+                            <span className="billing-value" style={{ color: "var(--green)" }}>
+                              {formatCurrencyFromCents(cursorData.bonus_spend_cents)}
+                            </span>
+                            <span className="billing-label">From bonus / providers</span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {cursorData.display_message && cursorHasMonetaryPlan && (
+                    <div className="extra-usage-details" style={{ marginTop: 8, fontSize: 11, opacity: 0.88 }}>
+                      <span>{cursorData.display_message}</span>
+                    </div>
+                  )}
+                  {cursorData.bonus_tooltip && cursorData.remaining_bonus && (
+                    <div className="extra-usage-details" style={{ marginTop: 4, fontSize: 11, opacity: 0.8 }}>
+                      <span>{cursorData.bonus_tooltip}</span>
+                    </div>
+                  )}
                 </div>
+
+                {(cursorData.auto_pct != null || cursorData.api_pct != null) && (
+                  <div className="usage-section">
+                    <h2 className="section-heading">How usage is split</h2>
+                    {cursorData.auto_pct != null && (
+                      <UsageBar
+                        label="Auto mode"
+                        percentage={Math.min(cursorData.auto_pct, 100)}
+                        resetAt={null}
+                        showRemaining={false}
+                      />
+                    )}
+                    {cursorData.api_pct != null && (
+                      <div style={{ marginTop: 10 }}>
+                        <UsageBar
+                          label="API / manual selection"
+                          percentage={Math.min(cursorData.api_pct, 100)}
+                          resetAt={null}
+                          showRemaining={false}
+                        />
+                      </div>
+                    )}
+                    {(cursorData.auto_model_selected_display_message ||
+                      cursorData.named_model_selected_display_message) && (
+                      <div style={{ marginTop: 8, fontSize: 11, opacity: 0.72, lineHeight: 1.4 }}>
+                        {cursorData.auto_model_selected_display_message && (
+                          <div>{cursorData.auto_model_selected_display_message}</div>
+                        )}
+                        {cursorData.named_model_selected_display_message && (
+                          <div>{cursorData.named_model_selected_display_message}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(cursorData.auto_model_selected_display_message ||
+                  cursorData.named_model_selected_display_message) &&
+                  cursorData.auto_pct == null &&
+                  cursorData.api_pct == null && (
+                    <div className="usage-section">
+                      <h2 className="section-heading">From Cursor</h2>
+                      <div style={{ fontSize: 12, opacity: 0.82, lineHeight: 1.45 }}>
+                        {cursorData.auto_model_selected_display_message && (
+                          <div style={{ marginBottom: 6 }}>{cursorData.auto_model_selected_display_message}</div>
+                        )}
+                        {cursorData.named_model_selected_display_message && (
+                          <div>{cursorData.named_model_selected_display_message}</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                {cursorData.connect_extras != null && Object.keys(cursorData.connect_extras).length > 0 && (
+                  <CursorAccountLimitBadge connectExtras={cursorData.connect_extras} />
+                )}
 
                 {/* ── On-demand budget (shown only when set) ── */}
                 {cursorOnDemandLimit != null && (
@@ -679,85 +719,32 @@ export function Popover() {
                 )}
 
                 {/* ── Prepaid Stripe balance ── */}
-                {cursorData.stripe_balance_cents != null && (
+                {cursorData.stripe_balance_cents != null && cursorData.stripe_balance_cents > 0 && (
                   <div className="usage-section">
-                    <h2 className="section-heading">Prepaid Balance</h2>
+                    <h2 className="section-heading">Balance</h2>
                     <div className="billing-cards">
                       <div className="billing-card">
-                        <span className="billing-value">
+                        <span className="billing-value credit">
                           {formatCurrencyFromCents(cursorData.stripe_balance_cents)}
                         </span>
-                        <span className="billing-label">Available credit</span>
+                        <span className="billing-label">Prepaid credit</span>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* ── Connect / enterprise extras (OpenUsage-aligned fetch) ── */}
-                {(cursorData.billing_cycle_start ||
-                  cursorData.plan_remaining_cents != null ||
-                  cursorData.usage_meter_enabled != null ||
-                  cursorData.display_threshold_bp != null ||
-                  !!cursorData.auto_model_selected_display_message ||
-                  !!cursorData.named_model_selected_display_message ||
-                  (cursorData.connect_extras != null && Object.keys(cursorData.connect_extras).length > 0) ||
-                  (cursorData.enterprise_usage != null && Object.keys(cursorData.enterprise_usage).length > 0)) && (
-                  <div className="usage-section">
-                    <h2 className="section-heading">Extended usage</h2>
-                    <p className="extra-usage-details" style={{ marginBottom: 8, opacity: 0.85, fontSize: 11 }}>
-                      Extra fields from Cursor&apos;s Connect RPCs and <code>cursor.com</code> when available.
-                      Many Enterprise meters only expose spend vs limit above; model split and on-demand may be absent.
-                    </p>
-                    {cursorData.billing_cycle_start && (
-                      <div className="extra-usage-details">
-                        <span>
-                          Cycle starts{" "}
-                          {new Date(cursorData.billing_cycle_start).toLocaleDateString([], {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </span>
-                      </div>
-                    )}
-                    {cursorData.plan_remaining_cents != null && (
-                      <div className="extra-usage-details">
-                        <span>Included remaining (Connect)</span>
-                        <span>{formatCurrencyFromCents(cursorData.plan_remaining_cents)}</span>
-                      </div>
-                    )}
-                    {cursorData.usage_meter_enabled != null && (
-                      <div className="extra-usage-details">
-                        <span>Dashboard meter enabled</span>
-                        <span>{cursorData.usage_meter_enabled ? "yes" : "no"}</span>
-                      </div>
-                    )}
-                    {cursorData.display_threshold_bp != null && (
-                      <div className="extra-usage-details">
-                        <span>Display threshold (basis points)</span>
-                        <span>{cursorData.display_threshold_bp}</span>
-                      </div>
-                    )}
-                    {cursorData.auto_model_selected_display_message && (
-                      <div className="extra-usage-details">
-                        <span title="From Cursor Connect">Auto mode message</span>
-                        <span>{cursorData.auto_model_selected_display_message}</span>
-                      </div>
-                    )}
-                    {cursorData.named_model_selected_display_message && (
-                      <div className="extra-usage-details">
-                        <span title="From Cursor Connect">Named model message</span>
-                        <span>{cursorData.named_model_selected_display_message}</span>
-                      </div>
-                    )}
-                    {cursorData.connect_extras != null && Object.keys(cursorData.connect_extras).length > 0 && (
-                      <CursorConnectExtrasFriendly data={cursorData.connect_extras} />
-                    )}
-                    {cursorData.enterprise_usage != null && Object.keys(cursorData.enterprise_usage).length > 0 && (
-                      <CursorEnterpriseUsageFriendly data={cursorData.enterprise_usage} />
-                    )}
-                  </div>
-                )}
+                {cursorData.enterprise_usage != null &&
+                  Object.keys(cursorData.enterprise_usage).length > 0 && (
+                    <CursorEnterpriseVisualSection
+                      data={cursorData.enterprise_usage}
+                      cycleResetsAt={cursorData.cycle_resets_at}
+                    />
+                  )}
+
+                <CursorTechnicalDetailsCollapsible
+                  connectExtras={cursorData.connect_extras}
+                  enterpriseUsage={cursorData.enterprise_usage}
+                />
               </>
             ) : cursorError ? (
               <div className="loading-state">
