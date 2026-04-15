@@ -6,20 +6,11 @@ import { useWidget } from "../context/WidgetContext";
 import { useWidgetData } from "../hooks/useWidgetData";
 import { useWidgetStore } from "../hooks/useWidgetStore";
 import type { WidgetCardViewModel } from "../types/widget";
-import { WidgetCard } from "./WidgetCard";
-import { MatrixRain } from "./MatrixRain";
+import { WidgetCard, resolveWidgetCardSecondary } from "./WidgetCard";
+import { ProviderBadge } from "./ProviderBadge";
 import { isTauriRuntime } from "./preview";
 import { selectWidgetCardModels } from "./selectors";
 import { getWidgetTheme } from "./themes";
-import claudeIcon from '../assets/providers/claude.png';
-import codexIcon from '../assets/providers/codex.png';
-import cursorIcon from '../assets/providers/cursor.png';
-
-const PROVIDER_ICONS: Record<string, string> = {
-  Claude: claudeIcon,
-  Codex: codexIcon,
-  Cursor: cursorIcon,
-};
 
 type Hitbox = {
   left: number;
@@ -43,12 +34,20 @@ function compactLabel(card: WidgetCardViewModel) {
   return card.shortTitle ?? card.title.slice(0, 3).toUpperCase();
 }
 
-function TickerCell({ card }: { card: WidgetCardViewModel }) {
+function TickerCell({
+  card,
+  resetDisplayMode,
+}: {
+  card: WidgetCardViewModel;
+  resetDisplayMode: "time" | "countdown" | "both";
+}) {
+  const detailText = resolveWidgetCardSecondary(card, resetDisplayMode);
+
   return (
     <div className={`widget-ticker-cell${card.tone === "muted" ? " is-muted" : ""}`}>
       <span className="widget-ticker-cell__label">{compactLabel(card)}</span>
       <span className="widget-ticker-cell__value">{card.primary}</span>
-      {card.secondary && <span className="widget-ticker-cell__sub">{card.secondary}</span>}
+      {detailText && <span className="widget-ticker-cell__sub">{detailText}</span>}
       {card.progress != null && (
         <span className="widget-ticker-cell__meter">
           <span className="widget-ticker-cell__fill" style={{ width: `${clampProgress(card.progress)}%` }} />
@@ -58,20 +57,30 @@ function TickerCell({ card }: { card: WidgetCardViewModel }) {
   );
 }
 
-function DeckCell({ card }: { card: WidgetCardViewModel }) {
+function PinboardCell({
+  card,
+  resetDisplayMode,
+}: {
+  card: WidgetCardViewModel;
+  resetDisplayMode: "time" | "countdown" | "both";
+}) {
+  const detailText = resolveWidgetCardSecondary(card, resetDisplayMode);
+
   return (
-    <div className={`widget-deck-cell${card.tone === "muted" ? " is-muted" : ""}`}>
-      <div className="widget-deck-cell__topline">
-        <span className="widget-deck-cell__label">{card.title}</span>
-        <span className="widget-deck-cell__icon">{card.icon}</span>
-      </div>
-      <div className="widget-deck-cell__value">{card.primary}</div>
-      {card.secondary && <div className="widget-deck-cell__sub">{card.secondary}</div>}
-      {card.progress != null && (
-        <div className="widget-deck-cell__meter">
-          <div className="widget-deck-cell__fill" style={{ width: `${clampProgress(card.progress)}%` }} />
+    <div className={`widget-pinboard-cell${card.tone === "muted" ? " is-muted" : ""}`}>
+      <div className="widget-pinboard-cell__pin">{card.icon}</div>
+      <div className="widget-pinboard-cell__body">
+        <div className="widget-pinboard-cell__topline">
+          <span className="widget-pinboard-cell__value">{card.primary}</span>
+          <span className="widget-pinboard-cell__label">{card.title}</span>
         </div>
-      )}
+        {detailText && <div className="widget-pinboard-cell__sub">{detailText}</div>}
+        {card.progress != null && (
+          <div className="widget-pinboard-cell__meter">
+            <div className="widget-pinboard-cell__fill" style={{ width: `${clampProgress(card.progress)}%` }} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -92,6 +101,8 @@ export function WidgetOverlay() {
     [state],
   );
   const theme = getWidgetTheme(state.layout.themeId);
+  const customization = state.layout.themeCustomizations[theme.id] ?? {};
+  const resetDisplayMode = customization.resetDisplayMode ?? "time";
 
   // Only the header is an interactive hitbox — cards are display-only (click-through).
   function recalcHitboxes() {
@@ -233,13 +244,13 @@ export function WidgetOverlay() {
         "widget-overlay",
         `widget-overlay--${theme.id}`,
         `widget-overlay--${theme.layoutFamily}`,
-        `widget-overlay--${theme.headerStyle}`,
+        `widget-overlay--${theme.header.style}`,
         `widget-overlay--${state.layout.density}`,
       ].join(" ")}
       style={{
         ["--widget-stack-gap" as string]: `${theme.stackGap[state.layout.density]}px`,
         ["--widget-scale" as string]: String(state.layout.scale),
-        ["--widget-accent-override" as string]: (state.layout.themeOverrides[theme.id]?.accentColor as string) || "",
+        ["--widget-accent-override" as string]: customization.accentColor || "",
       }}
     >
       <div
@@ -247,20 +258,15 @@ export function WidgetOverlay() {
         className="widget-overlay__provider"
         onPointerDown={handleHeaderPointerDown}
       >
-        <img
-          src={PROVIDER_ICONS[state.activeProvider]}
-          alt={state.activeProvider}
-          className="widget-overlay__provider-icon"
+        <ProviderBadge
+          provider={state.activeProvider}
+          size={theme.header.badgeSize[state.layout.density]}
+          badgeStyle={theme.header.badgeStyle}
+          mode={customization.headerBadgeMode ?? "brand"}
+          className="widget-overlay__provider-badge"
         />
         <span className="widget-overlay__provider-name">{state.activeProvider}</span>
       </div>
-      {theme.id === "matrix-rain" && (
-        <MatrixRain
-          opacity={0.1}
-          speed={0.8}
-          color={(state.layout.themeOverrides["matrix-rain"]?.accentColor as string) || "#00ff41"}
-        />
-      )}
       {theme.id === "mono-ticker" ? (
         <div className="widget-overlay__ticker-board">
           {visibleCards.map((card) => (
@@ -269,19 +275,19 @@ export function WidgetOverlay() {
               className="widget-overlay__card-shell widget-overlay__card-shell--ticker"
               style={{ ["--widget-card-accent" as string]: card.accent }}
             >
-              <TickerCell card={card} />
+              <TickerCell card={card} resetDisplayMode={resetDisplayMode} />
             </div>
           ))}
         </div>
-      ) : theme.id === "signal-deck" ? (
-        <div className="widget-overlay__deck-board">
+      ) : theme.id === "pinboard-mini" ? (
+        <div className="widget-overlay__pinboard-board">
           {visibleCards.map((card) => (
             <div
               key={card.id}
-              className="widget-overlay__card-shell widget-overlay__card-shell--deck"
+              className="widget-overlay__card-shell widget-overlay__card-shell--pinboard"
               style={{ ["--widget-card-accent" as string]: card.accent }}
             >
-              <DeckCell card={card} />
+              <PinboardCell card={card} resetDisplayMode={resetDisplayMode} />
             </div>
           ))}
         </div>
@@ -292,6 +298,7 @@ export function WidgetOverlay() {
               card={card}
               density={state.layout.density}
               theme={theme}
+              resetDisplayMode={resetDisplayMode}
             />
           </div>
         ))

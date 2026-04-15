@@ -8,7 +8,6 @@ import { useBurnRate } from "../hooks/useBurnRate";
 import { useAlertEngine } from "../hooks/useAlertEngine";
 import { useApp } from "../context/AppContext";
 import { UsageBar } from "./UsageBar";
-import { HistoryChart } from "./HistoryChart";
 import { StatusIndicator } from "./StatusIndicator";
 import { formatCurrencyFromCents, formatTimestamp } from "../utils/format";
 import type { BillingInfo } from "../types/usage";
@@ -20,7 +19,6 @@ export function Popover() {
   const { show_remaining } = state.settings;
   const { codexData, codexError, codexLastUpdated, cursorData, cursorError, cursorLastUpdated, peakHours } = state;
   const [activeTab, setActiveTab] = useState<'claude' | 'codex' | 'cursor'>('claude');
-  const [showHistory, setShowHistory] = useState(false);
   const hasCodex = !!(codexData || codexError);
   const hasCursor = !!(cursorData || cursorError);
   // Track which providers are configured (auth exists) so tabs are stable from
@@ -143,13 +141,6 @@ export function Popover() {
               &#x1F4CC;
             </button>
             <button
-              className={`icon-btn ${showHistory ? "active" : ""}`}
-              onClick={() => setShowHistory(!showHistory)}
-              title="History"
-            >
-              &#x1F4CA;
-            </button>
-            <button
               className="icon-btn"
               onClick={refresh}
               disabled={isLoading}
@@ -220,11 +211,7 @@ export function Popover() {
             </div>
           )}
 
-          {showHistory ? (
-            <HistoryChart />
-          ) : (
-            <>
-              {usageData ? (
+          {usageData ? (
                 <div className="usage-list">
                   {usageData.five_hour && (
                     <div className="usage-section">
@@ -374,8 +361,6 @@ export function Popover() {
                   </div>
                 )
               )}
-            </>
-          )}
 
           {lastUpdated && (
             <div className="popover-footer">

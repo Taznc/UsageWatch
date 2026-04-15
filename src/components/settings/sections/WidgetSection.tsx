@@ -9,7 +9,10 @@ import {
   ALL_WIDGET_THEME_IDS,
   type WidgetCardId,
   type WidgetDensity,
+  type WidgetHeaderBadgeMode,
   type WidgetOverlayLayout,
+  type WidgetResetDisplayMode,
+  type WidgetThemeCustomization,
 } from "../../../types/widget";
 import { normalizeWidgetOverlayLayout, WIDGET_LAYOUT_STORE_KEY } from "../../../widget/layout";
 import type { Provider } from "../../../types/usage";
@@ -19,11 +22,11 @@ const WIDGET_THEME_CATALOG: Record<
   { name: string; bestForLaptop?: boolean }
 > = {
   "rainmeter-stack": { name: "Rainmeter Stack" },
-  "gauge-tower":     { name: "Gauge Dials",      bestForLaptop: true },
-  "side-rail":       { name: "Side Rail",        bestForLaptop: true },
-  "mono-ticker":     { name: "Mono Ticker",      bestForLaptop: true },
-  "signal-deck":     { name: "Signal Deck" },
-  "matrix-rain":     { name: "Matrix",           bestForLaptop: true },
+  "orbit-gauges": { name: "Orbit Gauges", bestForLaptop: true },
+  "side-rail": { name: "Side Rail", bestForLaptop: true },
+  "mono-ticker": { name: "Mono Ticker", bestForLaptop: true },
+  "pinboard-mini": { name: "Pinboard Mini", bestForLaptop: true },
+  "terminal-deck": { name: "Terminal Deck", bestForLaptop: true },
 };
 
 export function WidgetSection() {
@@ -60,12 +63,34 @@ export function WidgetSection() {
     await updateLayout({ cardOrder: newOrder });
   };
 
-  const rainColor =
-    (layout.themeOverrides["matrix-rain"]?.accentColor as string) || "#00ff41";
+  const terminalAccentColor =
+    layout.themeCustomizations["terminal-deck"]?.accentColor || "#00ff41";
+  const headerBadgeMode: WidgetHeaderBadgeMode =
+    layout.themeCustomizations[layout.themeId]?.headerBadgeMode ?? "brand";
+  const resetDisplayMode: WidgetResetDisplayMode =
+    layout.themeCustomizations[layout.themeId]?.resetDisplayMode ?? "time";
+
+  const updateThemeCustomization = async (
+    updates: Partial<WidgetThemeCustomization>,
+  ) => {
+    const current = layout.themeCustomizations[layout.themeId] ?? {};
+    const nextThemeCustomizations = {
+      ...layout.themeCustomizations,
+      [layout.themeId]: {
+        ...current,
+        ...updates,
+      },
+    };
+
+    if (!Object.keys(nextThemeCustomizations[layout.themeId] ?? {}).length) {
+      delete nextThemeCustomizations[layout.themeId];
+    }
+
+    await updateLayout({ themeCustomizations: nextThemeCustomizations });
+  };
 
   return (
     <div>
-      {/* Theme picker */}
       <div className="s-section-block">
         <span className="s-label">Theme</span>
         <div className="s-group">
@@ -90,7 +115,6 @@ export function WidgetSection() {
         </div>
       </div>
 
-      {/* Density */}
       <SettingGroup label="Layout">
         <SettingRow label="Density">
           <select
@@ -104,7 +128,6 @@ export function WidgetSection() {
           </select>
         </SettingRow>
 
-        {/* Scale slider */}
         <div className="s-row s-row--col">
           <div className="s-row-left" style={{ width: "100%" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -123,38 +146,68 @@ export function WidgetSection() {
         </div>
       </SettingGroup>
 
-      {/* Matrix rain color */}
-      {layout.themeId === "matrix-rain" && (
-        <SettingGroup label="Matrix Theme">
-          <SettingRow label="Rain color">
+      <SettingGroup label="Header">
+        <SettingRow label="Provider badge">
+          <select
+            className="s-select"
+            value={headerBadgeMode}
+            onChange={(e) =>
+              updateThemeCustomization({
+                headerBadgeMode: e.target.value as WidgetHeaderBadgeMode,
+              })
+            }
+          >
+            <option value="brand">Styled brand badge</option>
+            <option value="mono">Monochrome badge</option>
+          </select>
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup label="Details">
+        <SettingRow label="Reset detail">
+          <select
+            className="s-select"
+            value={resetDisplayMode}
+            onChange={(e) =>
+              updateThemeCustomization({
+                resetDisplayMode: e.target.value as WidgetResetDisplayMode,
+              })
+            }
+          >
+            <option value="time">Scheduled time</option>
+            <option value="countdown">Countdown</option>
+            <option value="both">Time + countdown</option>
+          </select>
+        </SettingRow>
+      </SettingGroup>
+
+      {layout.themeId === "terminal-deck" && (
+        <SettingGroup label="Terminal theme">
+          <SettingRow label="Accent color">
             <div className="s-color-row">
               <input
                 type="color"
                 className="s-color-input"
-                value={rainColor}
+                value={terminalAccentColor}
                 onChange={(e) =>
-                  updateLayout({
-                    themeOverrides: {
-                      ...layout.themeOverrides,
-                      "matrix-rain": {
-                        ...layout.themeOverrides["matrix-rain"],
-                        accentColor: e.target.value,
-                      },
-                    },
-                  })
+                  updateThemeCustomization({ accentColor: e.target.value })
                 }
               />
-              <span className="s-color-label">{rainColor.toUpperCase()}</span>
-              {layout.themeOverrides["matrix-rain"]?.accentColor && (
+              <span className="s-color-label">{terminalAccentColor.toUpperCase()}</span>
+              {layout.themeCustomizations["terminal-deck"]?.accentColor && (
                 <button
                   className="s-btn-sm"
                   onClick={() => {
-                    const next = { ...layout.themeOverrides };
-                    if (next["matrix-rain"]) {
-                      const { accentColor: _, ...rest } = next["matrix-rain"];
-                      next["matrix-rain"] = rest;
+                    const current = layout.themeCustomizations["terminal-deck"];
+                    if (!current) return;
+                    const { accentColor: _removed, ...rest } = current;
+                    const nextThemeCustomizations = { ...layout.themeCustomizations };
+                    if (Object.keys(rest).length) {
+                      nextThemeCustomizations["terminal-deck"] = rest;
+                    } else {
+                      delete nextThemeCustomizations["terminal-deck"];
                     }
-                    updateLayout({ themeOverrides: next });
+                    updateLayout({ themeCustomizations: nextThemeCustomizations });
                   }}
                 >
                   Reset
@@ -165,7 +218,6 @@ export function WidgetSection() {
         </SettingGroup>
       )}
 
-      {/* Card configurator */}
       <SettingGroup label="Cards">
         <div style={{ padding: "8px 12px" }}>
           <WidgetCardConfigurator

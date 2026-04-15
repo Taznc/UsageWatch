@@ -42,10 +42,10 @@ const WIDGET_THEME_CATALOG: Record<
     description: "Premium glass slabs with strong readability and a familiar desktop-widget silhouette.",
     layoutFamily: "slab-stack",
   },
-  "gauge-tower": {
-    name: "Gauge Dials",
-    description: "Circular car-style gauges with arc indicators and centered readouts.",
-    layoutFamily: "dial-cluster",
+  "orbit-gauges": {
+    name: "Orbit Gauges",
+    description: "Compact dashboard-style rings with reset-aware detail support.",
+    layoutFamily: "orbit-gauges",
     bestForLaptop: true,
   },
   "side-rail": {
@@ -60,15 +60,15 @@ const WIDGET_THEME_CATALOG: Record<
     layoutFamily: "micro-rail",
     bestForLaptop: true,
   },
-  "signal-deck": {
-    name: "Signal Deck",
-    description: "Sharper HUD styling with denser information, stronger contrast, and crisp telemetry.",
-    layoutFamily: "telemetry-panel",
+  "pinboard-mini": {
+    name: "Pinboard Mini",
+    description: "Compact identity tiles that keep values readable without wasting width.",
+    layoutFamily: "pinboard-mini",
   },
-  "matrix-rain": {
-    name: "Matrix",
-    description: "Phosphor-green digital rain telemetry on a deep black field.",
-    layoutFamily: "matrix-rain",
+  "terminal-deck": {
+    name: "Terminal Deck",
+    description: "A compact ops-console with terminal typography and restrained graphics.",
+    layoutFamily: "terminal-deck",
     bestForLaptop: true,
   },
 };
@@ -973,18 +973,18 @@ export function Settings() {
                 </div>
               </div>
 
-              {widgetLayout.themeId === "matrix-rain" && (
+              {widgetLayout.themeId === "terminal-deck" && (
                 <div className="settings-card" style={{ marginTop: 10 }}>
-                  <p className="card-label">Rain color</p>
+                  <p className="card-label">Accent color</p>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
                     <input
                       type="color"
-                      value={(widgetLayout.themeOverrides["matrix-rain"]?.accentColor as string) || "#00ff41"}
+                      value={widgetLayout.themeCustomizations["terminal-deck"]?.accentColor || "#00ff41"}
                       onChange={(e) => updateWidgetLayout({
-                        themeOverrides: {
-                          ...widgetLayout.themeOverrides,
-                          "matrix-rain": {
-                            ...widgetLayout.themeOverrides["matrix-rain"],
+                        themeCustomizations: {
+                          ...widgetLayout.themeCustomizations,
+                          "terminal-deck": {
+                            ...widgetLayout.themeCustomizations["terminal-deck"],
                             accentColor: e.target.value,
                           },
                         },
@@ -992,19 +992,19 @@ export function Settings() {
                       style={{ width: 32, height: 24, padding: 0, border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer" }}
                     />
                     <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "'JetBrains Mono', monospace" }}>
-                      {((widgetLayout.themeOverrides["matrix-rain"]?.accentColor as string) || "#00ff41").toUpperCase()}
+                      {(widgetLayout.themeCustomizations["terminal-deck"]?.accentColor || "#00ff41").toUpperCase()}
                     </span>
-                    {(widgetLayout.themeOverrides["matrix-rain"]?.accentColor as string) && (
+                    {widgetLayout.themeCustomizations["terminal-deck"]?.accentColor && (
                       <button
                         className="icon-btn"
                         style={{ fontSize: 10 }}
                         onClick={() => {
-                          const next = { ...widgetLayout.themeOverrides };
-                          if (next["matrix-rain"]) {
-                            const { accentColor: _, ...rest } = next["matrix-rain"];
-                            next["matrix-rain"] = rest;
+                          const next = { ...widgetLayout.themeCustomizations };
+                          if (next["terminal-deck"]) {
+                            const { accentColor: _, ...rest } = next["terminal-deck"];
+                            next["terminal-deck"] = rest;
                           }
-                          updateWidgetLayout({ themeOverrides: next });
+                          updateWidgetLayout({ themeCustomizations: next });
                         }}
                       >
                         Reset

@@ -7,6 +7,8 @@ import {
   type WidgetCardVisibilityMap,
   type WidgetOverlayLayout,
   type WidgetProviderCardVisibility,
+  type WidgetThemeCustomization,
+  type WidgetThemeCustomizationMap,
   type WidgetThemeId,
 } from "../types/widget";
 
@@ -22,7 +24,7 @@ function cloneDefaultLayout(): WidgetOverlayLayout {
       Codex: { ...DEFAULT_WIDGET_OVERLAY_LAYOUT.cardVisibility.Codex },
       Cursor: { ...DEFAULT_WIDGET_OVERLAY_LAYOUT.cardVisibility.Cursor },
     },
-    themeOverrides: { ...DEFAULT_WIDGET_OVERLAY_LAYOUT.themeOverrides },
+    themeCustomizations: { ...DEFAULT_WIDGET_OVERLAY_LAYOUT.themeCustomizations },
   };
 }
 
@@ -91,16 +93,75 @@ function mergeVisibility(
 }
 
 function normalizeThemeId(themeId: unknown): WidgetThemeId {
-  if (themeId === "minimal-air") return "gauge-tower";
-  if (themeId === "micro-pillars") return "gauge-tower";
+  const normalized = resolveThemeId(themeId);
+  return normalized ?? DEFAULT_WIDGET_OVERLAY_LAYOUT.themeId;
+}
+
+function resolveThemeId(themeId: unknown): WidgetThemeId | null {
+  if (themeId === "gauge-tower" || themeId === "minimal-air" || themeId === "micro-pillars") {
+    return "orbit-gauges";
+  }
   if (themeId === "rail-compact") return "side-rail";
   if (themeId === "mono-meter") return "mono-ticker";
-  if (themeId === "glass-column") return "signal-deck";
-  if (themeId === "glass-orbit") return "signal-deck";
-  if (themeId === "signal-panel") return "signal-deck";
-  return ALL_WIDGET_THEME_IDS.includes(themeId as WidgetThemeId)
-    ? (themeId as WidgetThemeId)
-    : DEFAULT_WIDGET_OVERLAY_LAYOUT.themeId;
+  if (
+    themeId === "signal-deck" ||
+    themeId === "glass-column" ||
+    themeId === "glass-orbit" ||
+    themeId === "signal-panel"
+  ) {
+    return "pinboard-mini";
+  }
+  if (themeId === "matrix-rain") return "terminal-deck";
+  return ALL_WIDGET_THEME_IDS.includes(themeId as WidgetThemeId) ? (themeId as WidgetThemeId) : null;
+}
+
+function normalizeThemeCustomization(candidate: unknown): WidgetThemeCustomization | null {
+  if (!candidate || typeof candidate !== "object") return null;
+
+  const raw = candidate as Record<string, unknown>;
+  const next: WidgetThemeCustomization = {};
+
+  if (typeof raw.accentColor === "string" && raw.accentColor.trim()) {
+    next.accentColor = raw.accentColor;
+  }
+
+  if (raw.headerBadgeMode === "brand" || raw.headerBadgeMode === "mono") {
+    next.headerBadgeMode = raw.headerBadgeMode;
+  }
+
+  if (raw.resetDisplayMode === "time" || raw.resetDisplayMode === "countdown" || raw.resetDisplayMode === "both") {
+    next.resetDisplayMode = raw.resetDisplayMode;
+  }
+
+  return Object.keys(next).length ? next : null;
+}
+
+function normalizeThemeCustomizations(
+  saved: unknown,
+  legacyOverrides?: unknown,
+): WidgetThemeCustomizationMap {
+  const source =
+    saved && typeof saved === "object"
+      ? (saved as Record<string, unknown>)
+      : legacyOverrides && typeof legacyOverrides === "object"
+        ? (legacyOverrides as Record<string, unknown>)
+        : null;
+
+  if (!source) return {};
+
+  const next: WidgetThemeCustomizationMap = {};
+  for (const [rawThemeId, value] of Object.entries(source)) {
+    const themeId = resolveThemeId(rawThemeId);
+    if (!themeId) continue;
+    const customization = normalizeThemeCustomization(value);
+    if (customization) {
+      next[themeId] = {
+        ...next[themeId],
+        ...customization,
+      };
+    }
+  }
+  return next;
 }
 
 function migrateLegacyVisibility(saved: LegacyWidgetLayout["preferences"]): WidgetProviderCardVisibility {
@@ -153,7 +214,7 @@ export function normalizeWidgetOverlayLayout(saved: unknown): WidgetOverlayLayou
     const legacy = candidate as LegacyWidgetLayout;
     return {
       ...cloneDefaultLayout(),
-      version: 2,
+      version: 5,
       position: normalizePosition(legacy.position),
       density: normalizeDensity(legacy.preferences?.density),
       scale: DEFAULT_WIDGET_OVERLAY_LAYOUT.scale,
@@ -162,16 +223,16 @@ export function normalizeWidgetOverlayLayout(saved: unknown): WidgetOverlayLayou
   }
 
   return {
-    version: 3,
+    version: 5,
     position: normalizePosition(candidate.position as { x?: unknown; y?: unknown } | undefined),
     density: normalizeDensity(candidate.density),
     scale: normalizeScale(candidate.scale),
     themeId: normalizeThemeId(candidate.themeId),
     cardOrder: normalizeCardOrder(candidate.cardOrder),
     cardVisibility: normalizeVisibility(candidate.cardVisibility),
-    themeOverrides:
-      candidate.themeOverrides && typeof candidate.themeOverrides === "object"
-        ? (candidate.themeOverrides as WidgetOverlayLayout["themeOverrides"])
-        : {},
+    themeCustomizations: normalizeThemeCustomizations(
+      candidate.themeCustomizations,
+      candidate.themeOverrides,
+    ),
   };
 }

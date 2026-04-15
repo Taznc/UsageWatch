@@ -15,35 +15,54 @@ export interface APIStatus {
 export type WidgetDensity = "ultra-compact" | "compact" | "comfortable";
 export type WidgetThemeLayoutFamily =
   | "slab-stack"
-  | "meter-column"
   | "micro-rail"
-  | "telemetry-panel"
-  | "matrix-rain"
-  | "dial-cluster";
-export type WidgetThemeHeaderStyle = "capsule" | "tower" | "rail" | "ghost" | "panel" | "matrix" | "dial";
+  | "orbit-gauges"
+  | "pinboard-mini"
+  | "terminal-deck";
+export type WidgetThemeHeaderStyle =
+  | "capsule"
+  | "rail"
+  | "ghost"
+  | "panel"
+  | "terminal"
+  | "orbit";
+export type WidgetHeaderBadgeStyle = "glass" | "solid" | "ghost" | "terminal";
+export type WidgetHeaderBadgeMode = "brand" | "mono";
+export type WidgetResetDisplayMode = "time" | "countdown" | "both";
 export type WidgetThemeId =
   | "rainmeter-stack"
-  | "gauge-tower"
+  | "orbit-gauges"
   | "side-rail"
   | "mono-ticker"
-  | "signal-deck"
-  | "matrix-rain";
+  | "pinboard-mini"
+  | "terminal-deck";
 export type WidgetCardId = "session" | "weekly" | "extra" | "balance" | "credits" | "status";
-export type WidgetThemeOverrideValue = string | number | boolean;
 
 export const ALL_WIDGET_THEME_IDS: WidgetThemeId[] = [
   "rainmeter-stack",
-  "gauge-tower",
+  "orbit-gauges",
   "side-rail",
   "mono-ticker",
-  "signal-deck",
-  "matrix-rain",
+  "pinboard-mini",
+  "terminal-deck",
 ];
 
 export interface WidgetCardVisibilityMap extends Record<WidgetCardId, boolean> {}
 export interface WidgetProviderCardVisibility extends Record<Provider, WidgetCardVisibilityMap> {}
 
-export interface WidgetThemeOverrideMap extends Partial<Record<WidgetThemeId, Record<string, WidgetThemeOverrideValue>>> {}
+export interface WidgetThemeHeaderDefinition {
+  style: WidgetThemeHeaderStyle;
+  badgeStyle: WidgetHeaderBadgeStyle;
+  badgeSize: Record<WidgetDensity, number>;
+}
+
+export interface WidgetThemeCustomization {
+  accentColor?: string;
+  headerBadgeMode?: WidgetHeaderBadgeMode;
+  resetDisplayMode?: WidgetResetDisplayMode;
+}
+
+export interface WidgetThemeCustomizationMap extends Partial<Record<WidgetThemeId, WidgetThemeCustomization>> {}
 
 export interface WidgetOverlayLayout {
   version: number;
@@ -53,7 +72,7 @@ export interface WidgetOverlayLayout {
   scale: number;
   cardOrder: WidgetCardId[];
   cardVisibility: WidgetProviderCardVisibility;
-  themeOverrides: WidgetThemeOverrideMap;
+  themeCustomizations: WidgetThemeCustomizationMap;
 }
 
 export interface WidgetCardDefinition {
@@ -65,6 +84,8 @@ export interface WidgetCardDefinition {
   icon: string;
   primary: string;
   secondary?: string;
+  secondaryCountdown?: string;
+  secondaryBoth?: string;
   progress?: number | null;
   tone?: "default" | "muted";
 }
@@ -117,12 +138,12 @@ const DEFAULT_CARD_VISIBILITY: WidgetProviderCardVisibility = {
 };
 
 export const DEFAULT_WIDGET_OVERLAY_LAYOUT: WidgetOverlayLayout = {
-  version: 3,
+  version: 5,
   position: { x: 200, y: 100 },
   themeId: "rainmeter-stack",
   density: "ultra-compact",
   scale: 0.85,
   cardOrder: DEFAULT_WIDGET_CARD_ORDER,
   cardVisibility: DEFAULT_CARD_VISIBILITY,
-  themeOverrides: {},
+  themeCustomizations: {},
 };

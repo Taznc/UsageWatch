@@ -8,7 +8,8 @@
       "Bash(git pull:*)",
       "Bash(python3 -c ':*)",
       "Bash(python -c ':*)",
-      "Bash(curl -s http://127.0.0.1:52700/api/usage)"
+      "Bash(curl -s http://127.0.0.1:52700/api/usage)",
+      "Bash(git stash:*)"
     ]
   },
   "hooks": {

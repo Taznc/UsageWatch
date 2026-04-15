@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>UsageWatch Compact Widget Theme Mockups</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #060a11;
+    --panel: rgba(14, 20, 31, 0.92);
+    --panel-soft: rgba(255, 255, 255, 0.035);
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.14);
+    --text: #f4f7fb;
+    --muted: rgba(220, 228, 239, 0.74);
+    --soft: rgba(220, 228, 239, 0.48);
+    --shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
+    --mono: "Consolas", "Cascadia Mono", "JetBrains Mono", monospace;
+    --sans: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --claude: #f59e0b;
+    --codex: #34d399;
+    --cursor: #60a5fa;
+    --cyan: #67e8f9;
+    --lime: #bef264;
+    --amber: #ffc66d;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: var(--sans);
+    color: var(--text);
+    background:
+      radial-gradient(circle at top left, rgba(96, 165, 250, 0.18), transparent 26%),
+      radial-gradient(circle at top right, rgba(52, 211, 153, 0.12), transparent 18%),
+      radial-gradient(circle at bottom center, rgba(245, 158, 11, 0.08), transparent 24%),
+      linear-gradient(180deg, #03060b, var(--bg));
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
+    background-size: 30px 30px;
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.44), transparent 96%);
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    max-width: 1660px;
+    margin: 0 auto;
+    padding: 28px;
+  }
+
+  .hero,
+  .concept {
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(14, 20, 31, 0.96), rgba(8, 12, 19, 0.92));
+    box-shadow: var(--shadow);
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    gap: 18px;
+    padding: 24px;
+    border-radius: 30px;
+    margin-bottom: 20px;
+  }
+
+  .eyebrow,
+  .chip,
+  .concept-tag,
+  .footprint,
+  .note-label,
+  .provider-name,
+  .tiny-label,
+  .terminal-title {
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+
+  .eyebrow {
+    margin: 0 0 10px;
+    font-size: 11px;
+    color: var(--soft);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(30px, 4vw, 54px);
+    line-height: 0.96;
+    letter-spacing: -0.05em;
+  }
+
+  .hero p {
+    max-width: 780px;
+    margin: 14px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 10px;
+  }
+
+  .hero-side {
+    display: grid;
+    gap: 10px;
+  }
+
+  .mini {
+    padding: 14px;
+    border-radius: 18px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.035);
+  }
+
+  .mini strong {
+    display: block;
+    font-size: 20px;
+    letter-spacing: -0.04em;
+  }
+
+  .mini span {
+    display: block;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .intro {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.58;
+  }
+
+  .intro strong { color: #fff; }
+
+  .concept-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .concept {
+    position: relative;
+    overflow: hidden;
+    padding: 20px;
+    border-radius: 28px;
+  }
+
+  .concept::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 24%, transparent 78%, rgba(255, 255, 255, 0.04));
+  }
+
+  .concept--terminal {
+    grid-column: 1 / -1;
+  }
+
+  .concept-head,
+  .stage,
+  .notes {
+    position: relative;
+    z-index: 1;
+  }
+
+  .concept-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+
+  .concept-head h2 {
+    margin: 0;
+    font-size: 24px;
+    letter-spacing: -0.05em;
+  }
+
+  .concept-head p {
+    margin: 8px 0 0;
+    max-width: 580px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.58;
+  }
+
+  .concept-tag,
+  .footprint {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.045);
+    font-size: 9px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .stage {
+    padding: 16px;
+    border-radius: 22px;
+    border: 1px solid var(--line);
+    background:
+      radial-gradient(circle at center, rgba(255, 255, 255, 0.04), transparent 58%),
+      linear-gradient(180deg, rgba(7, 11, 18, 0.98), rgba(8, 12, 18, 0.88));
+  }
+
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .note {
+    padding: 12px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--panel-soft);
+  }
+
+  .note-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 9px;
+    color: var(--soft);
+  }
+
+  .note div {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .provider-stack {
+    display: grid;
+    gap: 10px;
+  }
+
+  .provider-group {
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.028);
+    overflow: hidden;
+  }
+
+  .provider-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .provider-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: #eef4ff;
+  }
+
+  .provider-meta {
+    color: var(--soft);
+    font-size: 10px;
+  }
+
+  .provider-badge {
+    --provider-color: #fff;
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
+    padding: 3px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background:
+      radial-gradient(circle at 24% 18%, rgba(255, 255, 255, 0.18), transparent 40%),
+      linear-gradient(180deg, color-mix(in srgb, var(--provider-color) 24%, rgba(13, 18, 29, 0.96)), rgba(7, 11, 18, 0.92));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 0 16px color-mix(in srgb, var(--provider-color) 28%, transparent);
+  }
+
+  .provider-badge img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .provider-badge--claude { --provider-color: var(--claude); }
+  .provider-badge--codex { --provider-color: var(--codex); }
+  .provider-badge--cursor { --provider-color: var(--cursor); }
+
+  .monitor-list,
+  .pin-list,
+  .terminal-list {
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .monitor-card {
+    padding: 9px 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: linear-gradient(180deg, rgba(16, 20, 30, 0.94), rgba(9, 13, 20, 0.92));
+  }
+
+  .monitor-top,
+  .pin-top,
+  .terminal-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .tiny-label {
+    font-size: 8px;
+    color: var(--soft);
+  }
+
+  .value-strong {
+    display: block;
+    font-size: 15px;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    font-weight: 700;
+  }
+
+  .secondary {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .line-meter {
+    height: 3px;
+    margin-top: 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+
+  .line-meter > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.86), var(--meter, var(--cursor)));
+  }
+
+  .gauge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .gauge-card {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    padding: 8px 6px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: linear-gradient(180deg, rgba(17, 23, 34, 0.95), rgba(8, 12, 18, 0.92));
+  }
+
+  .gauge {
+    --pct: 50;
+    --gauge: var(--cursor);
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at center, rgba(10, 15, 24, 1) 55%, transparent 56%),
+      conic-gradient(from 220deg, var(--gauge) calc(var(--pct) * 1%), rgba(255, 255, 255, 0.08) 0);
+    display: grid;
+    place-items: center;
+    font: 700 11px/1 var(--mono);
+    color: #f5f8ff;
+  }
+
+  .tile-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .tile {
+    min-height: 78px;
+    padding: 9px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: linear-gradient(180deg, rgba(18, 23, 34, 0.95), rgba(10, 14, 21, 0.92));
+    display: grid;
+    align-content: space-between;
+  }
+
+  .tile--wide {
+    grid-column: span 2;
+  }
+
+  .tile-ring {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 4px solid rgba(255, 255, 255, 0.08);
+    border-top-color: var(--meter, var(--cursor));
+    transform: rotate(-35deg);
+  }
+
+  .pin-list {
+    padding: 8px;
+  }
+
+  .pin-card {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    padding: 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.02));
+  }
+
+  .pin-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    font: 700 10px/1 var(--mono);
+    color: #fff;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--meter, var(--cursor)) 58%, #122239), rgba(255, 255, 255, 0.08));
+  }
+
+  .terminal-shell {
+    padding: 10px;
+    border-radius: 14px;
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(1, 10, 1, 0.96), rgba(0, 5, 0, 0.94));
+    background-size: 7px 7px, 7px 7px, auto;
+    border: 1px solid rgba(64, 255, 122, 0.14);
+  }
+
+  .terminal-list {
+    padding: 0;
+    gap: 6px;
+  }
+
+  .terminal-card {
+    padding: 8px 9px;
+    border-radius: 10px;
+    border: 1px solid rgba(64, 255, 122, 0.1);
+    background: rgba(14, 24, 14, 0.64);
+  }
+
+  .terminal-title {
+    color: #73ff8f;
+    font-size: 9px;
+  }
+
+  .terminal-body {
+    margin-top: 5px;
+    color: #83ff9b;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .terminal-graph {
+    height: 34px;
+    margin-top: 6px;
+    border-radius: 8px;
+    background:
+      linear-gradient(rgba(115, 255, 143, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(115, 255, 143, 0.08) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(11, 18, 11, 0.82), rgba(7, 12, 7, 0.88));
+    background-size: 7px 7px, 7px 7px, auto;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .terminal-graph::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 8px 0;
+    height: 2px;
+    background:
+      linear-gradient(90deg, transparent 0%, #73ff8f 12%, #73ff8f 26%, transparent 34%, #73ff8f 48%, transparent 57%, #73ff8f 72%, #73ff8f 86%, transparent 100%);
+  }
+
+  .c-claude { --meter: var(--claude); }
+  .c-codex { --meter: var(--codex); }
+  .c-cursor { --meter: var(--cursor); }
+  .c-cyan { --meter: var(--cyan); }
+  .c-amber { --meter: var(--amber); }
+  .c-lime { --meter: var(--lime); }
+
+  .tone-muted { opacity: 0.8; }
+
+  @media (max-width: 1280px) {
+    .hero,
+    .concept-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 860px) {
+    .notes {
+      grid-template-columns: 1fr;
+    }
+
+    .tile-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .page {
+      padding: 18px;
+    }
+  }
+</style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">UsageWatch / Compact Widget Theme Review</p>
+        <h1>Pinboard stays. Four new compact directions join it.</h1>
+        <p>
+          This mockup pass keeps <strong>Pinboard Mini</strong> as the anchor and replaces the rejected concepts with a
+          balanced set: a stacked monitor panel, a gauge-driven concept, a compact tile board, and a terminal-style deck.
+          Every concept now uses provider header badges for Claude, Codex, and Cursor, matching the direction you want
+          the live widget header to take on both macOS and Windows.
+        </p>
+        <div class="chips">
+          <span class="chip">5 concepts total</span>
+          <span class="chip">Styled provider badges</span>
+          <span class="chip">Compact-first footprints</span>
+          <span class="chip">Relevant text kept visible</span>
+          <span class="chip">Balanced visual bundle</span>
+        </div>
+      </div>
+      <div class="hero-side">
+        <div class="mini">
+          <strong>Live groundwork</strong>
+          <span>The widget header is being formalized around shared provider badges and typed theme customizations.</span>
+        </div>
+        <div class="mini">
+          <strong>Mock data</strong>
+          <span>Claude is weekly-heavy, Codex has active credits, and Cursor is midway through the current cycle.</span>
+        </div>
+        <div class="mini">
+          <strong>Review focus</strong>
+          <span>Footprint, scanability, and whether each concept earns a place as a future live theme family.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="intro">
+      <div><strong>Coverage:</strong> Across the five concepts you can review `session`, `weekly`, `extra`, `balance`, `credits`, and muted `status` cards for the supported providers.</div>
+      <div><strong>Compact rule:</strong> secondary copy stays short, graphics stay structural instead of decorative, and every header uses a provider badge instead of the older colored dot treatment.</div>
+    </section>
+
+    <section class="concept-grid">
+      <article class="concept">
+        <div class="concept-head">
+          <div>
+            <div class="eyebrow">Concept 1 / Stacked monitor</div>
+            <h2>Monitor Stack</h2>
+            <p>Inspired by dense system-monitor skins. Narrow blocks, thin meters, and compact labels make it feel diagnostic without taking over the screen.</p>
+          </div>
+          <div class="concept-tag">Vertical stack / diagnostic</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">Approx. review footprint: 224px x 560px</div>
+          <div class="provider-stack">
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--claude"><img src="../src/assets/providers/claude.png" alt=""></span>Claude</div>
+                <div class="provider-meta">5 cards</div>
+              </header>
+              <div class="monitor-list">
+                <div class="monitor-card c-claude"><div class="monitor-top"><span class="tiny-label">Session</span><span class="value-strong">63%</span></div><span class="secondary">Reset in 2h 14m</span><div class="line-meter"><span style="width:63%"></span></div></div>
+                <div class="monitor-card c-cyan"><div class="monitor-top"><span class="tiny-label">Weekly</span><span class="value-strong">81%</span></div><span class="secondary">Reset Fri 9:00 AM</span><div class="line-meter"><span style="width:81%"></span></div></div>
+                <div class="monitor-card c-amber"><div class="monitor-top"><span class="tiny-label">Extra</span><span class="value-strong">$18 / $43</span></div><span class="secondary">Monthly spend</span><div class="line-meter"><span style="width:42%"></span></div></div>
+                <div class="monitor-card c-codex"><div class="monitor-top"><span class="tiny-label">Balance</span><span class="value-strong">$184</span></div><span class="secondary">Prepaid reserve</span></div>
+                <div class="monitor-card c-cursor tone-muted"><div class="monitor-top"><span class="tiny-label">Status</span><span class="value-strong">Online</span></div><span class="secondary">All systems operational</span></div>
+              </div>
+            </section>
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--codex"><img src="../src/assets/providers/codex.png" alt=""></span>Codex</div>
+                <div class="provider-meta">4 cards</div>
+              </header>
+              <div class="monitor-list">
+                <div class="monitor-card c-codex"><div class="monitor-top"><span class="tiny-label">Session</span><span class="value-strong">58%</span></div><span class="secondary">Reset in 1h 08m</span><div class="line-meter"><span style="width:58%"></span></div></div>
+                <div class="monitor-card c-claude"><div class="monitor-top"><span class="tiny-label">Weekly</span><span class="value-strong">67%</span></div><span class="secondary">Reset Sun 4:00 AM</span><div class="line-meter"><span style="width:67%"></span></div></div>
+                <div class="monitor-card c-lime"><div class="monitor-top"><span class="tiny-label">Credits</span><span class="value-strong">$24.50</span></div><span class="secondary">Available balance</span></div>
+                <div class="monitor-card c-cursor tone-muted"><div class="monitor-top"><span class="tiny-label">Status</span><span class="value-strong">Online</span></div><span class="secondary">No active incidents</span></div>
+              </div>
+            </section>
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--cursor"><img src="../src/assets/providers/cursor.png" alt=""></span>Cursor</div>
+                <div class="provider-meta">2 cards</div>
+              </header>
+              <div class="monitor-list">
+                <div class="monitor-card c-cursor"><div class="monitor-top"><span class="tiny-label">Spend</span><span class="value-strong">$12 / $30</span></div><span class="secondary">Cycle resets May 1</span><div class="line-meter"><span style="width:39%"></span></div></div>
+                <div class="monitor-card c-cursor tone-muted"><div class="monitor-top"><span class="tiny-label">Status</span><span class="value-strong">Online</span></div><span class="secondary">Cursor services healthy</span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note"><span class="note-label">Intended use</span><div>Best for people who want the widget to feel like a compact telemetry panel rather than ambient decoration.</div></div>
+          <div class="note"><span class="note-label">Strength</span><div>Very high information density with simple construction rules for all providers.</div></div>
+          <div class="note"><span class="note-label">Tradeoff</span><div>Feels more technical than premium, so it is less subtle on a calm desktop.</div></div>
+          <div class="note"><span class="note-label">Compact behavior</span><div>The stack trims helper copy before sacrificing meters, which keeps the vertical rhythm intact.</div></div>
+        </div>
+      </article>
+
+      <article class="concept">
+        <div class="concept-head">
+          <div>
+            <div class="eyebrow">Concept 2 / Gauges</div>
+            <h2>Orbit Gauges</h2>
+            <p>Compact circular readouts inspired by dashboard dials, but arranged in a tighter cluster so they stay useful as a usage widget instead of becoming ornamental toys.</p>
+          </div>
+          <div class="concept-tag">Micro gauge board</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">Approx. review footprint: 318px x 396px</div>
+          <div class="provider-stack">
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--claude"><img src="../src/assets/providers/claude.png" alt=""></span>Claude</div>
+                <div class="provider-meta">5 dials</div>
+              </header>
+              <div class="gauge-grid">
+                <div class="gauge-card"><div class="gauge" style="--pct:63;--gauge:var(--claude)">63</div><span class="tiny-label">Session</span></div>
+                <div class="gauge-card"><div class="gauge" style="--pct:81;--gauge:var(--cyan)">81</div><span class="tiny-label">Weekly</span></div>
+                <div class="gauge-card"><div class="gauge" style="--pct:42;--gauge:var(--amber)">42</div><span class="tiny-label">Extra</span></div>
+                <div class="gauge-card"><div class="gauge" style="--pct:100;--gauge:var(--codex)">184</div><span class="tiny-label">Balance</span></div>
+                <div class="gauge-card tone-muted"><div class="gauge" style="--pct:100;--gauge:var(--cursor)">OK</div><span class="tiny-label">Status</span></div>
+              </div>
+            </section>
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--codex"><img src="../src/assets/providers/codex.png" alt=""></span>Codex</div>
+                <div class="provider-meta">4 dials</div>
+              </header>
+              <div class="gauge-grid">
+                <div class="gauge-card"><div class="gauge" style="--pct:58;--gauge:var(--codex)">58</div><span class="tiny-label">Session</span></div>
+                <div class="gauge-card"><div class="gauge" style="--pct:67;--gauge:var(--cursor)">67</div><span class="tiny-label">Weekly</span></div>
+                <div class="gauge-card"><div class="gauge" style="--pct:100;--gauge:var(--lime)">24</div><span class="tiny-label">Credits</span></div>
+                <div class="gauge-card tone-muted"><div class="gauge" style="--pct:100;--gauge:var(--codex)">OK</div><span class="tiny-label">Status</span></div>
+              </div>
+            </section>
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--cursor"><img src="../src/assets/providers/cursor.png" alt=""></span>Cursor</div>
+                <div class="provider-meta">2 dials</div>
+              </header>
+              <div class="gauge-grid">
+                <div class="gauge-card"><div class="gauge" style="--pct:39;--gauge:var(--cursor)">39</div><span class="tiny-label">Spend</span></div>
+                <div class="gauge-card tone-muted"><div class="gauge" style="--pct:100;--gauge:var(--cursor)">OK</div><span class="tiny-label">Status</span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note"><span class="note-label">Intended use</span><div>For people who want usage pressure to read instantly from shape before they parse text.</div></div>
+          <div class="note"><span class="note-label">Strength</span><div>Excellent at glanceability and very distinctive from the current live themes when grouped as small instrument tiles.</div></div>
+          <div class="note"><span class="note-label">Tradeoff</span><div>Non-progress cards like balance and status become less expressive unless paired with good supporting labels.</div></div>
+          <div class="note"><span class="note-label">Compact behavior</span><div>At smaller sizes the dial remains readable because the numeric center carries the meaning.</div></div>
+        </div>
+      </article>
+
+      <article class="concept">
+        <div class="concept-head">
+          <div>
+            <div class="eyebrow">Concept 3 / Tile board</div>
+            <h2>Tile Matrix</h2>
+            <p>Inspired by Windows-style widget boards, but reduced to a compact, denser language where small tiles can still show multiple provider cards without wasting space.</p>
+          </div>
+          <div class="concept-tag">Compact tile board</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">Approx. review footprint: 362px x 402px</div>
+          <div class="provider-stack">
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--claude"><img src="../src/assets/providers/claude.png" alt=""></span>Claude</div>
+                <div class="provider-meta">5 tiles</div>
+              </header>
+              <div class="tile-grid">
+                <div class="tile c-claude"><span class="tiny-label">Session</span><strong class="value-strong">63%</strong><div class="tile-ring"></div></div>
+                <div class="tile c-cyan"><span class="tiny-label">Weekly</span><strong class="value-strong">81%</strong><div class="tile-ring"></div></div>
+                <div class="tile c-amber"><span class="tiny-label">Extra</span><strong class="value-strong">$18</strong><span class="secondary">/ $43</span></div>
+                <div class="tile tile--wide c-codex"><span class="tiny-label">Balance</span><strong class="value-strong">$184</strong><span class="secondary">Prepaid reserve on account</span></div>
+                <div class="tile tone-muted c-cursor"><span class="tiny-label">Status</span><strong class="value-strong">OK</strong><span class="secondary">All clear</span></div>
+              </div>
+            </section>
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--codex"><img src="../src/assets/providers/codex.png" alt=""></span>Codex</div>
+                <div class="provider-meta">4 tiles</div>
+              </header>
+              <div class="tile-grid">
+                <div class="tile c-codex"><span class="tiny-label">Session</span><strong class="value-strong">58%</strong><div class="tile-ring"></div></div>
+                <div class="tile c-cursor"><span class="tiny-label">Weekly</span><strong class="value-strong">67%</strong><div class="tile-ring"></div></div>
+                <div class="tile tile--wide c-lime"><span class="tiny-label">Credits</span><strong class="value-strong">$24.50</strong><span class="secondary">Available balance</span></div>
+                <div class="tile tone-muted c-codex"><span class="tiny-label">Status</span><strong class="value-strong">OK</strong><span class="secondary">Healthy</span></div>
+              </div>
+            </section>
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--cursor"><img src="../src/assets/providers/cursor.png" alt=""></span>Cursor</div>
+                <div class="provider-meta">2 tiles</div>
+              </header>
+              <div class="tile-grid">
+                <div class="tile tile--wide c-cursor"><span class="tiny-label">Spend</span><strong class="value-strong">$12 / $30</strong><span class="secondary">Cycle resets May 1</span></div>
+                <div class="tile tone-muted c-cursor"><span class="tiny-label">Status</span><strong class="value-strong">OK</strong><span class="secondary">Online</span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note"><span class="note-label">Intended use</span><div>Good when you want the widget to feel polished and modular, closer to a compact dashboard board than a data strip.</div></div>
+          <div class="note"><span class="note-label">Strength</span><div>The tile format gives the most room for visual variety if future cards gain richer icons or tiny graphics.</div></div>
+          <div class="note"><span class="note-label">Tradeoff</span><div>Square tiles consume more area than a pure strip, so the concept needs disciplined density settings.</div></div>
+          <div class="note"><span class="note-label">Compact behavior</span><div>Wide tiles absorb long financial values while the small tiles keep percentage cards snappy.</div></div>
+        </div>
+      </article>
+
+      <article class="concept">
+        <div class="concept-head">
+          <div>
+            <div class="eyebrow">Concept 4 / Anchored favorite</div>
+            <h2>Pinboard Mini</h2>
+            <p>The kept concept. It still feels like the best small-footprint sidebar direction: compact identity blocks, readable values, and enough structure to support all providers cleanly.</p>
+          </div>
+          <div class="concept-tag">Vertical / anchored object</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">Approx. review footprint: 204px x 548px</div>
+          <div class="provider-stack">
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--claude"><img src="../src/assets/providers/claude.png" alt=""></span>Claude</div>
+                <div class="provider-meta">5 cards</div>
+              </header>
+              <div class="pin-list">
+                <div class="pin-card c-claude"><div class="pin-icon">5H</div><div><div class="pin-top"><strong class="value-strong">63% used</strong><span class="tiny-label">Session</span></div><span class="secondary">Resets in 2h 14m</span><div class="line-meter"><span style="width:63%"></span></div></div></div>
+                <div class="pin-card c-cyan"><div class="pin-icon">7D</div><div><div class="pin-top"><strong class="value-strong">81% used</strong><span class="tiny-label">Weekly</span></div><span class="secondary">Resets Fri 9:00 AM</span><div class="line-meter"><span style="width:81%"></span></div></div></div>
+                <div class="pin-card c-amber"><div class="pin-icon">X</div><div><div class="pin-top"><strong class="value-strong">$18 / $43</strong><span class="tiny-label">Extra</span></div><span class="secondary">Monthly spend</span><div class="line-meter"><span style="width:42%"></span></div></div></div>
+                <div class="pin-card c-codex"><div class="pin-icon">B</div><div><div class="pin-top"><strong class="value-strong">$184</strong><span class="tiny-label">Balance</span></div><span class="secondary">Prepaid credits</span></div></div>
+                <div class="pin-card c-cursor tone-muted"><div class="pin-icon">OK</div><div><div class="pin-top"><strong class="value-strong">Online</strong><span class="tiny-label">Status</span></div><span class="secondary">All systems operational</span></div></div>
+              </div>
+            </section>
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--codex"><img src="../src/assets/providers/codex.png" alt=""></span>Codex</div>
+                <div class="provider-meta">4 cards</div>
+              </header>
+              <div class="pin-list">
+                <div class="pin-card c-codex"><div class="pin-icon">5H</div><div><div class="pin-top"><strong class="value-strong">58% used</strong><span class="tiny-label">Session</span></div><span class="secondary">Resets in 1h 08m</span><div class="line-meter"><span style="width:58%"></span></div></div></div>
+                <div class="pin-card c-cursor"><div class="pin-icon">7D</div><div><div class="pin-top"><strong class="value-strong">67% used</strong><span class="tiny-label">Weekly</span></div><span class="secondary">Resets Sun 4:00 AM</span><div class="line-meter"><span style="width:67%"></span></div></div></div>
+                <div class="pin-card c-lime"><div class="pin-icon">$</div><div><div class="pin-top"><strong class="value-strong">$24.50</strong><span class="tiny-label">Credits</span></div><span class="secondary">Available balance</span></div></div>
+                <div class="pin-card c-cursor tone-muted"><div class="pin-icon">OK</div><div><div class="pin-top"><strong class="value-strong">Online</strong><span class="tiny-label">Status</span></div><span class="secondary">No active incidents</span></div></div>
+              </div>
+            </section>
+            <section class="provider-group">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--cursor"><img src="../src/assets/providers/cursor.png" alt=""></span>Cursor</div>
+                <div class="provider-meta">2 cards</div>
+              </header>
+              <div class="pin-list">
+                <div class="pin-card c-cursor"><div class="pin-icon">$</div><div><div class="pin-top"><strong class="value-strong">$12 / $30</strong><span class="tiny-label">Spend</span></div><span class="secondary">Cycle resets May 1</span><div class="line-meter"><span style="width:39%"></span></div></div></div>
+                <div class="pin-card c-cursor tone-muted"><div class="pin-icon">OK</div><div><div class="pin-top"><strong class="value-strong">Online</strong><span class="tiny-label">Status</span></div><span class="secondary">Cursor services healthy</span></div></div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note"><span class="note-label">Intended use</span><div>A narrow side-of-screen widget that still feels designed, not improvised.</div></div>
+          <div class="note"><span class="note-label">Strength</span><div>Probably the strongest blend of personality, compactness, and implementation realism.</div></div>
+          <div class="note"><span class="note-label">Tradeoff</span><div>A little more object-like than the pure telemetry concepts, so it is less invisible.</div></div>
+          <div class="note"><span class="note-label">Compact behavior</span><div>Identity blocks keep each row scannable even when card width stays very narrow.</div></div>
+        </div>
+      </article>
+
+      <article class="concept concept--terminal">
+        <div class="concept-head">
+          <div>
+            <div class="eyebrow">Concept 5 / Terminal deck</div>
+            <h2>Terminal Deck</h2>
+            <p>Inspired by the green console dashboard reference, but narrowed into a compact ops surface. It leans hard into status language, tiny graphs, and machine-room attitude.</p>
+          </div>
+          <div class="concept-tag">Wide console / matrix-adjacent</div>
+        </div>
+        <div class="stage">
+          <div class="footprint">Approx. review footprint: 760px x 294px</div>
+          <div class="provider-stack" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+            <section class="provider-group terminal-shell">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--claude"><img src="../src/assets/providers/claude.png" alt=""></span>Claude</div>
+                <div class="provider-meta">ops feed</div>
+              </header>
+              <div class="terminal-list">
+                <div class="terminal-card"><div class="terminal-top"><span class="terminal-title">// session.stat</span><span class="tiny-label">63%</span></div><div class="terminal-body">reset_in = 02:14:00</div><div class="terminal-graph"></div></div>
+                <div class="terminal-card"><div class="terminal-top"><span class="terminal-title">// weekly.stat</span><span class="tiny-label">81%</span></div><div class="terminal-body">reset_at = Fri 09:00</div></div>
+                <div class="terminal-card"><div class="terminal-top"><span class="terminal-title">// extra.spend</span><span class="tiny-label">$18 / $43</span></div><div class="terminal-body">monthly_overage = active</div></div>
+                <div class="terminal-card"><div class="terminal-top"><span class="terminal-title">// balance.cash</span><span class="tiny-label">$184</span></div><div class="terminal-body">prepaid_reserve = healthy</div></div>
+                <div class="terminal-card tone-muted"><div class="terminal-top"><span class="terminal-title">// status.net</span><span class="tiny-label">OK</span></div><div class="terminal-body">systems = operational</div></div>
+              </div>
+            </section>
+            <section class="provider-group terminal-shell">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--codex"><img src="../src/assets/providers/codex.png" alt=""></span>Codex</div>
+                <div class="provider-meta">ops feed</div>
+              </header>
+              <div class="terminal-list">
+                <div class="terminal-card"><div class="terminal-top"><span class="terminal-title">// session.stat</span><span class="tiny-label">58%</span></div><div class="terminal-body">reset_in = 01:08:00</div><div class="terminal-graph"></div></div>
+                <div class="terminal-card"><div class="terminal-top"><span class="terminal-title">// weekly.stat</span><span class="tiny-label">67%</span></div><div class="terminal-body">reset_at = Sun 04:00</div></div>
+                <div class="terminal-card"><div class="terminal-top"><span class="terminal-title">// credits.cash</span><span class="tiny-label">$24.50</span></div><div class="terminal-body">available_balance = true</div></div>
+                <div class="terminal-card tone-muted"><div class="terminal-top"><span class="terminal-title">// status.net</span><span class="tiny-label">OK</span></div><div class="terminal-body">systems = operational</div></div>
+              </div>
+            </section>
+            <section class="provider-group terminal-shell">
+              <header class="provider-header">
+                <div class="provider-name"><span class="provider-badge provider-badge--cursor"><img src="../src/assets/providers/cursor.png" alt=""></span>Cursor</div>
+                <div class="provider-meta">ops feed</div>
+              </header>
+              <div class="terminal-list">
+                <div class="terminal-card"><div class="terminal-top"><span class="terminal-title">// spend.stat</span><span class="tiny-label">$12 / $30</span></div><div class="terminal-body">cycle_reset = May 1</div><div class="terminal-graph"></div></div>
+                <div class="terminal-card tone-muted"><div class="terminal-top"><span class="terminal-title">// status.net</span><span class="tiny-label">OK</span></div><div class="terminal-body">cursor_services = healthy</div></div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note"><span class="note-label">Intended use</span><div>For people who want the widget to feel like a tiny command-center readout rather than a consumer dashboard.</div></div>
+          <div class="note"><span class="note-label">Strength</span><div>Strong personality and very flexible if future cards need mini charts, logs, or diagnostic text.</div></div>
+          <div class="note"><span class="note-label">Tradeoff</span><div>The widest concept in the set; it is compact in height, but not the most subtle horizontally.</div></div>
+          <div class="note"><span class="note-label">Compact behavior</span><div>It scales by reducing prose first and keeping the machine-style labels, numbers, and tiny graphs intact.</div></div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

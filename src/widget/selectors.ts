@@ -22,11 +22,23 @@ function clampProgress(value: number | null | undefined) {
   return Math.max(0, Math.min(value, 100));
 }
 
+function buildResetDetail(resetAt: string | null | undefined) {
+  const formattedTime = formatResetDate(resetAt ?? null) || "--";
+  const countdown = formatCountdown(resetAt ?? null);
+  return {
+    secondary: `Resets ${formattedTime}`,
+    secondaryCountdown: `Resets ${countdown}`,
+    secondaryBoth: `Resets ${formattedTime} · ${countdown}`,
+  };
+}
+
 function buildClaudeCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] {
   const sessionPct = clampProgress(snapshot.usageData?.five_hour?.utilization);
   const weeklyPct = clampProgress(snapshot.usageData?.seven_day?.utilization);
   const extraPct = clampProgress(snapshot.usageData?.extra_usage?.utilization);
   const statusHealthy = (snapshot.status?.indicator ?? "none") === "none";
+  const sessionReset = buildResetDetail(snapshot.usageData?.five_hour?.resets_at);
+  const weeklyReset = buildResetDetail(snapshot.usageData?.seven_day?.resets_at);
 
   return [
     {
@@ -37,7 +49,7 @@ function buildClaudeCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] 
       accent: sessionPct == null ? "#8390a0" : getUsageColor(sessionPct),
       title: "Session",
       primary: sessionPct == null ? "--" : `${Math.round(sessionPct)}% used`,
-      secondary: `Resets ${formatCountdown(snapshot.usageData?.five_hour?.resets_at ?? null)}`,
+      ...sessionReset,
       progress: sessionPct,
     },
     {
@@ -48,7 +60,7 @@ function buildClaudeCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] 
       accent: weeklyPct == null ? "#8390a0" : getUsageColor(weeklyPct),
       title: "Weekly",
       primary: weeklyPct == null ? "--" : `${Math.round(weeklyPct)}% used`,
-      secondary: `Resets ${formatResetDate(snapshot.usageData?.seven_day?.resets_at ?? null) || "--"}`,
+      ...weeklyReset,
       progress: weeklyPct,
     },
     {
@@ -90,6 +102,8 @@ function buildCodexCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] {
   const sessionPct = clampProgress(snapshot.codexData?.session_window?.used_percent);
   const weeklyPct = clampProgress(snapshot.codexData?.weekly_window?.used_percent);
   const statusHealthy = (snapshot.status?.indicator ?? "none") === "none";
+  const sessionReset = buildResetDetail(snapshot.codexData?.session_window?.resets_at);
+  const weeklyReset = buildResetDetail(snapshot.codexData?.weekly_window?.resets_at);
 
   return [
     {
@@ -100,7 +114,7 @@ function buildCodexCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] {
       accent: "#65a9ff",
       title: "Session",
       primary: sessionPct == null ? "--" : `${Math.round(sessionPct)}% used`,
-      secondary: `Resets ${formatCountdown(snapshot.codexData?.session_window?.resets_at ?? null)}`,
+      ...sessionReset,
       progress: sessionPct,
     },
     {
@@ -111,7 +125,7 @@ function buildCodexCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] {
       accent: "#78c1ff",
       title: "Weekly",
       primary: weeklyPct == null ? "--" : `${Math.round(weeklyPct)}% used`,
-      secondary: `Resets ${formatResetDate(snapshot.codexData?.weekly_window?.resets_at ?? null) || "--"}`,
+      ...weeklyReset,
       progress: weeklyPct,
     },
     {
@@ -145,6 +159,7 @@ function buildCodexCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] {
 function buildCursorCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] {
   const spendPct = clampProgress(snapshot.cursorData?.spend_pct);
   const statusHealthy = (snapshot.status?.indicator ?? "none") === "none";
+  const cycleReset = buildResetDetail(snapshot.cursorData?.cycle_resets_at);
 
   return [
     {
@@ -155,7 +170,7 @@ function buildCursorCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] 
       accent: "#28d07c",
       title: "Spend",
       primary: `${formatCurrencyFromCents(snapshot.cursorData?.current_spend_cents ?? 0)} / ${formatCurrencyFromCents(snapshot.cursorData?.limit_cents ?? 0)}`,
-      secondary: `Resets ${formatResetDate(snapshot.cursorData?.cycle_resets_at ?? null) || "--"}`,
+      ...cycleReset,
       progress: spendPct,
     },
     {
