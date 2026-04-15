@@ -1,40 +1,70 @@
 # UsageWatch
 
-Tray-first desktop app for monitoring AI provider usage limits across **Claude**, **Codex (OpenAI)**, and **Cursor** — all in one place.
+A native desktop app that tracks your AI usage limits across **Claude**, **Codex (OpenAI)**, and **Cursor** in one place. Built with Tauri 2, React, and TypeScript, it lives in your system tray and gives you a constant read on rate limits, resets, and spend — so you never get caught off guard mid-session.
 
-Built with Tauri 2, React, and TypeScript. Lives in your system tray so you always know where you stand before hitting a rate limit.
+## Highlights
 
-## What It Does
+- **Unified monitoring** — session windows, weekly limits, per-model breakdowns, and billing across three providers
+- **Smart tray** — auto-switches the displayed provider based on your focused app (macOS + Windows)
+- **Desktop widget** — transparent always-on-top overlay with 6 visual themes and configurable density
+- **Threshold alerts** — native notifications when session or weekly usage crosses a configurable limit
+- **Automation-ready** — local HTTP API on port 52700 plus a Stream Deck plugin for hardware integration
+- **MCP server** — exposes live usage data to Claude Code and other MCP-compatible clients
 
-- Tracks rate-limit percentages, reset timers, billing, and spend for Claude, Codex, and Cursor
-- Displays usage in the system tray with styled text — no browser tab needed
-- Auto-switches the displayed provider based on your focused app
-- Sends native notifications when you approach usage thresholds
-- Serves usage data over a local API for Stream Deck and automation integrations
-- Exposes usage to Claude Code via a built-in MCP server
+## Monitoring
 
-## Features
+Each provider is polled on a shared background loop and the results are surfaced across tray, widget, and API simultaneously.
 
-- **Multi-provider monitoring** — Claude (session + weekly + per-model breakdowns), Codex (session + weekly + code review + credits), Cursor (plan spend + on-demand + team pooled budgets)
-- **Dynamic tray** — auto-switches displayed provider based on your focused app (macOS + Windows)
-- **Multi-segment tray** — show data from multiple providers simultaneously with per-segment color (macOS)
-- **Desktop widget** — always-on-top transparent overlay with 6 themes, configurable card order and visibility
-- **Alerts** — native notifications at configurable usage thresholds (session %, weekly %, burn rate)
-- **Peak hours badge** — shows whether Claude is in peak, off-peak, or weekend mode
-- **Extra usage / billing** — prepaid credits, overage grants, bundles, Stripe balance tracking
-- **History chart** — 7-day usage history stored in local SQLite
-- **MCP server** — expose usage data to Claude Code and other MCP clients
-- **Local HTTP API** — Stream Deck / automation integration on port 52700
-- **Auto-detect credentials** — scans browsers and desktop apps for session cookies
-- **Claude OAuth support** — reads Claude Code credentials from macOS Keychain or credential files
+- **Claude** — 5-hour session and 7-day weekly rate-limit windows, per-model breakdowns (Opus, Sonnet, Haiku), prepaid credits, overage grants, bundles, and peak/off-peak status
+- **Codex** — session and weekly rate limits, code review window, credit balance, and plan type
+- **Cursor** — plan spend vs included amount, on-demand and API usage, team pooled budgets, bonus credits, Stripe prepaid balance, and billing cycle dates
+- **Cross-provider** — burn rate calculations (estimated minutes to limit), 7-day usage history stored in local SQLite with an interactive chart
 
-### Widget Themes
+## Desktop Widget
 
-The desktop widget supports 6 visual themes: **rainmeter-stack**, **gauge-tower**, **side-rail**, **mono-ticker**, **signal-deck**, and **matrix-rain**. Each theme has configurable density and scale settings.
+An always-on-top transparent overlay that floats above your desktop. Cards are click-through so they never block your work — only the header is draggable.
+
+Six themes: **rainmeter-stack**, **gauge-tower**, **side-rail**, **mono-ticker**, **signal-deck**, and **matrix-rain**. Each supports three density levels (ultra-compact, compact, comfortable) and configurable scale. Cards can be drag-reordered and toggled per-provider.
+
+## System Tray
+
+Three display modes:
+
+- **Static** — always shows one provider
+- **Dynamic** — auto-switches based on the frontmost app, with configurable app-to-provider mappings and optional window-title pattern matching
+- **Multi-segment** — renders data from multiple providers side-by-side with per-segment color (macOS)
+
+All modes use styled text rendered directly in the tray — no browser tab needed.
+
+## Integrations
+
+### Local HTTP API
+
+UsageWatch serves cached provider snapshots on `http://127.0.0.1:52700`:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/usage` | GET | Claude usage data |
+| `/api/codex` | GET | Codex usage data |
+| `/api/cursor` | GET | Cursor usage data |
+| `/api/open` | POST | Show/focus the main window |
+
+### MCP Server
+
+The built-in MCP server exposes these tools to Claude Code and compatible clients:
+
+| Tool | Description |
+|------|-------------|
+| `get_usage_overview` | Combined summary across all providers |
+| `get_claude_usage` | Session/weekly limits, extra usage, peak hours, reset timers |
+| `get_codex_usage` | Session/weekly limits, code review, credits, plan type |
+| `get_cursor_usage` | Plan spend, on-demand usage, bonus credits, billing cycle |
+
+### Stream Deck
+
+A Stream Deck plugin in `streamdeck-plugin/` provides session and weekly usage actions that pull live data from the HTTP API.
 
 ## Installation
-
-### From Source
 
 Prerequisites:
 - Node.js 18+
@@ -51,8 +81,6 @@ npm run build            # production build
 
 ### MCP Server (optional)
 
-The MCP server lets Claude Code (and other MCP clients) query your usage data directly.
-
 ```bash
 cd mcp-server
 npm install
@@ -63,45 +91,22 @@ The `.mcp.json` in the repo root auto-registers the server with Claude Code.
 
 ## Setup
 
-On first launch, UsageWatch opens a setup wizard to connect your providers.
+On first launch, a setup wizard walks you through connecting providers. Four auth methods are available:
 
-For each provider, choose an auth method:
 - **Browser scan** — auto-detects session cookies from Chrome, Firefox, Edge, Brave, Arc, Zen, Safari, Vivaldi, Opera, and Chromium
-- **Desktop app detection** — reads credentials from Claude Desktop, Codex CLI (`~/.codex/auth.json`), or Cursor's globalStorage
+- **Desktop app detection** — reads credentials from Claude Desktop, Codex CLI, or Cursor's globalStorage
 - **Manual token** — paste a session key or bearer token directly
 - **Claude OAuth** — reads Claude Code credentials from the macOS Keychain or `~/.claude/.credentials.json`
 
 ## Configuration
 
-All settings are accessible from the tray icon's Settings panel.
+All settings are accessible from the tray icon's Settings panel:
 
-- **Tray mode** — Static (one provider), Dynamic (auto-switch by focused app), or Multi-segment (multiple providers at once)
-- **App mappings** — assign apps and window titles to providers for dynamic switching
-- **Widget** — choose a theme, density, and scale; drag-reorder cards; toggle per-provider card visibility
-- **Alerts** — session and weekly usage thresholds, burn rate warnings, reset notifications
+- **Tray mode** — static, dynamic, or multi-segment display
+- **App mappings** — assign apps and window title patterns to providers for dynamic switching
+- **Widget** — theme, density, scale, card order, and per-provider card visibility
+- **Alerts** — session and weekly thresholds, burn rate warnings, reset notifications
 - **Polling interval** — configurable refresh rate (minimum 30 seconds)
-
-## Local HTTP API
-
-When running, UsageWatch serves cached snapshots on `http://127.0.0.1:52700`:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/usage` | GET | Claude usage data |
-| `/api/codex` | GET | Codex usage data |
-| `/api/cursor` | GET | Cursor usage data |
-| `/api/open` | POST | Show/focus the main window |
-
-## MCP Tools
-
-The MCP server exposes these tools to Claude Code and compatible clients:
-
-| Tool | Description |
-|------|-------------|
-| `get_usage_overview` | Combined summary across all providers |
-| `get_claude_usage` | Session/weekly limits, extra usage, peak hours, reset timers |
-| `get_codex_usage` | Session/weekly limits, code review, credits, plan type |
-| `get_cursor_usage` | Plan spend, on-demand usage, bonus credits, billing cycle |
 
 ## Tech Stack
 
