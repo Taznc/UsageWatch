@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
 };
 use tauri::{AppHandle, Emitter, Manager};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 
 use crate::polling::{CodexUpdate, CursorUpdate, UsageUpdate};
 
@@ -34,9 +34,12 @@ pub fn start(
 
     tauri::async_runtime::spawn(async move {
         let cors = CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any);
+            .allow_origin([
+                "http://127.0.0.1:52700".parse().unwrap(),
+                "http://localhost:52700".parse().unwrap(),
+            ])
+            .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+            .allow_headers([axum::http::header::CONTENT_TYPE]);
 
         let router = Router::new()
             .route("/api/usage", get(get_usage))

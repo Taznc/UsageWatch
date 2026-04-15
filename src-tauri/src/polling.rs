@@ -146,10 +146,13 @@ async fn fetch_usage_internal(session_key: &str, org_id: &str) -> Result<UsageDa
         return Err(format!("API returned status {}", response.status()));
     }
 
-    response
-        .json()
+    let text = response
+        .text()
         .await
-        .map_err(|e| format!("Failed to parse usage data: {}", e))
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    serde_json::from_str(&text)
+        .map_err(|e| format!("Failed to parse usage data: {}. Raw: {}", e, &text[..text.len().min(500)]))
 }
 
 /// Single background loop: one aligned tick for all providers (parallel fetches), same interval as user settings.

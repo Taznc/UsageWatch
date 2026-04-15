@@ -5,9 +5,9 @@ export interface UsageWindow {
 
 export interface ExtraUsage {
   is_enabled: boolean;
-  monthly_limit: number;
-  used_credits: number;
-  utilization: number;
+  monthly_limit: number | null;
+  used_credits: number | null;
+  utilization: number | null;
 }
 
 export interface UsageData {
@@ -131,6 +131,7 @@ export interface CursorUsageData {
   total_spend_cents: number | null;
   bonus_spend_cents: number | null;
   limit_cents: number;
+  plan_remaining_cents: number | null;
   spend_pct: number;
   auto_pct: number | null;
   api_pct: number | null;
@@ -149,7 +150,14 @@ export interface CursorUsageData {
   subscription_status: string | null;
   stripe_balance_cents: number | null;
   cycle_resets_at: string | null;
+  billing_cycle_start: string | null;
   email: string | null;
+  usage_meter_enabled: boolean | null;
+  display_threshold_bp: number | null;
+  auto_model_selected_display_message: string | null;
+  named_model_selected_display_message: string | null;
+  connect_extras: Record<string, unknown> | null;
+  enterprise_usage: Record<string, unknown> | null;
 }
 
 export interface CursorUpdate {

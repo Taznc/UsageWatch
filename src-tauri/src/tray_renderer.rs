@@ -12,11 +12,13 @@ fn format_countdown(resets_at: &str) -> String {
     let hours = diff.num_hours();
     let minutes = diff.num_minutes() % 60;
     if hours >= 48 {
-        format!("{}d{}h", hours / 24, hours % 24)
+        let days = hours / 24;
+        let rem = hours % 24;
+        if rem > 0 { format!("{} days {} hr", days, rem) } else { format!("{} days", days) }
     } else if hours > 0 {
-        format!("{}h{}m", hours, minutes)
+        if minutes > 0 { format!("{} hr {} min", hours, minutes) } else { format!("{} hr", hours) }
     } else {
-        format!("{}m", minutes)
+        format!("{} min", minutes)
     }
 }
 

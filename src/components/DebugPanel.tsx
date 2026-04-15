@@ -52,10 +52,11 @@ export function DebugPanel() {
       </div>
       <p style={{ marginTop: 10, fontSize: 12, color: "var(--muted)", maxWidth: 640, lineHeight: 1.45 }}>
         Cursor diagnostics mirror UsageWatch: Connect RPCs on <code>api2.cursor.sh</code>,{" "}
-        <code>GET cursor.com/api/usage-summary</code> (desktop bearer or browser cookie), plus <code>GetHardLimit</code>{" "}
-        and <code>GetUsageLimitPolicyStatus</code>. Compare field names with{" "}
-        <a href="https://github.com/janekbaraniewski/openusage/tree/main/internal/providers/cursor" target="_blank" rel="noreferrer">
-          openusage&apos;s Cursor provider
+        <code>GET cursor.com/api/usage-summary</code> (bearer or session cookie, including synthetic{" "}
+        <code>WorkosCursorSessionToken</code> from the desktop JWT), Stripe and enterprise probes on{" "}
+        <code>cursor.com</code>, plus extra dashboard RPCs. See{" "}
+        <a href="https://github.com/robinebers/openusage/blob/main/docs/providers/cursor.md" target="_blank" rel="noreferrer">
+          OpenUsage Cursor provider
         </a>
         .
       </p>

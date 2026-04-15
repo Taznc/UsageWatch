@@ -111,29 +111,73 @@ function formatCursor(update: CursorUpdate): string {
   }
   const d = update.data!;
   let out = `CURSOR (as of ${update.timestamp}):\n`;
-  if (d.email) out += `  Account: ${d.email}\n`;
-  if (d.plan_name) out += `  Plan: ${d.plan_name}${d.plan_price ? ` (${d.plan_price})` : ""}${d.is_team ? " [Team]" : ""}\n`;
-  out += `  Included spend: ${cents(d.current_spend_cents)} / ${cents(d.limit_cents)} (${pct(d.spend_pct)})\n`;
-  if (d.auto_pct != null) out += `  Auto mode: ${pct(d.auto_pct)}\n`;
-  if (d.api_pct != null) out += `  API/manual: ${pct(d.api_pct)}\n`;
-  if (d.on_demand_used_cents != null && d.on_demand_limit_cents != null) {
-    out += `  On-demand: ${cents(d.on_demand_used_cents)} / ${cents(d.on_demand_limit_cents)}`;
-    if (d.on_demand_remaining_cents != null) out += ` (${cents(d.on_demand_remaining_cents)} remaining)`;
-    out += "\n";
+  out += `  --- Account / plan ---\n`;
+  if (d.email) out += `  email: ${d.email}\n`;
+  if (d.plan_name) out += `  plan_name: ${d.plan_name}\n`;
+  if (d.plan_price) out += `  plan_price: ${d.plan_price}\n`;
+  if (d.plan_included_amount_cents != null) {
+    out += `  plan_included_amount_cents: ${d.plan_included_amount_cents}\n`;
   }
-  if (d.on_demand_pooled_used_cents != null && d.on_demand_pooled_limit_cents != null) {
-    out += `  Pooled on-demand: ${cents(d.on_demand_pooled_used_cents)} / ${cents(d.on_demand_pooled_limit_cents)}`;
-    if (d.on_demand_pooled_remaining_cents != null) out += ` (${cents(d.on_demand_pooled_remaining_cents)} remaining)`;
-    out += "\n";
+  out += `  is_team: ${d.is_team}\n`;
+  if (d.membership_type) out += `  membership_type: ${d.membership_type}\n`;
+  if (d.subscription_status) out += `  subscription_status: ${d.subscription_status}\n`;
+
+  out += `\n  --- Spend meter ---\n`;
+  out += `  current_spend_cents (included): ${d.current_spend_cents}\n`;
+  out += `  limit_cents: ${d.limit_cents}\n`;
+  if (d.plan_remaining_cents != null) out += `  plan_remaining_cents: ${d.plan_remaining_cents}\n`;
+  out += `  spend_pct: ${pct(d.spend_pct)}\n`;
+  if (d.total_spend_cents != null) out += `  total_spend_cents: ${d.total_spend_cents}\n`;
+  if (d.bonus_spend_cents != null) out += `  bonus_spend_cents: ${d.bonus_spend_cents}\n`;
+  if (d.auto_pct != null) out += `  auto_pct: ${pct(d.auto_pct)}\n`;
+  if (d.api_pct != null) out += `  api_pct: ${pct(d.api_pct)}\n`;
+  out += `  remaining_bonus: ${d.remaining_bonus}\n`;
+  if (d.bonus_tooltip) out += `  bonus_tooltip: ${d.bonus_tooltip}\n`;
+  if (d.display_message) out += `  display_message: ${d.display_message}\n`;
+  if (d.usage_meter_enabled != null) out += `  usage_meter_enabled: ${d.usage_meter_enabled}\n`;
+  if (d.display_threshold_bp != null) out += `  display_threshold_bp: ${d.display_threshold_bp}\n`;
+  if (d.auto_model_selected_display_message) {
+    out += `  auto_model_selected_display_message: ${d.auto_model_selected_display_message}\n`;
   }
+  if (d.named_model_selected_display_message) {
+    out += `  named_model_selected_display_message: ${d.named_model_selected_display_message}\n`;
+  }
+
+  out += `\n  --- On-demand ---\n`;
+  if (d.on_demand_limit_type) out += `  on_demand_limit_type: ${d.on_demand_limit_type}\n`;
+  if (d.on_demand_used_cents != null) out += `  on_demand_used_cents: ${d.on_demand_used_cents}\n`;
+  if (d.on_demand_limit_cents != null) out += `  on_demand_limit_cents: ${d.on_demand_limit_cents}\n`;
+  if (d.on_demand_remaining_cents != null) {
+    out += `  on_demand_remaining_cents: ${d.on_demand_remaining_cents}\n`;
+  }
+  if (d.on_demand_pooled_used_cents != null) {
+    out += `  on_demand_pooled_used_cents: ${d.on_demand_pooled_used_cents}\n`;
+  }
+  if (d.on_demand_pooled_limit_cents != null) {
+    out += `  on_demand_pooled_limit_cents: ${d.on_demand_pooled_limit_cents}\n`;
+  }
+  if (d.on_demand_pooled_remaining_cents != null) {
+    out += `  on_demand_pooled_remaining_cents: ${d.on_demand_pooled_remaining_cents}\n`;
+  }
+
+  out += `\n  --- Stripe / cycle ---\n`;
   if (d.stripe_balance_cents != null && d.stripe_balance_cents !== 0) {
-    out += `  Prepaid balance: ${cents(d.stripe_balance_cents)}\n`;
+    out += `  stripe_balance_cents (prepaid credit): ${d.stripe_balance_cents}\n`;
   }
-  if (d.remaining_bonus) out += `  Bonus credits: available\n`;
-  if (d.cycle_resets_at) out += `  Cycle resets in ${resetLabel(d.cycle_resets_at)}\n`;
-  if (d.subscription_status && d.subscription_status !== "active") {
-    out += `  Subscription: ${d.subscription_status}\n`;
+  if (d.billing_cycle_start) out += `  billing_cycle_start: ${d.billing_cycle_start}\n`;
+  if (d.cycle_resets_at) {
+    out += `  cycle_resets_at: ${d.cycle_resets_at} (in ${resetLabel(d.cycle_resets_at)})\n`;
   }
+
+  if (d.connect_extras && Object.keys(d.connect_extras).length > 0) {
+    out += `\n  --- connect_extras (Connect RPC payloads) ---\n`;
+    out += `  ${JSON.stringify(d.connect_extras, null, 2).split("\n").join("\n  ")}\n`;
+  }
+  if (d.enterprise_usage && Object.keys(d.enterprise_usage).length > 0) {
+    out += `\n  --- enterprise_usage (cursor.com/api/usage) ---\n`;
+    out += `  ${JSON.stringify(d.enterprise_usage, null, 2).split("\n").join("\n  ")}\n`;
+  }
+
   return out;
 }
 
@@ -207,7 +251,7 @@ server.tool(
 
 server.tool(
   "get_cursor_usage",
-  "Get detailed Cursor usage: plan spend vs limit, on-demand usage, bonus credits, billing cycle, and subscription status.",
+  "Get detailed Cursor usage from UsageWatch (same sources as OpenUsage: api2 Connect RPC + cursor.com). Includes plan, spend, percents, on-demand, Stripe balance, billing cycle, and raw connect_extras / enterprise_usage when present.",
   {},
   async () => {
     const result = await fetchCursor();
@@ -215,6 +259,20 @@ server.tool(
       return { content: [{ type: "text", text: errorMessage("CURSOR", result).trim() }] };
     }
     return { content: [{ type: "text", text: formatCursor(result.data).trim() }] };
+  }
+);
+
+server.tool(
+  "get_cursor_usage_json",
+  "Same Cursor snapshot as get_cursor_usage but as JSON (full CursorUpdate: data, error, timestamp) for programmatic parsing.",
+  {},
+  async () => {
+    const result = await fetchCursor();
+    if (result.status !== "ok") {
+      return { content: [{ type: "text", text: JSON.stringify({ error: errorMessage("CURSOR", result).trim() }) }] };
+    }
+    const text = JSON.stringify(result.data, null, 2);
+    return { content: [{ type: "text", text }] };
   }
 );
 
