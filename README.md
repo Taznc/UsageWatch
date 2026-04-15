@@ -13,7 +13,7 @@ A native desktop app that tracks your AI usage limits across **Claude**, **Codex
 - **Unified monitoring** — session windows, weekly limits, per-model breakdowns, billing, and live reset countdowns across three providers
 - **Context-aware switching** — the menu bar and desktop widget automatically switch providers based on your focused app (macOS + Windows)
 - **Always-on-top widget** — transparent desktop overlay showing usage, limits, and reset countdowns with 6 visual themes
-- **Menu bar display** — styled usage percentages and reset countdowns rendered directly in the macOS menu bar or Windows system tray
+- **Menu bar display** — styled usage percentages and reset countdowns rendered directly in the macOS menu bar (Windows shows a tooltip on hover)
 - **Customizable alerts** — native notifications for session/weekly thresholds, burn rate warnings, and limit reset events
 - **MCP server** — lets any LLM or AI assistant query your live usage data (Claude Code, Cursor, or any MCP-compatible client)
 - **Automation-ready** — local HTTP API on port 52700 for custom integrations
@@ -30,7 +30,7 @@ Each provider is polled on a shared background loop and the results are surfaced
 
 ## Desktop Widget
 
-An always-on-top transparent overlay that floats above your desktop showing usage percentages, limits, and live reset countdowns for each provider. Cards are click-through so they never block your work — only the header is draggable.
+An always-on-top transparent overlay available on both macOS and Windows, showing usage percentages, limits, and live reset countdowns for each provider. Cards are click-through so they never block your work — only the header is draggable.
 
 Six themes: **rainmeter-stack**, **gauge-tower**, **side-rail**, **mono-ticker**, **signal-deck**, and **matrix-rain**. Each supports three density levels (ultra-compact, compact, comfortable) and configurable scale. Cards can be drag-reordered and toggled per-provider.
 
@@ -40,15 +40,15 @@ Six themes: **rainmeter-stack**, **gauge-tower**, **side-rail**, **mono-ticker**
   <img src="docs/screenshots/widgets-terminal-deck.png" alt="Signal-deck widget theme" width="160" />
 </p>
 
-## System Tray
+## System Tray / Menu Bar
 
-Three display modes:
+On **macOS**, usage data is rendered as styled text directly in the menu bar with three display modes:
 
 - **Static** — always shows one provider
 - **Dynamic** — auto-switches based on the frontmost app, with configurable app-to-provider mappings and optional window-title pattern matching
-- **Multi-segment** — renders data from multiple providers side-by-side with per-segment color (macOS)
+- **Multi-segment** — renders data from multiple providers side-by-side with per-segment color
 
-All modes use styled text rendered directly in the tray — no browser tab needed.
+On **Windows**, the tray icon shows a tooltip with usage and reset information on hover.
 
 <p align="center">
   <img src="docs/screenshots/macos-menubar.png" alt="macOS menu bar display" width="420" />
