@@ -75,7 +75,9 @@ The local API server is **off by default**. To enable it, go to **Settings > Gen
 The built-in MCP server lets any LLM or AI assistant query your usage data in real time — Claude Code, Cursor, or any MCP-compatible client. It connects to the local HTTP API, so the API server must be enabled (see above).
 
 <p align="center">
-  <img src="docs/screenshots/mcp-server-all-2.png" alt="MCP server usage overview in Claude Code" width="500" />
+  <img src="docs/screenshots/mcp-server-all-2.png" alt="MCP usage overview with charts" width="380" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/mcp-server-codex.png" alt="MCP querying Codex usage" width="380" />
 </p>
 
 | Tool | Description |
