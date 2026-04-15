@@ -1,16 +1,25 @@
-:root {
-  color-scheme: dark;
-}
-
 * {
   box-sizing: border-box;
+}
+
+/*
+ * On Windows, backdrop-filter on elements inside a transparent webview causes
+ * the compositor to render a visible gray rectangle because there is no
+ * compositable surface behind the window.  Disable it globally for the
+ * widget and give affected elements opaque fallback backgrounds instead.
+ */
+.widget-overlay *,
+.widget-overlay *::before,
+.widget-overlay *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
-  background: transparent;
+  background: transparent !important;
   color: #f4f7fb;
   font-family: "Aptos", "Segoe UI", sans-serif;
   overflow: hidden;
@@ -32,7 +41,7 @@ body.widget-preview-body {
 #widget-root {
   display: inline-block;
   width: auto;
-  background: transparent;
+  background: transparent !important;
 }
 
 .widget-overlay {
@@ -56,10 +65,8 @@ body.widget-preview-body {
   min-height: 24px;
   min-width: 72px;
   border-radius: 999px;
-  background: rgba(9, 16, 24, 0.38);
+  background: rgb(9, 16, 24);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   cursor: move;
 }
 
@@ -174,7 +181,7 @@ body.widget-preview-body {
 }
 
 .widget-overlay--ghost .widget-overlay__provider {
-  background: rgba(10, 12, 15, 0.2);
+  background: rgb(10, 12, 15);
   border-color: rgba(255, 255, 255, 0.04);
 }
 
@@ -283,9 +290,7 @@ body.widget-preview-body {
   padding: 10px 12px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(180deg, rgba(18, 19, 22, 0.68), rgba(10, 11, 14, 0.62));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: linear-gradient(180deg, rgb(18, 19, 22), rgb(10, 11, 14));
 }
 
 .widget-overlay--compact .widget-ticker-cell {
@@ -357,7 +362,7 @@ body.widget-preview-body {
   padding: 13px;
   border-radius: 17px;
   border: 1px solid color-mix(in srgb, var(--widget-card-accent) 18%, rgba(255, 255, 255, 0.08));
-  background: linear-gradient(180deg, rgba(10, 16, 23, 0.86), rgba(6, 10, 15, 0.82));
+  background: linear-gradient(180deg, rgb(10, 16, 23), rgb(6, 10, 15));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 10px 22px rgba(0, 0, 0, 0.16);
@@ -549,9 +554,7 @@ body.widget-preview-body {
   padding: 12px 12px 11px;
   border-radius: 18px;
   border: 1px solid color-mix(in srgb, var(--widget-card-accent) 16%, rgba(255, 255, 255, 0.1));
-  background: rgba(255, 255, 255, 0.045);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
+  background: rgb(14, 14, 16);
 }
 
 .widget-overlay--ultra-compact .widget-orbit__item {
@@ -1049,7 +1052,7 @@ body.widget-preview-body {
 }
 
 .widget-card-frame--mono-ticker .widget-card {
-  background: linear-gradient(180deg, rgba(16, 17, 19, 0.64), rgba(11, 12, 14, 0.58));
+  background: linear-gradient(180deg, rgb(16, 17, 19), rgb(11, 12, 14));
   border-color: rgba(255, 255, 255, 0.035);
 }
 
@@ -1115,7 +1118,7 @@ body.widget-preview-body {
 }
 
 .widget-overlay--matrix .widget-overlay__provider {
-  background: rgba(0, 8, 0, 0.6);
+  background: rgb(0, 8, 0);
   border-color: rgba(0, 255, 65, 0.15);
   border-radius: 2px;
 }
@@ -1539,12 +1542,10 @@ body.widget-preview-body {
   border: 1px solid color-mix(in srgb, var(--widget-card-accent) 18%, rgba(255, 255, 255, 0.08));
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--widget-card-accent) 12%, transparent), transparent 36%),
-    linear-gradient(180deg, rgba(12, 18, 26, 0.9), rgba(6, 10, 15, 0.86));
+    linear-gradient(180deg, rgb(12, 18, 26), rgb(6, 10, 15));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 12px 24px rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
 }
 
 .widget-pinboard-cell__pin {
@@ -1638,7 +1639,7 @@ body.widget-preview-body {
 }
 
 .widget-overlay--terminal .widget-overlay__provider {
-  background: rgba(0, 8, 0, 0.62);
+  background: rgb(0, 8, 0);
   border-color: color-mix(in srgb, var(--widget-accent-override, #00ff41) 24%, rgba(255, 255, 255, 0.08));
   border-radius: 8px;
 }

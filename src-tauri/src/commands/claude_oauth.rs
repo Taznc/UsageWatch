@@ -1,5 +1,16 @@
 use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
+
+/// After a hard refresh failure back off for this long before retrying,
+/// provided the refresh token has not changed (i.e. user has not re-authenticated).
+const REFRESH_BACKOFF: Duration = Duration::from_secs(30 * 60); // 30 minutes
+
+/// Tracks the last failed refresh: (when it failed, which refresh_token failed).
+/// If the token in the credentials file has since changed (user re-logged in),
+/// the backoff is bypassed automatically.
+static REFRESH_FAILURE: Mutex<Option<(Instant, String)>> = Mutex::new(None);
 
 const CLAUDE_OAUTH_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const CLAUDE_OAUTH_TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
@@ -156,6 +167,17 @@ async fn do_oauth_refresh(refresh_token: &str) -> Result<OAuthRefreshResponse, S
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+
+        // Detect invalid/expired refresh token and surface a clear action message.
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) {
+            if val.get("error").and_then(|v| v.as_str()) == Some("invalid_grant") {
+                return Err(
+                    "Claude Code session expired — run 'claude' in your terminal to log in again."
+                        .to_string(),
+                );
+            }
+        }
+
         return Err(format!("OAuth refresh returned {status}: {body}"));
     }
 
@@ -178,11 +200,42 @@ pub async fn get_claude_oauth_token() -> Result<String, String> {
     })?;
 
     if !is_expiring_soon(oauth.expires_at) {
+        // Token is fresh — clear any stale backoff and use it directly.
+        if let Ok(mut g) = REFRESH_FAILURE.lock() {
+            *g = None;
+        }
         return Ok(oauth.access_token.clone());
     }
 
+    // Token is expiring/expired.  Check if we should back off.
+    // Backoff is keyed on the refresh token: if the user re-authenticated, their
+    // refresh token changes and the backoff is bypassed immediately.
+    if let Ok(g) = REFRESH_FAILURE.lock() {
+        if let Some((failed_at, ref failed_rt)) = *g {
+            if failed_rt == &oauth.refresh_token && failed_at.elapsed() < REFRESH_BACKOFF {
+                return Err(
+                    "Claude Code session expired — run 'claude' in your terminal to log in again."
+                        .to_string(),
+                );
+            }
+        }
+    }
+
     eprintln!("[ClaudeOAuth] Token expiring soon, refreshing...");
-    let refreshed = do_oauth_refresh(&oauth.refresh_token).await?;
+    let refreshed = match do_oauth_refresh(&oauth.refresh_token).await {
+        Ok(r) => r,
+        Err(e) => {
+            // Record the failure against this specific refresh token.
+            if let Ok(mut g) = REFRESH_FAILURE.lock() {
+                *g = Some((Instant::now(), oauth.refresh_token.clone()));
+            }
+            return Err(e);
+        }
+    };
+    // Successful refresh — clear the backoff.
+    if let Ok(mut g) = REFRESH_FAILURE.lock() {
+        *g = None;
+    }
 
     oauth.access_token = refreshed.access_token.clone();
     if let Some(new_rt) = refreshed.refresh_token {

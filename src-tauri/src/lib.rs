@@ -156,6 +156,7 @@ pub fn run() {
             request_accessibility_permission,
             set_title_matching_enabled,
             set_widget_drag_rect,
+            force_widget_transparent,
         ])
         .setup(move |app| {
             // Hide dock icon on macOS (agent/accessory app)
@@ -179,6 +180,9 @@ pub fn run() {
                 let _ = widget_window.set_maximizable(false);
                 #[cfg(target_os = "windows")]
                 configure_widget_hwnd(&widget_window);
+
+                // Force both window and webview backgrounds to fully transparent.
+                let _ = widget_window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
 
                 hook::start_global_mouse_stream(widget_window);
             }
@@ -428,11 +432,37 @@ fn configure_main_hwnd(main: &tauri::WebviewWindow) {
     }
 }
 
-/// Widget: same as main, plus tool-window exstyle (existing behavior).
+/// Widget: same as main, plus tool-window exstyle and transparency guarantee.
 #[cfg(target_os = "windows")]
 fn configure_widget_hwnd(widget: &tauri::WebviewWindow) {
     if let Ok(hwnd) = widget.hwnd() {
         apply_win32_borderless_styles(hwnd.0, true);
+
+        // Explicitly ensure WS_EX_NOREDIRECTIONBITMAP so DWM composites the
+        // window without an opaque backing surface.  tao should set this when
+        // `transparent: true` but we re-apply after style changes to be safe.
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongW, SetWindowLongW, GWL_EXSTYLE};
+        const WS_EX_NOREDIRECTIONBITMAP: u32 = 0x0020_0000;
+        unsafe {
+            let ex = GetWindowLongW(HWND(hwnd.0), GWL_EXSTYLE) as u32;
+            if ex & WS_EX_NOREDIRECTIONBITMAP == 0 {
+                SetWindowLongW(
+                    HWND(hwnd.0),
+                    GWL_EXSTYLE,
+                    (ex | WS_EX_NOREDIRECTIONBITMAP) as i32,
+                );
+            }
+        }
+    }
+}
+
+/// Called from the widget frontend after mount to guarantee the WebView2
+/// controller is initialised before we set its background to transparent.
+#[tauri::command]
+fn force_widget_transparent(app: tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("widget") {
+        let _ = w.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
     }
 }
 

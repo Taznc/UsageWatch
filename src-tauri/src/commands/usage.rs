@@ -101,38 +101,47 @@ pub async fn fetch_billing(session_key: String, org_id: String) -> Result<Billin
     })
 }
 
-/// Fetch Claude usage via OAuth Bearer token from `api.anthropic.com`.
+/// Fetch Claude usage via OAuth Bearer token from the Anthropic API.
 /// Used when `claude_auth_method == "oauth"` (i.e. Claude Code CLI credentials).
 pub(crate) async fn fetch_usage_oauth(access_token: &str) -> Result<UsageData, String> {
     let client = reqwest::Client::new();
-    let response = client
+    let resp = client
         .get("https://api.anthropic.com/api/oauth/usage")
         .header("Authorization", format!("Bearer {}", access_token))
-        .header("anthropic-beta", "oauth-2025-04-20")
-        .header("Accept", "application/json")
         .header("Content-Type", "application/json")
+        .header("anthropic-beta", "oauth-2025-04-20")
         .header("user-agent", crate::USER_AGENT)
         .send()
         .await
         .map_err(|e| format!("OAuth usage request failed: {}", e))?;
 
-    if response.status() == reqwest::StatusCode::UNAUTHORIZED
-        || response.status() == reqwest::StatusCode::FORBIDDEN
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED
+        || resp.status() == reqwest::StatusCode::FORBIDDEN
     {
-        return Err("Claude OAuth token expired or invalid. Reconnect via Claude Code CLI.".into());
+        return Err("Claude OAuth token rejected. Re-run 'claude' to log in again.".to_string());
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!(
+            "OAuth usage API returned {}: {}",
+            status,
+            &body[..body.len().min(300)]
+        ));
     }
 
-    if !response.status().is_success() {
-        return Err(format!("OAuth usage API returned status {}", response.status()));
-    }
-
-    let text = response
+    let text = resp
         .text()
         .await
         .map_err(|e| format!("Failed to read OAuth usage response: {}", e))?;
 
-    serde_json::from_str::<UsageData>(&text)
-        .map_err(|e| format!("Failed to parse OAuth usage data: {}. Raw: {}", e, &text[..text.len().min(500)]))
+    serde_json::from_str::<UsageData>(&text).map_err(|e| {
+        format!(
+            "Failed to parse OAuth usage data: {}. Raw: {}",
+            e,
+            &text[..text.len().min(500)]
+        )
+    })
 }
 
 /// Fetch peak/off-peak status from PromoClock's public API.

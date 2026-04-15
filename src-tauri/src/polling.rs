@@ -62,9 +62,20 @@ async fn fetch_claude_update(cache: &CredentialsCache) -> Option<UsageUpdate> {
     let auth_method = cache.get_claude_auth_method();
 
     let usage_result: Result<UsageData, String> = if auth_method == "oauth" {
-        match commands::claude_oauth::get_claude_oauth_token().await {
+        let oauth_result = match commands::claude_oauth::get_claude_oauth_token().await {
             Ok(token) => commands::usage::fetch_usage_oauth(&token).await,
             Err(e) => Err(e),
+        };
+        // If OAuth failed but session_key + org_id exist, fall back silently.
+        match oauth_result {
+            Ok(data) => Ok(data),
+            Err(oauth_err) => match (cache.get_session_key(), cache.get_org_id()) {
+                (Some(sk), Some(oid)) => {
+                    eprintln!("[Claude] OAuth failed ({oauth_err}), falling back to session_key");
+                    fetch_usage_internal(&sk, &oid).await
+                }
+                _ => Err(oauth_err),
+            },
         }
     } else {
         let (session_key, org_id) = match (cache.get_session_key(), cache.get_org_id()) {

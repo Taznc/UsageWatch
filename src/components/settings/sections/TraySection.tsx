@@ -418,10 +418,10 @@ export function TraySection() {
   return (
     <div>
       {/* Preview */}
-      <div className="s-tray-preview">{buildPreview()}</div>
+      <div className="s-tray-preview" title={isMac ? "Menu bar preview" : "Tray tooltip preview"}>{buildPreview()}</div>
 
       {/* Display fields */}
-      <SettingGroup label="Display">
+      <SettingGroup label={isMac ? "Show in menu bar" : "Show in tray tooltip"}>
         {displayToggles.map(({ key, label }) => (
           <SettingRow key={key} label={label}>
             <Toggle

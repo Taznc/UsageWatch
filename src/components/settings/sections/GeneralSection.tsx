@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../../../context/AppContext";
 import { Toggle } from "../shared/Toggle";
@@ -8,6 +9,13 @@ import { formatPollInterval } from "../../../utils/format";
 export function GeneralSection() {
   const { state, dispatch } = useApp();
   const { settings } = state;
+  const [httpServerEnabled, setHttpServerEnabled] = useState(false);
+
+  useEffect(() => {
+    invoke<boolean>("get_http_server_enabled")
+      .then(setHttpServerEnabled)
+      .catch(() => {});
+  }, []);
 
   const updatePollInterval = async (secs: number) => {
     dispatch({ type: "UPDATE_SETTINGS", settings: { poll_interval_secs: secs } });
@@ -55,6 +63,25 @@ export function GeneralSection() {
             onChange={(v) =>
               dispatch({ type: "UPDATE_SETTINGS", settings: { autostart: v } })
             }
+          />
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup label="Local API server">
+        <SettingRow
+          label="Enable local API server"
+          hint="Serves usage data on port 52700 for MCP and Stream Deck integrations. Changes take effect on next launch."
+        >
+          <Toggle
+            checked={httpServerEnabled}
+            onChange={async (enabled) => {
+              setHttpServerEnabled(enabled);
+              try {
+                await invoke("set_http_server_enabled", { enabled });
+              } catch {
+                setHttpServerEnabled(!enabled);
+              }
+            }}
           />
         </SettingRow>
       </SettingGroup>

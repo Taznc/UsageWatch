@@ -29,6 +29,11 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
   const [connected, setConnected] = useState<boolean | null>(null);
   const [connectedInfo, setConnectedInfo] = useState<string>("");
 
+  // Claude-only: track which auth method is active and what alternatives exist
+  const [currentAuthMethod, setCurrentAuthMethod] = useState<string>("session_key");
+  const [hasSessionKey, setHasSessionKey] = useState(false);
+  const [hasOAuth, setHasOAuth] = useState(false);
+
   const [activeMethod, setActiveMethod] = useState<CollectionMethod | null>(null);
   const [methodStatuses, setMethodStatuses] = useState<Record<CollectionMethod, MethodStatus>>({
     browser: "idle",
@@ -63,22 +68,27 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     try {
       if (provider === "Claude") {
         const authMethod = await invoke<string>("get_claude_auth_method").catch(() => "session_key");
-        if (authMethod === "oauth") {
-          const ok = await invoke<boolean>("check_claude_oauth").catch(() => false);
-          if (ok) {
-            setConnected(true);
-            setConnectedInfo("Connected via Claude Code CLI");
-            return;
-          }
-        }
+        setCurrentAuthMethod(authMethod);
+
+        const oauthOk = await invoke<boolean>("check_claude_oauth").catch(() => false);
+        setHasOAuth(oauthOk);
+
         const key = await invoke<string | null>("get_session_key");
         const org = await invoke<string | null>("get_org_id");
+        setHasSessionKey(!!(key && org));
+
+        if (authMethod === "oauth" && oauthOk) {
+          setConnected(true);
+          setConnectedInfo("Connected via Claude Code CLI");
+          return;
+        }
         if (key && org) {
           setConnected(true);
           try {
             const orgList = await invoke<Organization[]>("test_connection", { sessionKey: key });
             const match = orgList.find((o) => o.uuid === org);
             if (match) setConnectedInfo(match.name);
+            else setConnectedInfo("Connected");
           } catch {
             setConnectedInfo("Connected");
           }
@@ -116,6 +126,33 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setSelectedOrg("");
     setMethodStatuses({ browser: "idle", desktop_app: "idle", manual: "idle", oauth_file: "idle" });
     setMethodErrors({ browser: "", desktop_app: "", manual: "", oauth_file: "" });
+  }
+
+  // ── Claude auth method switch ────────────────────────────────────────────
+
+  async function switchAuthMethod(to: "oauth" | "session_key") {
+    try {
+      await invoke("set_claude_auth_method", { method: to });
+      setCurrentAuthMethod(to);
+      if (to === "oauth") {
+        setConnectedInfo("Connected via Claude Code CLI");
+      } else {
+        // Refresh org name from stored session key
+        const key = await invoke<string | null>("get_session_key");
+        const org = await invoke<string | null>("get_org_id");
+        if (key && org) {
+          try {
+            const orgList = await invoke<Organization[]>("test_connection", { sessionKey: key });
+            const match = orgList.find((o) => o.uuid === org);
+            setConnectedInfo(match?.name ?? "Connected");
+          } catch {
+            setConnectedInfo("Connected");
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error("Failed to switch auth method:", e);
+    }
   }
 
   // ── Method handlers ─────────────────────────────────────────────────────
@@ -328,6 +365,29 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
         </div>
         {connected && connectedInfo && (
           <p className="account-org-name">{connectedInfo}</p>
+        )}
+        {connected && provider === "Claude" && (
+          <p className="account-org-name" style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>
+            Auth: {currentAuthMethod === "oauth" ? "Claude Code CLI" : "Session key"}
+            {currentAuthMethod === "oauth" && hasSessionKey && (
+              <button
+                className="account-text-btn"
+                style={{ marginLeft: 8, fontSize: 11 }}
+                onClick={() => switchAuthMethod("session_key")}
+              >
+                switch to session key
+              </button>
+            )}
+            {currentAuthMethod === "session_key" && hasOAuth && (
+              <button
+                className="account-text-btn"
+                style={{ marginLeft: 8, fontSize: 11 }}
+                onClick={() => switchAuthMethod("oauth")}
+              >
+                switch to Claude Code CLI
+              </button>
+            )}
+          </p>
         )}
       </div>
 

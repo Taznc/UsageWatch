@@ -299,6 +299,14 @@
   max-width: 130px;
 }
 .s-select:focus { outline: none; border-color: var(--s-accent); }
+.s-select option {
+  background: #1e1e1e;
+  color: var(--s-text);
+}
+.s-select option:checked {
+  background: var(--s-accent);
+  color: #fff;
+}
 
 /* Slider */
 .s-slider {

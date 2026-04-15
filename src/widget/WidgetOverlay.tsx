@@ -33,8 +33,8 @@ function clampProgress(progress?: number | null) {
 function measureScaledSize(element: HTMLDivElement, scale: number) {
   const normalizedScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
   return {
-    width: Math.ceil(element.scrollWidth * normalizedScale),
-    height: Math.ceil(element.scrollHeight * normalizedScale),
+    width: Math.ceil(element.scrollWidth * normalizedScale) + 2,
+    height: Math.ceil(element.scrollHeight * normalizedScale) + 2,
   };
 }
 
@@ -147,6 +147,13 @@ export function WidgetOverlay() {
     }
     setHitboxes(next);
   }
+
+  // Force the WebView2 background to transparent once the webview is ready.
+  // Calling from JS guarantees the WebView2 controller is initialised.
+  useEffect(() => {
+    if (!tauri) return;
+    invoke("force_widget_transparent").catch(() => {});
+  }, [tauri]);
 
   // Keep the native window aligned with persisted layout whenever the store hydrates or the user moves.
   // (Previously we only applied position once on mount, so the default layout won before credentials.json loaded.)
