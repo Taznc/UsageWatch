@@ -17,7 +17,16 @@ export function formatCountdown(resetAt: string | null): string {
   const reset = new Date(resetAt).getTime();
   const diff = reset - now;
 
-  if (diff <= 0) return "Resetting...";
+  // Past or same instant: works after "Resets " in widgets ("Resets on …")
+  if (diff <= 0 || !Number.isFinite(reset)) {
+    const when = new Date(resetAt).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `on ${when}`;
+  }
 
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));

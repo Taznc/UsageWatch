@@ -16,7 +16,6 @@ import {
   CursorAccountLimitBadge,
   CursorEnterpriseVisualSection,
   CursorIncludedRemainingBar,
-  CursorTechnicalDetailsCollapsible,
 } from "./CursorVisualExtras";
 
 export function Popover() {
@@ -741,10 +740,6 @@ export function Popover() {
                     />
                   )}
 
-                <CursorTechnicalDetailsCollapsible
-                  connectExtras={cursorData.connect_extras}
-                  enterpriseUsage={cursorData.enterprise_usage}
-                />
               </>
             ) : cursorError ? (
               <div className="loading-state">

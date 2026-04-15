@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getUsageColor, formatCountdown, formatResetDate } from "../utils/format";
 
 function formatBurnRate(mins: number): string {
@@ -26,21 +26,42 @@ interface UsageBarProps {
   estimatedMinsToLimit?: number | null;
 }
 
+function formatResetAnchor(resetAt: string): string {
+  return new Date(resetAt).toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function UsageBar({ label, percentage, resetAt, showRemaining = false, estimatedMinsToLimit }: UsageBarProps) {
-  const [countdown, setCountdown] = useState(formatCountdown(resetAt));
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!resetAt) return;
-    setCountdown(formatCountdown(resetAt));
-    const timer = setInterval(() => {
-      setCountdown(formatCountdown(resetAt));
-    }, 1000);
+    const resetMs = new Date(resetAt).getTime();
+    if (!Number.isFinite(resetMs) || resetMs <= Date.now()) return;
+    const timer = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(timer);
   }, [resetAt]);
 
   const displayPct = showRemaining ? Math.max(0, 100 - percentage) : percentage;
   const color = getUsageColor(percentage);
-  const resetDate = formatResetDate(resetAt);
+
+  const resetFooter = useMemo(() => {
+    if (!resetAt) return null;
+    const resetMs = new Date(resetAt).getTime();
+    if (!Number.isFinite(resetMs)) return null;
+    const diff = resetMs - Date.now();
+    if (diff <= 0) {
+      return `Cycle date · ${formatResetAnchor(resetAt)}`;
+    }
+    const countdown = formatCountdown(resetAt);
+    const resetDate = formatResetDate(resetAt);
+    return `Resets in ${countdown}${resetDate ? ` · ${resetDate}` : ""}`;
+  }, [resetAt, tick]);
 
   return (
     <div className="usage-bar-container">
@@ -59,12 +80,9 @@ export function UsageBar({ label, percentage, resetAt, showRemaining = false, es
           }}
         />
       </div>
-      {resetAt && (
+      {resetFooter && (
         <div className="usage-bar-footer">
-          <span className="usage-bar-reset">
-            Resets in {countdown}
-            {resetDate && <span className="usage-bar-reset-date"> · {resetDate}</span>}
-          </span>
+          <span className="usage-bar-reset">{resetFooter}</span>
           {estimatedMinsToLimit != null && (
             <div className="usage-bar-burn-rate">
               {formatBurnRate(estimatedMinsToLimit)}

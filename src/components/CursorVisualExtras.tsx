@@ -1,17 +1,5 @@
-import type { CSSProperties } from "react";
 import { UsageBar } from "./UsageBar";
 import { formatCurrencyFromCents } from "../utils/format";
-
-const rawPre: CSSProperties = {
-  marginTop: 8,
-  fontSize: 10,
-  maxHeight: 140,
-  overflow: "auto",
-  padding: 8,
-  borderRadius: 6,
-  background: "var(--surface-elevated, rgba(255,255,255,0.04))",
-  border: "1px solid var(--border)",
-};
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -160,31 +148,6 @@ export function CursorEnterpriseVisualSection({
         );
       })}
     </div>
-  );
-}
-
-export function CursorTechnicalDetailsCollapsible({
-  connectExtras,
-  enterpriseUsage,
-}: {
-  connectExtras: Record<string, unknown> | null;
-  enterpriseUsage: Record<string, unknown> | null;
-}) {
-  const hasConnect = connectExtras != null && Object.keys(connectExtras).length > 0;
-  const hasEnt = enterpriseUsage != null && Object.keys(enterpriseUsage).length > 0;
-  if (!hasConnect && !hasEnt) return null;
-
-  const payload: Record<string, unknown> = {};
-  if (hasConnect) payload.connect_extras = connectExtras!;
-  if (hasEnt) payload.enterprise_usage = enterpriseUsage!;
-
-  return (
-    <details style={{ marginTop: 12 }}>
-      <summary style={{ cursor: "pointer", fontSize: 11, opacity: 0.55 }}>
-        Technical details (raw API)
-      </summary>
-      <pre style={rawPre}>{JSON.stringify(payload, null, 2)}</pre>
-    </details>
   );
 }
 
