@@ -34,6 +34,12 @@ An always-on-top transparent overlay that floats above your desktop showing usag
 
 Six themes: **rainmeter-stack**, **gauge-tower**, **side-rail**, **mono-ticker**, **signal-deck**, and **matrix-rain**. Each supports three density levels (ultra-compact, compact, comfortable) and configurable scale. Cards can be drag-reordered and toggled per-provider.
 
+<p align="center">
+  <img src="docs/screenshots/widgets-rainmeter-stack.png" alt="Rainmeter-stack widget theme" width="160" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/screenshots/widgets-terminal-deck.png" alt="Signal-deck widget theme" width="160" />
+</p>
+
 ## System Tray
 
 Three display modes:
@@ -43,6 +49,10 @@ Three display modes:
 - **Multi-segment** — renders data from multiple providers side-by-side with per-segment color (macOS)
 
 All modes use styled text rendered directly in the tray — no browser tab needed.
+
+<p align="center">
+  <img src="docs/screenshots/macos-menubar.png" alt="macOS menu bar display" width="420" />
+</p>
 
 ## Integrations
 
@@ -63,6 +73,10 @@ The local API server is **off by default**. To enable it, go to **Settings > Gen
 ### MCP Server
 
 The built-in MCP server lets any LLM or AI assistant query your usage data in real time — Claude Code, Cursor, or any MCP-compatible client. It connects to the local HTTP API, so the API server must be enabled (see above).
+
+<p align="center">
+  <img src="docs/screenshots/mcp-server-all-2.png" alt="MCP server usage overview in Claude Code" width="500" />
+</p>
 
 | Tool | Description |
 |------|-------------|
