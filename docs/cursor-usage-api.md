@@ -7,7 +7,7 @@ This document describes how UsageWatch loads Cursor plan usage, why it broke for
 Cursor usage is built from **two sources in parallel**:
 
 1. **Dashboard REST** — `GET https://cursor.com/api/usage-summary`  
-   - Authenticated with the **same bearer token** as the desktop app (`cursorAuth/accessToken`), or with a **browser cookie** string if the user saved one in Settings.  
+   - Authenticated with a **Cookie** header when a session cookie is available (manual browser string, or a **synthetic** `WorkosCursorSessionToken=<userId>%3A%3A<access_token>` derived from the JWT `sub` and desktop access token so `cursor.com` routes work without pasting cookies). Otherwise **`Authorization: Bearer`** with the access token.  
    - When this response includes a positive **`limit`**, we treat **`used` / `limit`** from `individualUsage.overall` (or `teamUsage.overall`) as the **authoritative monthly meter**. That matches what you see on [cursor.com/dashboard/usage](https://cursor.com/dashboard/usage).
 
 2. **Connect RPC** — `POST https://api2.cursor.sh/aiserver.v1.DashboardService/*`  
@@ -31,14 +31,14 @@ Restoring **`usage-summary`** (with **bearer** auth, not only cookies) fixes tha
 | Area | Location |
 |------|----------|
 | Fetch + merge logic | `src-tauri/src/commands/cursor.rs` — `fetch_cursor_usage_internal`, `fetch_cursor_usage_summary_rest`, `parse_usage_summary_meter`, `cursor_get_f64` / `cursor_json_f64` |
-| Percent when API sends `0%` but cents disagree | `src-tauri/src/models.rs` — `CursorUsageData::build` |
+| Percent when API sends `0%` but cents disagree | `src-tauri/src/models.rs` — `CursorUsageData::from_assembly` |
 | Diagnostics | Tauri command `debug_cursor_api`; Settings → Debug → “Cursor API diagnostics” |
 
-## Auth resolution (unchanged high level)
+## Auth resolution
 
-1. Manual value that looks like **cookies** (`=` / `;`) → extract bearer from `WorkosCursorSessionToken` for Connect; same string used as **Cookie** for `usage-summary` when applicable.  
-2. Manual **plain bearer** → used for Connect and for **`usage-summary`** via `Authorization: Bearer`.  
-3. Otherwise **`cursorAuth/accessToken`** from Cursor global storage (JSON or `state.vscdb` on Windows).
+1. Manual value that looks like **cookies** (`=` / `;`) → extract bearer from `WorkosCursorSessionToken` for Connect; same string used as **Cookie** for `usage-summary`, **`/api/auth/stripe`**, and **`/api/usage`** when applicable.  
+2. Manual **plain bearer** → used for Connect; **`usage-summary`** uses bearer or synthetic session cookie when the JWT includes a `sub` claim.  
+3. Otherwise **`cursorAuth/accessToken`** (and optional **`cursorAuth/refreshToken`**) from Cursor global storage (JSON or `state.vscdb` on Windows). Short-lived tokens are **refreshed in memory** via `POST https://api2.cursor.sh/oauth/token` when the JWT is expired or near expiry, matching the flow described in [OpenUsage’s Cursor provider doc](https://github.com/robinebers/openusage/blob/main/docs/providers/cursor.md).
 
 ## Debugging
 

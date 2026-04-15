@@ -176,8 +176,8 @@ impl TrayDisplayData {
                 .as_ref()
                 .map(|e| e.is_enabled)
                 .unwrap_or(false),
-            extra_used: data.extra_usage.as_ref().map(|e| e.used_credits),
-            extra_limit: data.extra_usage.as_ref().map(|e| e.monthly_limit),
+            extra_used: data.extra_usage.as_ref().and_then(|e| e.used_credits),
+            extra_limit: data.extra_usage.as_ref().and_then(|e| e.monthly_limit),
         }
     }
 

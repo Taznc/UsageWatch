@@ -323,21 +323,21 @@ export function Popover() {
                         <div className="extra-usage">
                           <div className="usage-bar-header">
                             <span className="usage-bar-pct" style={{ color: "#8b5cf6" }}>
-                              {usageData.extra_usage.utilization.toFixed(0)}% used
+                              {(usageData.extra_usage.utilization ?? 0).toFixed(0)}% used
                             </span>
                           </div>
                           <div className="usage-bar-track">
                             <div
                               className="usage-bar-fill"
                               style={{
-                                width: `${Math.min(usageData.extra_usage.utilization, 100)}%`,
+                                width: `${Math.min(usageData.extra_usage.utilization ?? 0, 100)}%`,
                                 backgroundColor: "#8b5cf6",
                               }}
                             />
                           </div>
                           <div className="extra-usage-details">
-                            <span>${(usageData.extra_usage.used_credits / 100).toFixed(2)} spent</span>
-                            <span>${(usageData.extra_usage.monthly_limit / 100).toFixed(2)} / mo limit</span>
+                            <span>${((usageData.extra_usage.used_credits ?? 0) / 100).toFixed(2)} spent</span>
+                            <span>${((usageData.extra_usage.monthly_limit ?? 0) / 100).toFixed(2)} / mo limit</span>
                           </div>
                           {billing?.bundles?.purchases_reset_at && (
                             <div className="extra-usage-reset">
@@ -410,13 +410,9 @@ export function Popover() {
                         </span>
                       )}
                     </h2>
-                    {(codexData.auth_source || codexData.last_refresh_at || codexData.account_id) && (
+                    {codexData.account_id && (
                       <div className="extra-usage-details" style={{ marginBottom: '8px' }}>
-                        {codexData.auth_source && <span>{codexData.auth_source}</span>}
-                        {codexData.last_refresh_at && (
-                          <span>Refreshed {new Date(codexData.last_refresh_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
-                        )}
-                        {codexData.account_id && <span title={codexData.account_id}>Account bound</span>}
+                        <span title={codexData.account_id}>Account bound</span>
                       </div>
                     )}
                     <UsageBar

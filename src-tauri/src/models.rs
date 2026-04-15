@@ -31,11 +31,11 @@ pub struct ExtraUsage {
     #[serde(default)]
     pub is_enabled: bool,
     #[serde(default)]
-    pub monthly_limit: f64,
+    pub monthly_limit: Option<f64>,
     #[serde(default)]
-    pub used_credits: f64,
+    pub used_credits: Option<f64>,
     #[serde(default)]
-    pub utilization: f64,
+    pub utilization: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -298,6 +298,9 @@ pub struct CursorUsageData {
     pub bonus_spend_cents: Option<f64>,
     /// Plan included-amount limit in cents
     pub limit_cents: f64,
+    /// Remaining included amount in cents (from Connect `planUsage.remaining`, when present)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_remaining_cents: Option<f64>,
     /// Spend as a percentage of plan limit
     pub spend_pct: f64,
     /// Auto-mode usage percentage (may be absent on some plan types)
@@ -325,77 +328,118 @@ pub struct CursorUsageData {
     pub stripe_balance_cents: Option<f64>,
     /// When the billing cycle resets (ISO-8601)
     pub cycle_resets_at: Option<String>,
+    /// Start of current billing cycle (ISO-8601), from Connect `billingCycleStart`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub billing_cycle_start: Option<String>,
     /// Email of the logged-in Cursor user
     pub email: Option<String>,
+    /// Connect `enabled` on usage payload (dashboard meter enabled)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_meter_enabled: Option<bool>,
+    /// Connect `displayThreshold` (basis points) when present
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_threshold_bp: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_model_selected_display_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub named_model_selected_display_message: Option<String>,
+    /// Undocumented Connect RPC JSON blobs (limits, grants, credit balance RPC)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connect_extras: Option<serde_json::Value>,
+    /// Raw `GET https://cursor.com/api/usage` JSON when the enterprise endpoint returns data
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_usage: Option<serde_json::Value>,
+}
+
+/// Internal assembly for [`CursorUsageData::from_assembly`].
+#[derive(Debug, Default)]
+pub struct CursorUsageAssembly {
+    pub plan_name: Option<String>,
+    pub plan_price: Option<String>,
+    pub plan_included_amount_cents: Option<f64>,
+    pub spend_cents: f64,
+    pub plan_remaining_cents: Option<f64>,
+    pub total_spend_cents: Option<f64>,
+    pub bonus_spend_cents: Option<f64>,
+    pub limit_cents: f64,
+    pub auto_pct: Option<f64>,
+    pub api_pct: Option<f64>,
+    pub total_pct: Option<f64>,
+    pub remaining_bonus: bool,
+    pub bonus_tooltip: Option<String>,
+    pub display_message: Option<String>,
+    pub on_demand_used_cents: Option<f64>,
+    pub on_demand_limit_cents: Option<f64>,
+    pub on_demand_remaining_cents: Option<f64>,
+    pub on_demand_pooled_used_cents: Option<f64>,
+    pub on_demand_pooled_limit_cents: Option<f64>,
+    pub on_demand_pooled_remaining_cents: Option<f64>,
+    pub on_demand_limit_type: Option<String>,
+    pub is_team: bool,
+    pub membership_type: Option<String>,
+    pub subscription_status: Option<String>,
+    pub stripe_balance_cents: Option<f64>,
+    pub cycle_end: Option<String>,
+    pub billing_cycle_start: Option<String>,
+    pub email: Option<String>,
+    pub usage_meter_enabled: Option<bool>,
+    pub display_threshold_bp: Option<f64>,
+    pub auto_model_selected_display_message: Option<String>,
+    pub named_model_selected_display_message: Option<String>,
+    pub connect_extras: Option<serde_json::Value>,
+    pub enterprise_usage: Option<serde_json::Value>,
 }
 
 impl CursorUsageData {
-    pub fn build(
-        plan_name: Option<String>,
-        plan_price: Option<String>,
-        plan_included_amount_cents: Option<f64>,
-        spend_cents: f64,
-        total_spend_cents: Option<f64>,
-        bonus_spend_cents: Option<f64>,
-        limit_cents: f64,
-        auto_pct: Option<f64>,
-        api_pct: Option<f64>,
-        total_pct: Option<f64>,
-        remaining_bonus: bool,
-        bonus_tooltip: Option<String>,
-        display_message: Option<String>,
-        on_demand_used_cents: Option<f64>,
-        on_demand_limit_cents: Option<f64>,
-        on_demand_remaining_cents: Option<f64>,
-        on_demand_pooled_used_cents: Option<f64>,
-        on_demand_pooled_limit_cents: Option<f64>,
-        on_demand_pooled_remaining_cents: Option<f64>,
-        on_demand_limit_type: Option<String>,
-        is_team: bool,
-        membership_type: Option<String>,
-        subscription_status: Option<String>,
-        stripe_balance_cents: Option<f64>,
-        cycle_end: Option<String>,
-        email: Option<String>,
-    ) -> Self {
+    pub fn from_assembly(a: CursorUsageAssembly) -> Self {
+        let spend_cents = a.spend_cents;
+        let limit_cents = a.limit_cents;
         let computed_pct = if limit_cents > 0.0 {
             (spend_cents / limit_cents * 100.0).clamp(0.0, 999.0)
         } else {
             0.0
         };
         // Cursor sometimes returns totalPercentUsed: 0 while planUsage still has spend vs limit.
-        let spend_pct = match total_pct.filter(|v| v.is_finite()) {
+        let spend_pct = match a.total_pct.filter(|v| v.is_finite()) {
             Some(api_pct) if api_pct > 0.0 || spend_cents <= f64::EPSILON => api_pct,
             Some(_) => computed_pct,
             None => computed_pct,
         };
         Self {
-            plan_name,
-            plan_price,
-            plan_included_amount_cents,
+            plan_name: a.plan_name,
+            plan_price: a.plan_price,
+            plan_included_amount_cents: a.plan_included_amount_cents,
             current_spend_cents: spend_cents,
-            total_spend_cents,
-            bonus_spend_cents,
+            plan_remaining_cents: a.plan_remaining_cents,
+            total_spend_cents: a.total_spend_cents,
+            bonus_spend_cents: a.bonus_spend_cents,
             limit_cents,
             spend_pct,
-            auto_pct,
-            api_pct,
-            remaining_bonus,
-            bonus_tooltip,
-            display_message,
-            on_demand_used_cents,
-            on_demand_limit_cents,
-            on_demand_remaining_cents,
-            on_demand_pooled_used_cents,
-            on_demand_pooled_limit_cents,
-            on_demand_pooled_remaining_cents,
-            on_demand_limit_type,
-            is_team,
-            membership_type,
-            subscription_status,
-            stripe_balance_cents,
-            cycle_resets_at: cycle_end,
-            email,
+            auto_pct: a.auto_pct,
+            api_pct: a.api_pct,
+            remaining_bonus: a.remaining_bonus,
+            bonus_tooltip: a.bonus_tooltip,
+            display_message: a.display_message,
+            on_demand_used_cents: a.on_demand_used_cents,
+            on_demand_limit_cents: a.on_demand_limit_cents,
+            on_demand_remaining_cents: a.on_demand_remaining_cents,
+            on_demand_pooled_used_cents: a.on_demand_pooled_used_cents,
+            on_demand_pooled_limit_cents: a.on_demand_pooled_limit_cents,
+            on_demand_pooled_remaining_cents: a.on_demand_pooled_remaining_cents,
+            on_demand_limit_type: a.on_demand_limit_type,
+            is_team: a.is_team,
+            membership_type: a.membership_type,
+            subscription_status: a.subscription_status,
+            stripe_balance_cents: a.stripe_balance_cents,
+            cycle_resets_at: a.cycle_end,
+            billing_cycle_start: a.billing_cycle_start,
+            email: a.email,
+            usage_meter_enabled: a.usage_meter_enabled,
+            display_threshold_bp: a.display_threshold_bp,
+            auto_model_selected_display_message: a.auto_model_selected_display_message,
+            named_model_selected_display_message: a.named_model_selected_display_message,
+            connect_extras: a.connect_extras,
+            enterprise_usage: a.enterprise_usage,
         }
     }
 }

@@ -81,6 +81,7 @@ export interface CursorUsageData {
   total_spend_cents?: number;
   bonus_spend_cents?: number;
   limit_cents: number;
+  plan_remaining_cents?: number;
   spend_pct: number;
   auto_pct?: number;
   api_pct?: number;
@@ -99,7 +100,14 @@ export interface CursorUsageData {
   subscription_status?: string;
   stripe_balance_cents?: number;
   cycle_resets_at?: string;
+  billing_cycle_start?: string;
   email?: string;
+  usage_meter_enabled?: boolean;
+  display_threshold_bp?: number;
+  auto_model_selected_display_message?: string;
+  named_model_selected_display_message?: string;
+  connect_extras?: Record<string, unknown>;
+  enterprise_usage?: Record<string, unknown>;
 }
 
 export interface CursorUpdate {

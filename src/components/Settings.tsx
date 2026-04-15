@@ -73,6 +73,8 @@ const WIDGET_THEME_CATALOG: Record<
   },
 };
 
+const IS_DEV = import.meta.env.DEV;
+
 const NAV_ITEMS: NavItem[] = [
   { id: "account",   label: "Account",   sub: "Session key & org" },
   { id: "menu-bar",  label: statusDisplayLabel, sub: isMacPlatform ? "Tray display" : "Tray icon details" },
@@ -80,7 +82,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "widget",    label: "Widget",    sub: "Themes & layout" },
   { id: "alerts",    label: "Alerts",    sub: "Notifications" },
   { id: "general",   label: "General",   sub: "Polling & startup" },
-  { id: "debug",     label: "Debug",     sub: "Diagnostics" },
+  ...(IS_DEV ? [{ id: "debug" as const, label: "Debug", sub: "Diagnostics" }] : []),
 ];
 
 function normalizePickedMapping(path: string): string {
@@ -1179,8 +1181,8 @@ export function Settings() {
             </div>
           )}
 
-          {/* ── Debug ─────────────────────────────────────────── */}
-          {activeTab === "debug" && (
+          {/* ── Debug (dev only) ────────────────────────────────── */}
+          {IS_DEV && activeTab === "debug" && (
             <div className="settings-section">
               <DebugPanel />
             </div>

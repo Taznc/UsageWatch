@@ -78,6 +78,7 @@ export const previewCursorData: CursorUsageData = {
   total_spend_cents: 7425,
   bonus_spend_cents: 73,
   limit_cents: 11000,
+  plan_remaining_cents: 3648,
   spend_pct: 66.8,
   auto_pct: 45.2,
   api_pct: 21.6,
@@ -96,7 +97,14 @@ export const previewCursorData: CursorUsageData = {
   subscription_status: "active",
   stripe_balance_cents: null,
   cycle_resets_at: futureIso(420),
+  billing_cycle_start: null,
   email: "preview@example.com",
+  usage_meter_enabled: true,
+  display_threshold_bp: null,
+  auto_model_selected_display_message: null,
+  named_model_selected_display_message: null,
+  connect_extras: null,
+  enterprise_usage: null,
 };
 
 export const previewStatus: APIStatus = {
