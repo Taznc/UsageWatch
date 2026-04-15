@@ -691,6 +691,104 @@ export function Popover() {
                     </div>
                   </div>
                 )}
+
+                {/* ── Connect / enterprise extras (OpenUsage-aligned fetch) ── */}
+                {(cursorData.billing_cycle_start ||
+                  cursorData.plan_remaining_cents != null ||
+                  cursorData.usage_meter_enabled != null ||
+                  cursorData.display_threshold_bp != null ||
+                  !!cursorData.auto_model_selected_display_message ||
+                  !!cursorData.named_model_selected_display_message ||
+                  (cursorData.connect_extras != null && Object.keys(cursorData.connect_extras).length > 0) ||
+                  (cursorData.enterprise_usage != null && Object.keys(cursorData.enterprise_usage).length > 0)) && (
+                  <div className="usage-section">
+                    <h2 className="section-heading">Extended usage</h2>
+                    <p className="extra-usage-details" style={{ marginBottom: 8, opacity: 0.85, fontSize: 11 }}>
+                      Extra fields from Cursor&apos;s Connect RPCs and <code>cursor.com</code> when available.
+                      Many Enterprise meters only expose spend vs limit above; model split and on-demand may be absent.
+                    </p>
+                    {cursorData.billing_cycle_start && (
+                      <div className="extra-usage-details">
+                        <span>
+                          Cycle starts{" "}
+                          {new Date(cursorData.billing_cycle_start).toLocaleDateString([], {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+                    )}
+                    {cursorData.plan_remaining_cents != null && (
+                      <div className="extra-usage-details">
+                        <span>Included remaining (Connect)</span>
+                        <span>{formatCurrencyFromCents(cursorData.plan_remaining_cents)}</span>
+                      </div>
+                    )}
+                    {cursorData.usage_meter_enabled != null && (
+                      <div className="extra-usage-details">
+                        <span>Dashboard meter enabled</span>
+                        <span>{cursorData.usage_meter_enabled ? "yes" : "no"}</span>
+                      </div>
+                    )}
+                    {cursorData.display_threshold_bp != null && (
+                      <div className="extra-usage-details">
+                        <span>Display threshold (basis points)</span>
+                        <span>{cursorData.display_threshold_bp}</span>
+                      </div>
+                    )}
+                    {cursorData.auto_model_selected_display_message && (
+                      <div className="extra-usage-details">
+                        <span title="From Cursor Connect">Auto mode message</span>
+                        <span>{cursorData.auto_model_selected_display_message}</span>
+                      </div>
+                    )}
+                    {cursorData.named_model_selected_display_message && (
+                      <div className="extra-usage-details">
+                        <span title="From Cursor Connect">Named model message</span>
+                        <span>{cursorData.named_model_selected_display_message}</span>
+                      </div>
+                    )}
+                    {cursorData.connect_extras != null && Object.keys(cursorData.connect_extras).length > 0 && (
+                      <details style={{ marginTop: 8 }}>
+                        <summary style={{ cursor: "pointer", fontSize: 12 }}>Connect RPC extras (JSON)</summary>
+                        <pre
+                          style={{
+                            marginTop: 6,
+                            fontSize: 10,
+                            maxHeight: 180,
+                            overflow: "auto",
+                            padding: 8,
+                            borderRadius: 6,
+                            background: "var(--surface-elevated, rgba(255,255,255,0.04))",
+                            border: "1px solid var(--border)",
+                          }}
+                        >
+                          {JSON.stringify(cursorData.connect_extras, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                    {cursorData.enterprise_usage != null && Object.keys(cursorData.enterprise_usage).length > 0 && (
+                      <details style={{ marginTop: 8 }}>
+                        <summary style={{ cursor: "pointer", fontSize: 12 }}>Enterprise usage API (JSON)</summary>
+                        <pre
+                          style={{
+                            marginTop: 6,
+                            fontSize: 10,
+                            maxHeight: 180,
+                            overflow: "auto",
+                            padding: 8,
+                            borderRadius: 6,
+                            background: "var(--surface-elevated, rgba(255,255,255,0.04))",
+                            border: "1px solid var(--border)",
+                          }}
+                        >
+                          {JSON.stringify(cursorData.enterprise_usage, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                )}
               </>
             ) : cursorError ? (
               <div className="loading-state">
