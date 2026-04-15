@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Popover } from "./components/Popover";
-import { Settings } from "./components/Settings";
+import { Settings2 as Settings } from "./components/settings/Settings2";
 import "./App.css";
 
 function AppContent() {
