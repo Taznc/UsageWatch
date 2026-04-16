@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import type { Store } from "@tauri-apps/plugin-store";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -19,6 +19,7 @@ export function useWidgetStore() {
   const { state, dispatch } = useWidget();
   const storeRef = useRef<Store | null>(null);
   const tauri = isTauriRuntime();
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     if (!tauri) return;
@@ -26,6 +27,7 @@ export function useWidgetStore() {
       const store = await load("credentials.json", { autoSave: false, defaults: {} });
       storeRef.current = store;
       dispatch({ type: "SET_LAYOUT", layout: normalizeWidgetOverlayLayout(await store.get(WIDGET_LAYOUT_STORE_KEY)) });
+      setHydrated(true);
     }
     init();
   }, [dispatch, tauri]);
@@ -64,5 +66,5 @@ export function useWidgetStore() {
     }
   }
 
-  return { savePosition, saveLayout };
+  return { savePosition, saveLayout, hydrated };
 }

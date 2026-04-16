@@ -60,6 +60,13 @@ function normalizeScale(scale: unknown) {
   return Math.max(0.5, Math.min(1.15, Number(scale.toFixed(2))));
 }
 
+function normalizeOpacity(opacity: unknown) {
+  if (typeof opacity !== "number" || Number.isNaN(opacity)) {
+    return DEFAULT_WIDGET_OVERLAY_LAYOUT.opacity;
+  }
+  return Math.max(0.1, Math.min(1, Number(opacity.toFixed(2))));
+}
+
 function normalizePosition(saved: { x?: unknown; y?: unknown } | undefined) {
   return {
     x: typeof saved?.x === "number" ? saved.x : DEFAULT_WIDGET_OVERLAY_LAYOUT.position.x,
@@ -218,6 +225,7 @@ export function normalizeWidgetOverlayLayout(saved: unknown): WidgetOverlayLayou
       position: normalizePosition(legacy.position),
       density: normalizeDensity(legacy.preferences?.density),
       scale: DEFAULT_WIDGET_OVERLAY_LAYOUT.scale,
+      opacity: DEFAULT_WIDGET_OVERLAY_LAYOUT.opacity,
       cardVisibility: migrateLegacyVisibility(legacy.preferences),
     };
   }
@@ -227,6 +235,7 @@ export function normalizeWidgetOverlayLayout(saved: unknown): WidgetOverlayLayou
     position: normalizePosition(candidate.position as { x?: unknown; y?: unknown } | undefined),
     density: normalizeDensity(candidate.density),
     scale: normalizeScale(candidate.scale),
+    opacity: normalizeOpacity(candidate.opacity),
     themeId: normalizeThemeId(candidate.themeId),
     cardOrder: normalizeCardOrder(candidate.cardOrder),
     cardVisibility: normalizeVisibility(candidate.cardVisibility),

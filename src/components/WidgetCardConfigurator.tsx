@@ -67,19 +67,25 @@ export function WidgetCardConfigurator({ cardOrder, cardVisibility, onReorder, o
   const [dragId, setDragId] = useState<WidgetCardId | null>(null);
   const [overId, setOverId] = useState<WidgetCardId | null>(null);
 
-  function handleDragStart(id: WidgetCardId) {
+  function handleDragStart(e: React.DragEvent, id: WidgetCardId) {
+    // dataTransfer.setData is required for HTML5 DnD to fire dragover/drop in WebView2
+    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = "move";
     setDragId(id);
   }
 
   function handleDragOver(e: React.DragEvent, id: WidgetCardId) {
     e.preventDefault();
+    e.stopPropagation();
     if (id !== dragId) setOverId(id);
   }
 
   function handleDrop(e: React.DragEvent, id: WidgetCardId) {
     e.preventDefault();
-    if (dragId && id !== dragId) {
-      onReorder(insertBefore(cardOrder, dragId, id));
+    e.stopPropagation();
+    const dropped = (e.dataTransfer.getData("text/plain") as WidgetCardId) || dragId;
+    if (dropped && id !== dropped) {
+      onReorder(insertBefore(cardOrder, dropped, id));
     }
     setDragId(null);
     setOverId(null);
@@ -90,17 +96,16 @@ export function WidgetCardConfigurator({ cardOrder, cardVisibility, onReorder, o
     setOverId(null);
   }
 
-  // Show the sentinel drop-zone at the bottom when dragging over the last slot
   function handleListDragOver(e: React.DragEvent) {
     e.preventDefault();
   }
 
   function handleListDrop(e: React.DragEvent) {
     e.preventDefault();
-    if (dragId && overId === null) {
-      // dropped at end
-      const next = cardOrder.filter((id) => id !== dragId);
-      next.push(dragId);
+    const dropped = (e.dataTransfer.getData("text/plain") as WidgetCardId) || dragId;
+    if (dropped && overId === null) {
+      const next = cardOrder.filter((id) => id !== dropped);
+      next.push(dropped);
       onReorder(next);
     }
     setDragId(null);
@@ -142,7 +147,7 @@ export function WidgetCardConfigurator({ cardOrder, cardVisibility, onReorder, o
 
               <div
                 draggable
-                onDragStart={() => handleDragStart(cardId)}
+                onDragStart={(e) => handleDragStart(e, cardId)}
                 onDragOver={(e) => handleDragOver(e, cardId)}
                 onDrop={(e) => handleDrop(e, cardId)}
                 onDragEnd={handleDragEnd}

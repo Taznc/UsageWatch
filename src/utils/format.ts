@@ -30,15 +30,16 @@ export function formatCountdown(resetAt: string | null): string {
 
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
+  if (hours >= 48) {
+    const days = Math.floor(hours / 24);
+    const remHours = hours % 24;
+    return remHours > 0 ? `${days} days ${remHours} hr` : `${days} days`;
+  }
   if (hours > 0) {
-    return minutes > 0 ? `${hours} hours ${minutes} min` : `${hours} hours`;
+    return minutes > 0 ? `${hours} hr ${minutes} min` : `${hours} hr`;
   }
-  if (minutes > 0) {
-    return `${minutes} min`;
-  }
-  return `${seconds}s`;
+  return `${minutes} min`;
 }
 
 export function formatTimestamp(iso: string): string {

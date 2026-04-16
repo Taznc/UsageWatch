@@ -116,17 +116,34 @@ export function WidgetSection() {
       </div>
 
       <SettingGroup label="Layout">
-        <SettingRow label="Density">
-          <select
-            className="s-select"
-            value={layout.density}
-            onChange={(e) => updateLayout({ density: e.target.value as WidgetDensity })}
-          >
-            <option value="ultra-compact">Ultra compact</option>
-            <option value="compact">Compact</option>
-            <option value="comfortable">Comfortable</option>
-          </select>
-        </SettingRow>
+        {(() => {
+          const DENSITIES: WidgetDensity[] = ["ultra-compact", "compact", "comfortable"];
+          const DENSITY_LABELS: Record<WidgetDensity, string> = {
+            "ultra-compact": "Ultra compact",
+            compact: "Compact",
+            comfortable: "Comfortable",
+          };
+          const densityIndex = DENSITIES.indexOf(layout.density);
+          return (
+            <div className="s-row s-row--col">
+              <div className="s-row-left" style={{ width: "100%" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span className="s-row-label">Density</span>
+                  <span className="s-slider-value">{DENSITY_LABELS[layout.density]}</span>
+                </div>
+              </div>
+              <input
+                type="range" min={0} max={2} step={1}
+                value={densityIndex}
+                onChange={(e) => updateLayout({ density: DENSITIES[Number(e.target.value)] })}
+                className="s-slider"
+              />
+              <div className="s-slider-row">
+                <span>Ultra compact</span><span>Comfortable</span>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="s-row s-row--col">
           <div className="s-row-left" style={{ width: "100%" }}>
@@ -143,6 +160,32 @@ export function WidgetSection() {
             className="s-slider"
           />
           <div className="s-slider-row"><span>50%</span><span>115%</span></div>
+        </div>
+
+        <SettingRow label="Position">
+          <button
+            className="s-btn-sm"
+            onClick={() => updateLayout({ position: { x: 200, y: 100 } })}
+          >
+            Reset to default
+          </button>
+        </SettingRow>
+
+        <div className="s-row s-row--col">
+          <div className="s-row-left" style={{ width: "100%" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span className="s-row-label">Opacity</span>
+              <span className="s-slider-value">{Math.round((layout.opacity ?? 1) * 100)}%</span>
+            </div>
+            <div className="s-row-hint">Controls transparency of cards and header</div>
+          </div>
+          <input
+            type="range" min={10} max={100} step={5}
+            value={Math.round((layout.opacity ?? 1) * 100)}
+            onChange={(e) => updateLayout({ opacity: Number(e.target.value) / 100 })}
+            className="s-slider"
+          />
+          <div className="s-slider-row"><span>10%</span><span>100%</span></div>
         </div>
       </SettingGroup>
 

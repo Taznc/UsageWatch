@@ -100,12 +100,14 @@ function PinboardCell({
 
 export function WidgetOverlay() {
   useWidgetData();
-  const { savePosition } = useWidgetStore();
+  const { savePosition, hydrated } = useWidgetStore();
   const { state } = useWidget();
   const rootRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
   const ignoreStateRef = useRef<boolean | null>(null);
+  // True while we are calling setPosition programmatically; suppresses onMoved saves.
+  const programmaticSetRef = useRef(false);
   const [hitboxes, setHitboxes] = useState<Hitbox[]>([]);
   const tauri = isTauriRuntime();
 
@@ -160,16 +162,22 @@ export function WidgetOverlay() {
     invoke("force_widget_transparent").catch(() => {});
   }, [tauri]);
 
-  // Keep the native window aligned with persisted layout whenever the store hydrates or the user moves.
-  // (Previously we only applied position once on mount, so the default layout won before credentials.json loaded.)
+  // Keep the native window aligned with persisted layout. Wait for store hydration before
+  // calling setPosition so the default {x:200,y:100} doesn't jump the widget on dev reload.
+  // Skip while dragRef is true — the OS is already moving the window and calling setPosition
+  // mid-drag causes the flashing/fighting feedback loop.
   useEffect(() => {
-    if (!tauri) return;
+    if (!tauri || !hydrated || dragRef.current) return;
+    programmaticSetRef.current = true;
     getCurrentWindow()
       .setPosition(new LogicalPosition(state.layout.position.x, state.layout.position.y))
       .catch(() => {});
     getCurrentWindow().setIgnoreCursorEvents(true).catch(() => {});
     ignoreStateRef.current = true;
-  }, [state.layout.position.x, state.layout.position.y, tauri]);
+    // Clear after 150ms — long enough for any onMoved echo from this setPosition to arrive.
+    const t = setTimeout(() => { programmaticSetRef.current = false; }, 150);
+    return () => clearTimeout(t);
+  }, [state.layout.position.x, state.layout.position.y, tauri, hydrated]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -224,9 +232,15 @@ export function WidgetOverlay() {
   useEffect(() => {
     if (!tauri) return;
     const unlistenMove = getCurrentWindow().onMoved(({ payload }) => {
-      if (!dragRef.current) return;
-      savePosition(payload.x, payload.y);
       recalcHitboxes();
+      // Skip saves triggered by our own programmatic setPosition calls.
+      // dragRef.current is NOT used here: startDragging() resolves immediately on
+      // Windows (non-blocking), so dragRef is already false by the time onMoved fires.
+      if (programmaticSetRef.current) return;
+      // payload is in physical pixels; convert to logical before saving so that
+      // LogicalPosition restores correctly on any DPI scaling level.
+      const dpr = window.devicePixelRatio || 1;
+      savePosition(payload.x / dpr, payload.y / dpr);
     });
 
     return () => {
@@ -270,10 +284,10 @@ export function WidgetOverlay() {
     getCurrentWindow().setIgnoreCursorEvents(false).catch(() => {});
     getCurrentWindow()
       .startDragging()
-      .catch(() => {})
-      .finally(() => {
-        dragRef.current = false;
-      });
+      .catch(() => {});
+    // dragRef is cleared by pointerup/mouseup — NOT here.
+    // startDragging() resolves immediately on Windows (non-blocking), so clearing
+    // dragRef in .finally() would make it false before onMoved fires.
   }
 
   return (
@@ -290,6 +304,7 @@ export function WidgetOverlay() {
         ["--widget-stack-gap" as string]: `${theme.stackGap[state.layout.density]}px`,
         ["--widget-scale" as string]: String(state.layout.scale),
         ["--widget-accent-override" as string]: customization.accentColor || "",
+        opacity: state.layout.opacity,
       }}
     >
       <div

@@ -63,6 +63,7 @@ export interface WidgetOverlayLayout {
   themeId: WidgetThemeId;
   density: WidgetDensity;
   scale: number;
+  opacity: number;
   cardOrder: WidgetCardId[];
   cardVisibility: WidgetProviderCardVisibility;
   themeCustomizations: WidgetThemeCustomizationMap;
@@ -136,6 +137,7 @@ export const DEFAULT_WIDGET_OVERLAY_LAYOUT: WidgetOverlayLayout = {
   themeId: "rainmeter-stack",
   density: "ultra-compact",
   scale: 0.85,
+  opacity: 1,
   cardOrder: DEFAULT_WIDGET_CARD_ORDER,
   cardVisibility: DEFAULT_CARD_VISIBILITY,
   themeCustomizations: {},
