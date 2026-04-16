@@ -1042,6 +1042,20 @@ body.widget-preview-body {
   border-color: color-mix(in srgb, var(--widget-card-accent) 12%, rgba(255,255,255,0.08));
 }
 
+.widget-card-frame--rainmeter-stack .widget-card,
+.widget-card-frame--ultra-compact.widget-card-frame--rainmeter-stack .widget-card {
+  box-shadow: none;
+}
+
+.widget-card-frame--rainmeter-stack .widget-card__orb {
+  display: none;
+}
+
+.widget-card-frame--rainmeter-stack .widget-card__icon--slab,
+.widget-card-frame--rainmeter-stack .widget-card__progress-fill {
+  box-shadow: none;
+}
+
 .widget-card-frame--gauge-tower .widget-card {
   border-radius: 18px 18px 22px 22px;
   border-color: color-mix(in srgb, var(--widget-card-accent) 10%, rgba(192, 220, 255, 0.08));
@@ -1049,6 +1063,7 @@ body.widget-preview-body {
 
 .widget-card-frame--side-rail .widget-card {
   border-left: 2px solid color-mix(in srgb, var(--widget-card-accent) 42%, transparent);
+  box-shadow: none;
 }
 
 .widget-card-frame--mono-ticker .widget-card {
@@ -1437,9 +1452,7 @@ body.widget-preview-body {
 
 .widget-card-frame--orbit-gauges .widget-card {
   border-color: color-mix(in srgb, var(--widget-card-accent) 16%, rgba(194, 225, 255, 0.14));
-  box-shadow:
-    0 14px 28px rgba(0, 0, 0, 0.24),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .widget-card--orbit {
@@ -1463,7 +1476,7 @@ body.widget-preview-body {
 
 .widget-card__orbit-arc {
   transition: stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--widget-card-accent) 34%, transparent));
+  filter: none;
 }
 
 .widget-card__orbit-center {
@@ -1488,7 +1501,7 @@ body.widget-preview-body {
 }
 
 .widget-card__icon--orbit {
-  box-shadow: 0 0 20px color-mix(in srgb, var(--widget-card-accent) 18%, transparent);
+  box-shadow: none;
 }
 
 .widget-card__title--orbit {
@@ -1540,12 +1553,8 @@ body.widget-preview-body {
   padding: 10px 11px;
   border-radius: 16px;
   border: 1px solid color-mix(in srgb, var(--widget-card-accent) 18%, rgba(255, 255, 255, 0.08));
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--widget-card-accent) 12%, transparent), transparent 36%),
-    linear-gradient(180deg, rgb(12, 18, 26), rgb(6, 10, 15));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 12px 24px rgba(0, 0, 0, 0.18);
+  background: linear-gradient(180deg, rgb(12, 18, 26), rgb(6, 10, 15));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .widget-pinboard-cell__pin {

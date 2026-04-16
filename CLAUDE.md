@@ -169,12 +169,104 @@ Do not casually refactor the custom tray bridge.
 
 ## Windows Widget Shadow Regression
 
-On Windows, the widget can appear with a soft rounded border or a flat gray backdrop even when CSS is transparent. Those are native window/WebView2 composition issues, not normal frontend styling bugs.
+On Windows, a widget can look like it has a gray backing surface or a floating rounded window even when the root CSS is transparent. There are two different classes of problem:
 
-- Keep these invariants on the `widget` window in `src-tauri/tauri.conf.json`: `"transparent": true`, `"decorations": false`, `"shadow": false`.
-- Keep the Rust-side transparency hardening in `src-tauri/src/lib.rs`: `configure_widget_hwnd(...)`, `ensure_widget_window_transparent(...)`, and the `force_widget_transparent` command used by the widget frontend after mount.
-- If the widget suddenly shows a soft rounded border or gray background again, verify those invariants are still present and fully restart the app. Frontend HMR is not enough for native widget transparency/shadow changes.
-- Browser preview is not a valid test for this regression; verify it in the real Tauri widget window on Windows.
+1. Native window composition problems
+This is the actual Tauri/WebView window failing to stay transparent.
+
+2. Theme/rendering problems
+This is the widget technically remaining transparent, but card-level shadows/glows make it visually read like a gray window behind the cards.
+
+Both have to be handled correctly.
+
+### Required native window invariants
+
+The `widget` window in `src-tauri/tauri.conf.json` must keep all of these:
+
+- `"transparent": true`
+- `"decorations": false`
+- `"shadow": false`
+
+These are mandatory. If any of them change, Windows may render a native border/shadow again.
+
+### Required runtime transparency hooks
+
+Keep these runtime safeguards in place:
+
+- `src-tauri/src/lib.rs`
+  - `configure_widget_hwnd(...)`
+  - `force_widget_transparent(...)`
+- `src/widget/WidgetOverlay.tsx`
+  - `invoke("force_widget_transparent")` after mount
+- `src/widget/WidgetApp.tsx`
+  - runtime root/background styles for `html`, `body`, and `#widget-root` must stay transparent in the real Tauri widget window
+
+These are important because Windows/WebView2 transparency is not just a CSS concern; it depends on the native window and the webview backing surface staying transparent together.
+
+### SOP for transparent-safe widget themes
+
+When adding or modifying widget themes on Windows, treat `Mono Ticker` as the safe baseline.
+
+`Mono Ticker` stays visually transparent because it does **not** use the heavy generic slab-card rendering path. It uses the lightweight ticker-cell path in `WidgetOverlay.tsx`, with simple card fills and borders only.
+
+`Rainmeter Stack` reproduced the problem because it used the slab-stack card path in `WidgetCard.tsx` together with multiple glow/shadow effects. The fix was to remove the slab-only effects that made the cards visually behave like a gray-backed window:
+
+- outer card shadow
+- decorative accent orb
+- slab icon glow shadow
+- progress-fill glow shadow
+
+In practice, for Windows-safe widget themes:
+
+- Prefer flat fills, borders, and simple gradients
+- Prefer no outer card shadow when possible
+- Avoid large diffuse shadows around the whole card
+- Avoid large radial glow layers behind or around cards
+- Avoid glow-heavy accent effects that bleed beyond the card bounds
+- Avoid using decorative ambient effects as if the widget had an opaque canvas behind it
+
+This is especially important for themes that use the generic `.widget-card` slab path in `src/widget/widget.css`.
+
+### Safe pattern
+
+These are generally safe:
+
+- transparent widget root
+- simple linear-gradient card backgrounds
+- thin borders
+- compact meters
+- small, contained highlights inside the card bounds
+
+### Unsafe pattern
+
+These are high risk on Windows and should be treated with suspicion:
+
+- large outer `box-shadow` on the whole card
+- ambient radial glows around the card
+- icon glows that extend outside the card silhouette
+- progress glows that create a soft halo outside the card
+- any theme effect that makes the transparent window visually resemble a soft rectangular backing layer
+
+### Debugging checklist
+
+If a widget suddenly looks gray again on Windows:
+
+1. Check the native window config first
+   Confirm `transparent: true`, `decorations: false`, and `shadow: false` are still present on the `widget` window.
+2. Check the runtime transparency path
+   Confirm `force_widget_transparent(...)` is still invoked after mount and the widget root/background is still transparent.
+3. Compare against `Mono Ticker`
+   If `Mono Ticker` looks correct but another theme does not, the problem is probably theme rendering, not the native window.
+4. Remove visual effects in this order
+   Remove outer card shadow first, then ambient/radial glows, then icon glow, then progress glow.
+5. Test in the real Tauri widget window
+   Browser preview is not sufficient for Windows transparency validation.
+6. Fully restart the app
+   Frontend HMR is not enough for native window shadow/transparency changes.
+
+### Rule of thumb
+
+If `Mono Ticker` is transparent and another theme is not, do not start by changing Tauri config again. First diff the theme/card CSS and remove slab-style ambient shadows and glow layers until the theme behaves like a transparent overlay instead of a floating panel.
 
 ## Skills / Reusable Claude Assets
 
