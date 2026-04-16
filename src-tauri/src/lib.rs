@@ -178,11 +178,7 @@ pub fn run() {
 
             if let Some(widget_window) = app.get_webview_window("widget") {
                 let _ = widget_window.set_maximizable(false);
-                #[cfg(target_os = "windows")]
-                configure_widget_hwnd(&widget_window);
-
-                // Force both window and webview backgrounds to fully transparent.
-                let _ = widget_window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+                ensure_widget_window_transparent(&widget_window);
 
                 hook::start_global_mouse_stream(widget_window);
             }
@@ -207,7 +203,7 @@ pub fn run() {
 
             // Build tray icon
             let tray_menu = menu;
-            let tray = TrayIconBuilder::with_id("main-tray")
+            let _tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
                 .title("--")
@@ -247,7 +243,9 @@ pub fn run() {
                                 let _ = w.hide();
                                 save_widget_visible_to_store(app, false);
                             } else {
+                                ensure_widget_window_transparent(&w);
                                 let _ = w.show();
+                                ensure_widget_window_transparent(&w);
                                 let _ = w.set_focus();
                                 save_widget_visible_to_store(app, true);
                             }
@@ -432,6 +430,16 @@ fn configure_main_hwnd(main: &tauri::WebviewWindow) {
     }
 }
 
+fn ensure_widget_window_transparent(widget: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    configure_widget_hwnd(widget);
+
+    // Re-assert the transparent backing surface whenever the widget window is
+    // created or shown. WebView2 can fall back to its default gray surface if
+    // the background is not explicitly re-applied after native window changes.
+    let _ = widget.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+}
+
 /// Widget: same as main, plus tool-window exstyle and transparency guarantee.
 #[cfg(target_os = "windows")]
 fn configure_widget_hwnd(widget: &tauri::WebviewWindow) {
@@ -462,7 +470,7 @@ fn configure_widget_hwnd(widget: &tauri::WebviewWindow) {
 #[tauri::command]
 fn force_widget_transparent(app: tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("widget") {
-        let _ = w.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+        ensure_widget_window_transparent(&w);
     }
 }
 
@@ -772,6 +780,8 @@ fn restore_widget_window_from_store(app: &tauri::AppHandle) {
     }
 
     if store.get("widget_visible").and_then(|v| v.as_bool()) == Some(true) {
+        ensure_widget_window_transparent(&w);
         let _ = w.show();
+        ensure_widget_window_transparent(&w);
     }
 }

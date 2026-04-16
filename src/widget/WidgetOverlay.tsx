@@ -30,11 +30,16 @@ function clampProgress(progress?: number | null) {
   return Math.max(0, Math.min(100, progress));
 }
 
-function measureScaledSize(element: HTMLDivElement, scale: number) {
+function measureWindowBounds(element: HTMLDivElement, scale: number) {
   const normalizedScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const rect = element.getBoundingClientRect();
+  const visualWidth = rect.width;
+  const visualHeight = rect.height;
+  const fallbackWidth = element.scrollWidth * normalizedScale;
+  const fallbackHeight = element.scrollHeight * normalizedScale;
   return {
-    width: Math.ceil(element.scrollWidth * normalizedScale) + 2,
-    height: Math.ceil(element.scrollHeight * normalizedScale) + 2,
+    width: Math.ceil(Math.max(visualWidth, fallbackWidth)) + 2,
+    height: Math.ceil(Math.max(visualHeight, fallbackHeight)) + 2,
   };
 }
 
@@ -114,7 +119,7 @@ export function WidgetOverlay() {
 
   function syncWindowSize(target: HTMLDivElement) {
     if (!tauri) return;
-    const { width, height } = measureScaledSize(target, state.layout.scale);
+    const { width, height } = measureWindowBounds(target, state.layout.scale);
     if (width <= 0 || height <= 0) return;
     getCurrentWindow()
       .setSize(new LogicalSize(width, height))
@@ -169,29 +174,48 @@ export function WidgetOverlay() {
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
+    let frame = 0;
+    let nestedFrame = 0;
+    let cancelled = false;
+
+    const scheduleSync = () => {
+      if (!tauri) return;
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(nestedFrame);
+      frame = requestAnimationFrame(() => {
+        nestedFrame = requestAnimationFrame(() => {
+          if (!cancelled && root.isConnected) {
+            syncWindowSize(root);
+          }
+        });
+      });
+    };
 
     const recalc = () => {
       recalcHitboxes();
+      scheduleSync();
     };
 
     const observer = new ResizeObserver(() => {
       recalc();
-      syncWindowSize(root);
     });
 
     observer.observe(root);
     window.addEventListener("resize", recalc);
     recalc();
 
-    if (tauri) {
-      requestAnimationFrame(() => {
-        if (root.isConnected) {
-          syncWindowSize(root);
+    if (tauri && "fonts" in document) {
+      document.fonts.ready.then(() => {
+        if (!cancelled) {
+          scheduleSync();
         }
       });
     }
 
     return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(nestedFrame);
       observer.disconnect();
       window.removeEventListener("resize", recalc);
     };

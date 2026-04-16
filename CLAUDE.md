@@ -169,10 +169,12 @@ Do not casually refactor the custom tray bridge.
 
 ## Windows Widget Shadow Regression
 
-On Windows, the widget can appear as a floating rounded window even when CSS is transparent — that border is native window shadow, not frontend styling.
+On Windows, the widget can appear with a soft rounded border or a flat gray backdrop even when CSS is transparent. Those are native window/WebView2 composition issues, not normal frontend styling bugs.
 
-- The fix lives in `src-tauri/tauri.conf.json` on the `widget` window: `"transparent": true`, `"decorations": false`, `"shadow": false`.
-- If the widget suddenly shows a soft rounded border, verify `shadow: false` is still present and the app was fully restarted (HMR is insufficient for native window shadow changes).
+- Keep these invariants on the `widget` window in `src-tauri/tauri.conf.json`: `"transparent": true`, `"decorations": false`, `"shadow": false`.
+- Keep the Rust-side transparency hardening in `src-tauri/src/lib.rs`: `configure_widget_hwnd(...)`, `ensure_widget_window_transparent(...)`, and the `force_widget_transparent` command used by the widget frontend after mount.
+- If the widget suddenly shows a soft rounded border or gray background again, verify those invariants are still present and fully restart the app. Frontend HMR is not enough for native widget transparency/shadow changes.
+- Browser preview is not a valid test for this regression; verify it in the real Tauri widget window on Windows.
 
 ## Skills / Reusable Claude Assets
 

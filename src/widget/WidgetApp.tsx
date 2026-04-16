@@ -6,7 +6,15 @@ import "./widget.css";
 
 function WidgetRoot() {
   useEffect(() => {
-    if (isTauriRuntime()) return;
+    if (isTauriRuntime()) {
+      document.documentElement.style.background = "transparent";
+      document.documentElement.style.backgroundColor = "transparent";
+      document.body.style.background = "transparent";
+      document.body.style.backgroundColor = "transparent";
+      document.getElementById("widget-root")?.style.setProperty("background", "transparent");
+      document.getElementById("widget-root")?.style.setProperty("background-color", "transparent");
+      return;
+    }
     document.body.classList.add("widget-preview-body");
     return () => document.body.classList.remove("widget-preview-body");
   }, []);

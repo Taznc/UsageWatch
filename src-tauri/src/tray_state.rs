@@ -218,7 +218,7 @@ impl TrayDisplayData {
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 
-fn render_tray(app: &AppHandle, provider: Provider, data: &TrayDisplayData, format: &TrayFormat) {
+fn render_tray(app: &AppHandle, _provider: Provider, data: &TrayDisplayData, format: &TrayFormat) {
     if app.tray_by_id("main-tray").is_none() {
         return;
     }
@@ -226,7 +226,7 @@ fn render_tray(app: &AppHandle, provider: Provider, data: &TrayDisplayData, form
     #[cfg(target_os = "macos")]
     {
         let segments = build_styled_segments(data, format);
-        crate::styled_tray::set_native_styled_title_with_icon(&segments, Some(provider.icon_name()));
+        crate::styled_tray::set_native_styled_title_with_icon(&segments, Some(_provider.icon_name()));
     }
 
     #[cfg(not(target_os = "macos"))]
