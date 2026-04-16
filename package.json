@@ -3,6 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "author": "Josh Ashworth",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Taznc/UsageWatch"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

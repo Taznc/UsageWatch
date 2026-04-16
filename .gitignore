@@ -26,8 +26,10 @@ dist-ssr
 # Environment variables
 .env*
 
-# Claude Code session memory
+# Claude Code session memory and local config
 .remember/
+.claude/settings.local.json
+mcp-server/.claude/
 
 # Screenshots / one-off artifacts
 playwright-widget.png
