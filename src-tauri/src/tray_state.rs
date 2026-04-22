@@ -157,6 +157,7 @@ pub struct TrayDisplayData {
     pub weekly_reset: Option<String>,
     pub sonnet_pct: Option<f64>,
     pub opus_pct: Option<f64>,
+    pub design_pct: Option<f64>,
     pub extra_usage_enabled: bool,
     pub extra_used: Option<f64>,
     pub extra_limit: Option<f64>,
@@ -171,6 +172,7 @@ impl TrayDisplayData {
             weekly_reset: data.seven_day.as_ref().and_then(|w| w.resets_at.clone()),
             sonnet_pct: data.seven_day_sonnet.as_ref().map(|w| w.utilization),
             opus_pct: data.seven_day_opus.as_ref().map(|w| w.utilization),
+            design_pct: data.seven_day_omelette.as_ref().map(|w| w.utilization),
             extra_usage_enabled: data
                 .extra_usage
                 .as_ref()
@@ -189,6 +191,7 @@ impl TrayDisplayData {
             weekly_reset: None,
             sonnet_pct: None,
             opus_pct: None,
+            design_pct: None,
             extra_usage_enabled: true,
             extra_used: Some(data.current_spend_cents),
             extra_limit: Some(data.limit_cents),
@@ -209,6 +212,7 @@ impl TrayDisplayData {
                 .and_then(|w| w.resets_at.clone()),
             sonnet_pct: None,
             opus_pct: None,
+            design_pct: None,
             extra_usage_enabled: false,
             extra_used: None,
             extra_limit: None,
@@ -346,6 +350,7 @@ fn resolve_field_plain(
         }),
         TrayField::SonnetPct => dd.sonnet_pct.filter(|&p| p > 0.0).map(|p| format!("So {}%", p.round() as i32)),
         TrayField::OpusPct => dd.opus_pct.filter(|&p| p > 0.0).map(|p| format!("Op {}%", p.round() as i32)),
+        TrayField::DesignPct => dd.design_pct.filter(|&p| p > 0.0).map(|p| format!("Dz {}%", p.round() as i32)),
         TrayField::ExtraUsage => {
             if dd.extra_usage_enabled {
                 if let (Some(used), Some(limit)) = (dd.extra_used, dd.extra_limit) {
@@ -515,6 +520,15 @@ fn resolve_field_styled(
                 StyledSegment::from_rgba_u8(&format!("{}%", pct.round() as i32), pr, pg, pb, pa, 13.0, false),
             ])
         }
+        TrayField::DesignPct => {
+            let pct = dd.design_pct.filter(|&p| p > 0.0)?;
+            let (r, g, b, a) = label_color;
+            let (pr, pg, pb, pa) = pct_color(pct);
+            Some(vec![
+                StyledSegment::from_rgba_u8("Dz ", r, g, b, a, 13.0, false),
+                StyledSegment::from_rgba_u8(&format!("{}%", pct.round() as i32), pr, pg, pb, pa, 13.0, false),
+            ])
+        }
         TrayField::ExtraUsage => {
             if !dd.extra_usage_enabled { return None; }
             let used = dd.extra_used?;
@@ -567,6 +581,13 @@ fn build_plain_title(data: &TrayDisplayData, format: &TrayFormat) -> String {
         if let Some(pct) = data.opus_pct {
             if pct > 0.0 {
                 parts.push(format!("Op {}%", pct.round() as i32));
+            }
+        }
+    }
+    if format.show_design_pct {
+        if let Some(pct) = data.design_pct {
+            if pct > 0.0 {
+                parts.push(format!("Dz {}%", pct.round() as i32));
             }
         }
     }
@@ -692,6 +713,23 @@ fn build_styled_segments(
                 let (pr, pg, pb, pa) = pct_color(pct);
                 groups.push(vec![
                     StyledSegment::from_rgba_u8("Op ", r, g, b, a, 13.0, false),
+                    StyledSegment::from_rgba_u8(
+                        &format!("{}%", pct.round() as i32),
+                        pr, pg, pb, pa, 13.0, false,
+                    ),
+                ]);
+            }
+        }
+    }
+
+    // Design (Claude-only)
+    if format.show_design_pct {
+        if let Some(pct) = data.design_pct {
+            if pct > 0.0 {
+                let (r, g, b, a) = label_color;
+                let (pr, pg, pb, pa) = pct_color(pct);
+                groups.push(vec![
+                    StyledSegment::from_rgba_u8("Dz ", r, g, b, a, 13.0, false),
                     StyledSegment::from_rgba_u8(
                         &format!("{}%", pct.round() as i32),
                         pr, pg, pb, pa, 13.0, false,

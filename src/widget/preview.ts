@@ -16,6 +16,7 @@ export const previewUsageData: UsageData = {
   seven_day_sonnet: { utilization: 68, resets_at: futureIso(61) },
   seven_day_oauth_apps: { utilization: 21, resets_at: futureIso(61) },
   seven_day_cowork: { utilization: 12, resets_at: futureIso(61) },
+  seven_day_omelette: { utilization: 55, resets_at: futureIso(61) },
   extra_usage: {
     is_enabled: true,
     monthly_limit: 2500,

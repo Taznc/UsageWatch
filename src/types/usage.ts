@@ -17,6 +17,7 @@ export interface UsageData {
   seven_day_sonnet: UsageWindow | null;
   seven_day_oauth_apps: UsageWindow | null;
   seven_day_cowork: UsageWindow | null;
+  seven_day_omelette: UsageWindow | null;
   extra_usage: ExtraUsage | null;
 }
 
@@ -79,6 +80,7 @@ export interface TrayFormat {
   show_weekly_pct: boolean;
   show_sonnet_pct: boolean;
   show_opus_pct: boolean;
+  show_design_pct: boolean;
   show_session_timer: boolean;
   show_weekly_timer: boolean;
   show_extra_usage: boolean;
@@ -193,6 +195,7 @@ export type TrayField =
   | "WeeklyTimer"
   | "SonnetPct"
   | "OpusPct"
+  | "DesignPct"
   | "ExtraUsage";
 
 export type TraySegmentKind =

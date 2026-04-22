@@ -101,6 +101,7 @@ const TRAY_FIELD_OPTIONS: { value: TrayField; label: string; providerOnly?: Prov
   { value: "WeeklyTimer",  label: "Weekly countdown" },
   { value: "SonnetPct",    label: "Sonnet %",  providerOnly: "Claude" },
   { value: "OpusPct",      label: "Opus %",    providerOnly: "Claude" },
+  { value: "DesignPct",    label: "Design %",  providerOnly: "Claude" },
   { value: "ExtraUsage",   label: "Extra usage spend" },
 ];
 
@@ -254,6 +255,7 @@ export function Settings() {
     show_weekly_pct: true,
     show_sonnet_pct: false,
     show_opus_pct: false,
+    show_design_pct: false,
     show_session_timer: true,
     show_weekly_timer: false,
     show_extra_usage: false,
@@ -453,6 +455,7 @@ export function Settings() {
     }
     if (trayFormat.show_sonnet_pct) parts.push("So:8%");
     if (trayFormat.show_opus_pct) parts.push("Op:15%");
+    if (trayFormat.show_design_pct) parts.push("Dz:22%");
     if (trayFormat.show_extra_usage) parts.push("$5/$20");
     return parts.length > 0 ? parts.join(trayFormat.separator) : "--";
   };
@@ -556,6 +559,7 @@ export function Settings() {
                   { key: "show_weekly_timer" as const, label: "Weekly countdown" },
                   { key: "show_sonnet_pct" as const, label: "Sonnet %" },
                   { key: "show_opus_pct" as const, label: "Opus %" },
+                  { key: "show_design_pct" as const, label: "Design %" },
                   { key: "show_extra_usage" as const, label: "Extra usage spend" },
                 ].map(({ key, label }) => (
                   <div className="toggle-row" key={key}>

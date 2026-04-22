@@ -15,7 +15,8 @@ const CARD_META: Record<WidgetCardId, {
   extra:    { label: "Extra Credits",    desc: "Paid overage usage",             providers: ["Claude"],                    accent: "#f59e0b" },
   balance:  { label: "Prepaid Balance",  desc: "Account credit reserve",         providers: ["Claude"],                    accent: "#22d3ee" },
   credits:  { label: "Codex Credits",    desc: "OpenAI credit balance",          providers: ["Codex"],                     accent: "#22c55e" },
-  status:   { label: "API Status",       desc: "Service health indicator",       providers: ["Claude", "Codex", "Cursor"], accent: "#a78bfa" },
+  design:   { label: "Design 7-day",     desc: "Claude Design weekly window",    providers: ["Claude"],                    accent: "#a78bfa" },
+  status:   { label: "API Status",       desc: "Service health indicator",       providers: ["Claude", "Codex", "Cursor"], accent: "#6ce7bd" },
 };
 
 const PROVIDER_META: Record<Provider, { initial: string; color: string }> = {

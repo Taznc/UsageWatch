@@ -15,6 +15,8 @@ pub struct UsageData {
     #[serde(default)]
     pub seven_day_cowork: Option<UsageWindow>,
     #[serde(default)]
+    pub seven_day_omelette: Option<UsageWindow>,
+    #[serde(default)]
     pub extra_usage: Option<ExtraUsage>,
 }
 
@@ -89,6 +91,8 @@ pub struct TrayFormat {
     pub show_sonnet_pct: bool,
     #[serde(default)]
     pub show_opus_pct: bool,
+    #[serde(default)]
+    pub show_design_pct: bool,
     #[serde(default = "default_true")]
     pub show_session_timer: bool,
     #[serde(default)]
@@ -114,6 +118,7 @@ impl Default for TrayFormat {
             show_weekly_pct: true,
             show_sonnet_pct: false,
             show_opus_pct: false,
+            show_design_pct: false,
             show_session_timer: true,
             show_weekly_timer: false,
             show_extra_usage: false,
@@ -526,6 +531,7 @@ pub enum TrayField {
     WeeklyTimer,
     SonnetPct,
     OpusPct,
+    DesignPct,
     ExtraUsage,
 }
 

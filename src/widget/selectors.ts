@@ -84,6 +84,20 @@ function buildClaudeCards(snapshot: WidgetDataSnapshot): WidgetCardDefinition[] 
       primary: formatCurrencyFromCents(snapshot.billingData?.prepaid_credits?.amount ?? 0),
       secondary: "Account balance",
     },
+    (() => {
+      const designPct = clampProgress(snapshot.usageData?.seven_day_omelette?.utilization);
+      return {
+        id: "design" as const,
+        provider: "Claude" as const,
+        icon: "Dz",
+        shortTitle: "DZN",
+        accent: "#a78bfa",
+        title: "Design 7D",
+        primary: designPct == null ? "--" : `${Math.round(designPct)}% used`,
+        ...buildResetDetail(snapshot.usageData?.seven_day_omelette?.resets_at),
+        progress: designPct,
+      };
+    })(),
     {
       id: "status",
       provider: "Claude",

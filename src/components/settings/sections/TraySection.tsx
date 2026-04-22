@@ -37,6 +37,7 @@ const TRAY_FIELD_OPTIONS: { value: TrayField; label: string; providerOnly?: Prov
   { value: "WeeklyTimer",  label: "Weekly countdown" },
   { value: "SonnetPct",    label: "Sonnet %",  providerOnly: "Claude" },
   { value: "OpusPct",      label: "Opus %",    providerOnly: "Claude" },
+  { value: "DesignPct",    label: "Design %",  providerOnly: "Claude" },
   { value: "ExtraUsage",   label: "Extra usage spend" },
 ];
 
@@ -72,6 +73,7 @@ const DEFAULT_FORMAT: TrayFormat = {
   show_weekly_pct: true,
   show_sonnet_pct: false,
   show_opus_pct: false,
+  show_design_pct: false,
   show_session_timer: true,
   show_weekly_timer: false,
   show_extra_usage: false,
@@ -312,6 +314,7 @@ export function TraySection() {
     }
     if (fmt.show_sonnet_pct) parts.push("So:8%");
     if (fmt.show_opus_pct) parts.push("Op:15%");
+    if (fmt.show_design_pct) parts.push("Dz:22%");
     if (fmt.show_extra_usage) parts.push("$5/$20");
     return parts.length > 0 ? parts.join(fmt.separator) : "--";
   };
@@ -412,6 +415,7 @@ export function TraySection() {
     { key: "show_weekly_timer",  label: "Weekly countdown" },
     { key: "show_sonnet_pct",    label: "Sonnet %" },
     { key: "show_opus_pct",      label: "Opus %" },
+    { key: "show_design_pct",    label: "Design %" },
     { key: "show_extra_usage",   label: "Extra usage spend" },
   ];
 

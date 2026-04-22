@@ -29,7 +29,7 @@ export type WidgetThemeId =
   | "mono-ticker"
   | "pinboard-mini"
   | "terminal-deck";
-export type WidgetCardId = "session" | "weekly" | "extra" | "balance" | "credits" | "status";
+export type WidgetCardId = "session" | "weekly" | "extra" | "balance" | "credits" | "design" | "status";
 
 export const ALL_WIDGET_THEME_IDS: WidgetThemeId[] = [
   "rainmeter-stack",
@@ -92,6 +92,7 @@ export const ALL_WIDGET_CARD_IDS: WidgetCardId[] = [
   "session",
   "weekly",
   "extra",
+  "design",
   "balance",
   "credits",
   "status",
@@ -99,7 +100,7 @@ export const ALL_WIDGET_CARD_IDS: WidgetCardId[] = [
 
 export const DEFAULT_WIDGET_CARD_ORDER: WidgetCardId[] = [...ALL_WIDGET_CARD_IDS];
 export const WIDGET_PROVIDER_CARD_IDS: Record<Provider, WidgetCardId[]> = {
-  Claude: ["session", "weekly", "extra", "balance", "status"],
+  Claude: ["session", "weekly", "extra", "balance", "design", "status"],
   Codex: ["session", "weekly", "credits", "status"],
   Cursor: ["session", "status"],
 };
@@ -111,6 +112,7 @@ const DEFAULT_CARD_VISIBILITY: WidgetProviderCardVisibility = {
     extra: true,
     balance: false,
     credits: false,
+    design: false,
     status: false,
   },
   Codex: {
@@ -119,6 +121,7 @@ const DEFAULT_CARD_VISIBILITY: WidgetProviderCardVisibility = {
     extra: false,
     balance: false,
     credits: true,
+    design: false,
     status: false,
   },
   Cursor: {
@@ -127,6 +130,7 @@ const DEFAULT_CARD_VISIBILITY: WidgetProviderCardVisibility = {
     extra: false,
     balance: false,
     credits: false,
+    design: false,
     status: false,
   },
 };
