@@ -3,6 +3,7 @@ import type { UsageData, AppSettings, AppView, CodexUsageData, CursorUsageData, 
 
 interface AppState {
   view: AppView;
+  pinned: boolean;
   usageData: UsageData | null;
   lastUpdated: string | null;
   error: string | null;
@@ -21,6 +22,7 @@ interface AppState {
 
 type AppAction =
   | { type: "SET_VIEW"; view: AppView }
+  | { type: "SET_PINNED"; pinned: boolean }
   | { type: "SET_USAGE"; data: UsageData; timestamp: string; peakHours?: PeakHoursStatus | null }
   | { type: "SET_ERROR"; error: string; timestamp: string }
   | { type: "SET_LOADING"; loading: boolean }
@@ -44,6 +46,7 @@ const defaultSettings: AppSettings = {
 
 const initialState: AppState = {
   view: "popover",
+  pinned: true,
   usageData: null,
   lastUpdated: null,
   error: null,
@@ -64,6 +67,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "SET_VIEW":
       return { ...state, view: action.view };
+    case "SET_PINNED":
+      return { ...state, pinned: action.pinned };
     case "SET_USAGE":
       return {
         ...state,

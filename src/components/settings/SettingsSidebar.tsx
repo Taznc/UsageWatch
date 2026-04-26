@@ -1,4 +1,4 @@
-export type SectionId = "connections" | "tray" | "widget" | "alerts" | "general" | "debug";
+export type SectionId = "connections" | "tray" | "widget" | "alerts" | "mcp" | "general" | "debug";
 
 const isMacSidebar = /mac/i.test(navigator.userAgent);
 
@@ -14,6 +14,7 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: "tray",        icon: "📊", label: isMacSidebar ? "Menu Bar" : "Tray" },
   { id: "widget",      icon: "🪟", label: "Widget" },
   { id: "alerts",      icon: "🔔", label: "Alerts" },
+  { id: "mcp",         icon: "🧩", label: "MCP" },
   { id: "general",     icon: "⚙️",  label: "General" },
   { id: "debug",       icon: "🐛", label: "Debug", debug: true },
 ];

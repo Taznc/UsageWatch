@@ -6,6 +6,7 @@ mod hook;
 mod http_server;
 mod models;
 mod polling;
+pub mod process_monitor;
 #[cfg(target_os = "macos")]
 mod styled_tray;
 mod tray_renderer;
@@ -102,6 +103,7 @@ pub fn run() {
         .manage(latest_codex.clone())
         .manage(latest_cursor.clone())
         .manage(latest_billing.clone())
+        .manage(Arc::new(commands::mcp::McpState::new()))
         .invoke_handler(tauri::generate_handler![
             commands::credentials::save_session_key,
             commands::credentials::get_session_key,
@@ -157,6 +159,19 @@ pub fn run() {
             set_title_matching_enabled,
             set_widget_drag_rect,
             force_widget_transparent,
+            commands::mcp::mcp_list_hosts,
+            commands::mcp::mcp_list_servers_unified,
+            commands::mcp::mcp_running_hosts,
+            commands::mcp::mcp_register_project,
+            commands::mcp::mcp_unregister_project,
+            commands::mcp::mcp_list_projects,
+            commands::mcp::mcp_set_enabled,
+            commands::mcp::mcp_set_enabled_bulk,
+            commands::mcp::mcp_add_server,
+            commands::mcp::mcp_remove_server,
+            commands::mcp::mcp_copy_server,
+            commands::mcp::mcp_restart_host,
+            commands::mcp::mcp_preview_translation,
         ])
         .setup(move |app| {
             // Hide dock icon on macOS (agent/accessory app)
@@ -172,6 +187,7 @@ pub fn run() {
 
             if let Some(main_window) = app.get_webview_window("main") {
                 let _ = main_window.set_maximizable(false);
+                let _ = main_window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: 500.0, height: 840.0 }));
                 #[cfg(target_os = "windows")]
                 configure_main_hwnd(&main_window);
             }
@@ -273,8 +289,8 @@ pub fn run() {
                                 // Tray rect is in physical pixels; scale window dimensions
                                 // (logical pts) to physical so centering is correct on HiDPI.
                                 let scale = window.scale_factor().unwrap_or(1.0);
-                                let window_width_px = 380.0_f64 * scale;
-                                let window_height_px = 800.0_f64 * scale;
+                                let window_width_px = 500.0_f64 * scale;
+                                let window_height_px = 840.0_f64 * scale;
                                 let (icon_w, icon_h) = match rect.size {
                                     tauri::Size::Physical(s) => {
                                         (s.width as f64, s.height as f64)

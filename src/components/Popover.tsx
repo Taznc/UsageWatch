@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { useUsageData } from "../hooks/useUsageData";
 import { useHistoryRecorder } from "../hooks/useHistoryRecorder";
 import { useBurnRate } from "../hooks/useBurnRate";
@@ -36,7 +35,8 @@ export function Popover() {
 
   const showTabs = codexConfigured || cursorConfigured;
   const [billing, setBilling] = useState<BillingInfo | null>(null);
-  const [pinned, setPinned] = useState(true);
+  const { pinned } = state;
+  const setPinned = (p: boolean) => dispatch({ type: "SET_PINNED", pinned: p });
 
   const hideWindow = () => getCurrentWindow().hide();
   const startDrag = (e: React.MouseEvent) => {
@@ -44,25 +44,6 @@ export function Popover() {
     e.preventDefault();
     getCurrentWindow().startDragging();
   };
-
-  // Hide window when it loses focus (clicking outside) — unless pinned
-  // Uses a guard to ignore focus loss right after the window opens
-  const focusGuard = useRef(false);
-
-  useEffect(() => {
-    const unlistenOpen = listen("window-opened", () => {
-      focusGuard.current = true;
-      setTimeout(() => { focusGuard.current = false; }, 300);
-    });
-    return () => { unlistenOpen.then((fn) => fn()); };
-  }, []);
-
-  useEffect(() => {
-    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (!focused && !pinned && !focusGuard.current) hideWindow();
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [pinned]);
 
   // Fetch billing info on mount and every 5 minutes
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Popover } from "./components/Popover";
 import { Settings2 as Settings } from "./components/settings/Settings2";
@@ -8,6 +9,7 @@ import "./App.css";
 
 function AppContent() {
   const { state, dispatch } = useApp();
+  const focusGuard = useRef(false);
 
   // Check for existing credentials on mount — any connected provider counts
   useEffect(() => {
@@ -38,6 +40,25 @@ function AppContent() {
     }
     checkCredentials();
   }, [dispatch]);
+
+  // Guard against spurious focus loss immediately after the window opens
+  useEffect(() => {
+    const unlisten = listen("window-opened", () => {
+      focusGuard.current = true;
+      setTimeout(() => { focusGuard.current = false; }, 300);
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
+  // Hide window on focus loss unless pinned — active for both views
+  useEffect(() => {
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (!focused && !state.pinned && !focusGuard.current) {
+        getCurrentWindow().hide();
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [state.pinned]);
 
   switch (state.view) {
     case "settings":

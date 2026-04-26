@@ -24,6 +24,8 @@
 html,
 body {
   height: 100%;
+  overflow: hidden;
+  max-width: 100%;
 }
 
 body {
@@ -38,16 +40,17 @@ body {
 
 #root {
   height: 100%;
-  min-height: 100vh;
+  overflow: hidden;
 }
 
 .app {
-  width: 380px;
+  width: 100vw;
   height: 100vh;
   max-height: 100vh;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 .app.animate-in {
