@@ -130,6 +130,13 @@ export function Popover() {
             </button>
             <button
               className="icon-btn"
+              onClick={() => dispatch({ type: "OPEN_MCP_ALL_SERVERS" })}
+              title="MCP servers"
+            >
+              &#x1F9E9;
+            </button>
+            <button
+              className="icon-btn"
               onClick={() => dispatch({ type: "SET_VIEW", view: "settings" })}
               title="Settings"
             >

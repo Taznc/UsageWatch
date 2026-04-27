@@ -12,14 +12,18 @@ mod styled_tray;
 mod tray_renderer;
 mod tray_state;
 
+#[cfg(target_os = "macos")]
+use objc2::rc::Retained;
+#[cfg(target_os = "windows")]
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
-#[cfg(target_os = "macos")]
-use objc2::rc::Retained;
 
 use credentials_cache::CredentialsCache;
 
@@ -171,7 +175,9 @@ pub fn run() {
             commands::mcp::mcp_remove_server,
             commands::mcp::mcp_copy_server,
             commands::mcp::mcp_restart_host,
+            commands::mcp::mcp_restart_server,
             commands::mcp::mcp_preview_translation,
+            commands::mcp::mcp_debug_host,
         ])
         .setup(move |app| {
             // Hide dock icon on macOS (agent/accessory app)
@@ -217,6 +223,11 @@ pub fn run() {
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&refresh, &settings, &widget, &quit])?;
 
+            #[cfg(target_os = "windows")]
+            let tray_left_click_generation = Arc::new(AtomicU64::new(0));
+            #[cfg(target_os = "windows")]
+            let suppress_next_tray_left_up = Arc::new(AtomicBool::new(false));
+
             // Build tray icon
             let tray_menu = menu;
             let tray = TrayIconBuilder::with_id("main-tray")
@@ -254,79 +265,59 @@ pub fn run() {
                         }
                     }
                     "widget" => {
-                        if let Some(w) = app.get_webview_window("widget") {
-                            if w.is_visible().unwrap_or(false) {
-                                let _ = w.hide();
-                                save_widget_visible_to_store(app, false);
-                            } else {
-                                ensure_widget_window_transparent(&w);
-                                let _ = w.show();
-                                ensure_widget_window_transparent(&w);
-                                let _ = w.set_focus();
-                                save_widget_visible_to_store(app, true);
-                            }
-                        }
+                        toggle_widget_window(app);
                     }
                     "quit" => {
                         app.exit(0);
                     }
                     _ => {}
                 })
-                .on_tray_icon_event(|tray, event| {
-                    match &event {
-                        tauri::tray::TrayIconEvent::Click {
-                            button: tauri::tray::MouseButton::Left,
-                            button_state: tauri::tray::MouseButtonState::Up,
-                            rect,
-                            ..
-                        } => {
-                        let rect = rect.clone();
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
-                                // Tray rect is in physical pixels; scale window dimensions
-                                // (logical pts) to physical so centering is correct on HiDPI.
-                                let scale = window.scale_factor().unwrap_or(1.0);
-                                let window_width_px = 500.0_f64 * scale;
-                                let window_height_px = 840.0_f64 * scale;
-                                let (icon_w, icon_h) = match rect.size {
-                                    tauri::Size::Physical(s) => {
-                                        (s.width as f64, s.height as f64)
-                                    }
-                                    tauri::Size::Logical(s) => {
-                                        (s.width * scale, s.height * scale)
-                                    }
-                                };
-                                let (icon_x, icon_y) = match rect.position {
-                                    tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
-                                    tauri::Position::Logical(p) => (p.x * scale, p.y * scale),
-                                };
-                                let icon_center_x = icon_x + icon_w / 2.0;
-                                let x = icon_center_x - window_width_px / 2.0;
-
-                                // On macOS the tray is at the top — open below it.
-                                // On Windows the tray is at the bottom — open above it.
-                                let y = if cfg!(target_os = "macos") {
-                                    icon_y + icon_h + 4.0
-                                } else {
-                                    icon_y - window_height_px - 4.0
-                                };
-
-                                let _ = window.set_position(
-                                    tauri::PhysicalPosition::new(x as i32, y as i32),
-                                );
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                let _ = app.emit("window-opened", ());
-                            }
-                        }
-                        }
-                        _ => {}
+                .on_tray_icon_event(move |tray, event| match &event {
+                    #[cfg(target_os = "windows")]
+                    tauri::tray::TrayIconEvent::DoubleClick {
+                        button: tauri::tray::MouseButton::Left,
+                        ..
+                    } => {
+                        tray_left_click_generation.fetch_add(1, Ordering::SeqCst);
+                        suppress_next_tray_left_up.store(true, Ordering::SeqCst);
+                        let app = tray.app_handle().clone();
+                        toggle_widget_window(&app);
                     }
+                    tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        rect,
+                        ..
+                    } => {
+                        let rect = rect.clone();
+                        let app = tray.app_handle().clone();
+                        #[cfg(target_os = "windows")]
+                        {
+                            if suppress_next_tray_left_up.swap(false, Ordering::SeqCst) {
+                                return;
+                            }
+
+                            let generation =
+                                tray_left_click_generation.fetch_add(1, Ordering::SeqCst) + 1;
+                            let click_generation = tray_left_click_generation.clone();
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(Duration::from_millis(250)).await;
+                                if click_generation.load(Ordering::SeqCst) == generation {
+                                    toggle_main_window_from_tray(&app, rect);
+                                }
+                            });
+                        }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            toggle_main_window_from_tray(&app, rect);
+                        }
+                    }
+                    _ => {}
                 })
                 .build(app)?;
+
+            #[cfg(not(target_os = "macos"))]
+            let _ = &tray;
 
             #[cfg(target_os = "macos")]
             {
@@ -761,6 +752,58 @@ fn save_widget_visible_to_store(app: &tauri::AppHandle, visible: bool) {
     if let Ok(store) = app.store("credentials.json") {
         store.set("widget_visible", serde_json::Value::Bool(visible));
         let _ = store.save();
+    }
+}
+
+fn toggle_widget_window(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("widget") {
+        if w.is_visible().unwrap_or(false) {
+            let _ = w.hide();
+            save_widget_visible_to_store(app, false);
+        } else {
+            ensure_widget_window_transparent(&w);
+            let _ = w.show();
+            ensure_widget_window_transparent(&w);
+            let _ = w.set_focus();
+            save_widget_visible_to_store(app, true);
+        }
+    }
+}
+
+fn toggle_main_window_from_tray(app: &tauri::AppHandle, rect: tauri::Rect) {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_visible().unwrap_or(false) {
+            let _ = window.hide();
+        } else {
+            // Tray rect is in physical pixels; scale window dimensions
+            // (logical pts) to physical so centering is correct on HiDPI.
+            let scale = window.scale_factor().unwrap_or(1.0);
+            let window_width_px = 500.0_f64 * scale;
+            let window_height_px = 840.0_f64 * scale;
+            let (icon_w, icon_h) = match rect.size {
+                tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
+                tauri::Size::Logical(s) => (s.width * scale, s.height * scale),
+            };
+            let (icon_x, icon_y) = match rect.position {
+                tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+                tauri::Position::Logical(p) => (p.x * scale, p.y * scale),
+            };
+            let icon_center_x = icon_x + icon_w / 2.0;
+            let x = icon_center_x - window_width_px / 2.0;
+
+            // On macOS the tray is at the top — open below it.
+            // On Windows the tray is at the bottom — open above it.
+            let y = if cfg!(target_os = "macos") {
+                icon_y + icon_h + 4.0
+            } else {
+                icon_y - window_height_px - 4.0
+            };
+
+            let _ = window.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+            let _ = window.show();
+            let _ = window.set_focus();
+            let _ = app.emit("window-opened", ());
+        }
     }
 }
 

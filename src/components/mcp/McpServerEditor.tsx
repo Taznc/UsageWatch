@@ -107,7 +107,7 @@ export function McpServerEditor({
   useEffect(() => {
     let cancelled = false;
     const entry = buildEntry();
-    const targets = hosts.filter((h) => h.detected);
+    const targets = hosts.filter((h) => !h.error);
     Promise.all(
       targets.map(async (h) => {
         const target: HostTarget = { host: h.host, scope: h.scope };

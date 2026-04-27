@@ -15,8 +15,9 @@ import "./Settings.css";
 
 export function Settings2() {
   const { state, dispatch } = useApp();
-  const [active, setActive] = useState<SectionId>("connections");
   const [refreshing, setRefreshing] = useState(false);
+  const active = state.settingsSection;
+  const setActive = (section: SectionId) => dispatch({ type: "SET_SETTINGS_SECTION", section });
 
   const { pinned } = state;
   const setPinned = (p: boolean) => dispatch({ type: "SET_PINNED", pinned: p });

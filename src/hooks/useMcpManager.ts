@@ -28,6 +28,7 @@ export interface UseMcpManager {
   registerProject: (path: string) => Promise<void>;
   unregisterProject: (path: string) => Promise<void>;
   restartHost: (host: McpHost) => Promise<void>;
+  restartServer: (host: McpHost, server: string) => Promise<void>;
   dismissRestartPrompt: () => void;
 }
 
@@ -38,7 +39,20 @@ export function useMcpManager(): UseMcpManager {
   const [projects, setProjects] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [restartPrompt, setRestartPrompt] = useState<RestartPromptPayload | null>(null);
+  /** Single state avoids nested setState (dismiss/enqueue bugs when batched). */
+  const [restartPromptState, setRestartPromptState] = useState<{
+    current: RestartPromptPayload | null;
+    queue: RestartPromptPayload[];
+  }>({ current: null, queue: [] });
+
+  const restartPrompt = restartPromptState.current;
+
+  const enqueueRestartPrompt = useCallback((payload: RestartPromptPayload) => {
+    setRestartPromptState((s) => {
+      if (!s.current) return { ...s, current: payload };
+      return { ...s, queue: [...s.queue, payload] };
+    });
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -67,27 +81,34 @@ export function useMcpManager(): UseMcpManager {
 
   useEffect(() => {
     const un = listen<RestartPromptPayload>("mcp-restart-prompt", (ev) => {
-      setRestartPrompt(ev.payload);
+      enqueueRestartPrompt(ev.payload);
     });
     return () => {
       un.then((fn) => fn()).catch(() => {});
     };
-  }, []);
+  }, [enqueueRestartPrompt]);
 
   const setEnabled = useCallback(
     async (server: string, target: HostTarget, enabled: boolean) => {
       await invoke("mcp_set_enabled", { server, target, enabled });
+      enqueueRestartPrompt({ hosts: [target.host], server });
       await refresh();
     },
-    [refresh],
+    [enqueueRestartPrompt, refresh],
   );
 
   const setEnabledBulk = useCallback(
     async (server: string, changes: [HostTarget, boolean][]) => {
       await invoke("mcp_set_enabled_bulk", { server, changes });
+      const hosts = Array.from(
+        new Set(changes.map(([target]) => target.host)),
+      );
+      if (hosts.length > 0) {
+        enqueueRestartPrompt({ hosts, server });
+      }
       await refresh();
     },
-    [refresh],
+    [enqueueRestartPrompt, refresh],
   );
 
   const addServer = useCallback(
@@ -147,7 +168,22 @@ export function useMcpManager(): UseMcpManager {
     [],
   );
 
-  const dismissRestartPrompt = useCallback(() => setRestartPrompt(null), []);
+  const restartServer = useCallback(
+    async (host: McpHost, server: string) => {
+      await invoke("mcp_restart_server", { host, server });
+      setTimeout(() => {
+        invoke<McpHost[]>("mcp_running_hosts").then(setRunning).catch(() => {});
+      }, 750);
+    },
+    [],
+  );
+
+  const dismissRestartPrompt = useCallback(() => {
+    setRestartPromptState((s) => ({
+      current: s.queue[0] ?? null,
+      queue: s.queue.slice(1),
+    }));
+  }, []);
 
   return {
     hosts,
@@ -166,6 +202,7 @@ export function useMcpManager(): UseMcpManager {
     registerProject,
     unregisterProject,
     restartHost,
+    restartServer,
     dismissRestartPrompt,
   };
 }

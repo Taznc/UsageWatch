@@ -1,6 +1,9 @@
 import { createContext, useContext, useReducer, ReactNode } from "react";
 import type { UsageData, AppSettings, AppView, CodexUsageData, CursorUsageData, PeakHoursStatus } from "../types/usage";
 
+type SettingsSectionId = "connections" | "tray" | "widget" | "alerts" | "mcp" | "general" | "debug";
+type McpViewMode = "apps" | "matrix";
+
 interface AppState {
   view: AppView;
   pinned: boolean;
@@ -18,6 +21,8 @@ interface AppState {
   cursorError: string | null;
   cursorLastUpdated: string | null;
   peakHours: PeakHoursStatus | null;
+  settingsSection: SettingsSectionId;
+  mcpView: McpViewMode;
 }
 
 type AppAction =
@@ -32,7 +37,10 @@ type AppAction =
   | { type: 'SET_CODEX'; data: CodexUsageData; timestamp: string }
   | { type: 'SET_CODEX_ERROR'; error: string; timestamp: string }
   | { type: 'SET_CURSOR'; data: CursorUsageData; timestamp: string }
-  | { type: 'SET_CURSOR_ERROR'; error: string; timestamp: string };
+  | { type: 'SET_CURSOR_ERROR'; error: string; timestamp: string }
+  | { type: "SET_SETTINGS_SECTION"; section: SettingsSectionId }
+  | { type: "SET_MCP_VIEW"; view: McpViewMode }
+  | { type: "OPEN_MCP_ALL_SERVERS" };
 
 const defaultSettings: AppSettings = {
   poll_interval_secs: 60,
@@ -61,6 +69,8 @@ const initialState: AppState = {
   cursorError: null,
   cursorLastUpdated: null,
   peakHours: null,
+  settingsSection: "connections",
+  mcpView: "apps",
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -108,6 +118,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, cursorData: action.data, cursorError: null, cursorLastUpdated: action.timestamp };
     case 'SET_CURSOR_ERROR':
       return { ...state, cursorError: action.error, cursorLastUpdated: action.timestamp };
+    case "SET_SETTINGS_SECTION":
+      return { ...state, settingsSection: action.section };
+    case "SET_MCP_VIEW":
+      return { ...state, mcpView: action.view };
+    case "OPEN_MCP_ALL_SERVERS":
+      return { ...state, view: "settings", settingsSection: "mcp", mcpView: "matrix" };
     default:
       return state;
   }

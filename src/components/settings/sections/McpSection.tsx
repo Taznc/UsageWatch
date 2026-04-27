@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { HostTarget, McpServerEntry } from "../../../types/mcp";
+import { useApp } from "../../../context/AppContext";
 import { useMcpManager } from "../../../hooks/useMcpManager";
 import { McpMatrix } from "../../mcp/McpMatrix";
 import { McpAppsView } from "../../mcp/McpAppsView";
@@ -23,8 +24,10 @@ interface PickerState {
 }
 
 export function McpSection() {
+  const { state, dispatch } = useApp();
   const mgr = useMcpManager();
-  const [view, setView] = useState<ViewMode>("apps");
+  const view = state.mcpView;
+  const setView = (next: ViewMode) => dispatch({ type: "SET_MCP_VIEW", view: next });
   const [editor, setEditor] = useState<EditorState>({ open: false });
   const [picker, setPicker] = useState<PickerState>({ open: false, dest: null });
 
@@ -55,8 +58,9 @@ export function McpSection() {
   const openAddToTarget = (name: string, target: HostTarget) => {
     const row = mgr.unified.find((u) => u.name === name);
     if (row?.presence[0]) {
+      const from = row.presence[0].target;
       mgr
-        .copyServer(name, row.presence[0].target, [target], true)
+        .copyServer(name, from, [target], true)
         .catch((e) => console.error("[mcp] copy failed", e));
     } else {
       setPicker({ open: true, dest: target });
@@ -74,8 +78,12 @@ export function McpSection() {
     from: HostTarget,
     to: HostTarget,
   ) => {
-    await mgr.copyServer(server, from, [to], true);
-    setPicker({ open: false, dest: null });
+    try {
+      await mgr.copyServer(server, from, [to], true);
+      setPicker({ open: false, dest: null });
+    } catch (e) {
+      console.error("[mcp] picker copy failed", e);
+    }
   };
 
   const handlePickerNew = () => {
@@ -192,7 +200,7 @@ export function McpSection() {
       {mgr.restartPrompt && (
         <McpRestartPrompt
           payload={mgr.restartPrompt}
-          onRestart={mgr.restartHost}
+          onRestart={mgr.restartServer}
           onDismiss={mgr.dismissRestartPrompt}
         />
       )}

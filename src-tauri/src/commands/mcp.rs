@@ -70,7 +70,10 @@ enum RelaunchPlan {
     /// macOS: `open -a <name>` ; Windows: try `start "" <name>.exe` via PATH/registry; Linux: try lowercase binary
     AppNamed(&'static str),
     /// Windows Store (MSIX) app — must be launched via shell:AppsFolder protocol, not direct exe path.
-    StoreApp { aumid: &'static str, kill_image: &'static str },
+    StoreApp {
+        aumid: &'static str,
+        kill_image: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
@@ -86,7 +89,6 @@ pub struct HostTarget {
     pub host: McpHost,
     pub scope: McpScope,
 }
-
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -188,14 +190,16 @@ fn claude_desktop_config_path() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").ok()?;
-        Some(PathBuf::from(appdata).join("Claude").join("claude_desktop_config.json"))
+        Some(
+            PathBuf::from(appdata)
+                .join("Claude")
+                .join("claude_desktop_config.json"),
+        )
     }
     #[cfg(target_os = "macos")]
     {
         let home = home_dir()?;
-        Some(
-            home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-        )
+        Some(home.join("Library/Application Support/Claude/claude_desktop_config.json"))
     }
     #[cfg(target_os = "linux")]
     {
@@ -270,13 +274,14 @@ fn ensure_backup(
         McpScope::Global => "global".to_string(),
         McpScope::Project(p) => format!(
             "project-{}",
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unnamed")
+            p.file_name().and_then(|n| n.to_str()).unwrap_or("unnamed")
         ),
     };
     let ts = chrono::Utc::now().format("%Y%m%dT%H%M%S");
-    let ext = match host { McpHost::Codex => "toml", _ => "json" };
+    let ext = match host {
+        McpHost::Codex => "toml",
+        _ => "json",
+    };
     let dest = dir.join(format!("{}-{}-{}.{}", host.as_str(), scope_tag, ts, ext));
     std::fs::copy(src, &dest).map_err(|e| format!("backup copy failed: {e}"))?;
     let mut session = state.0.lock().unwrap();
@@ -293,9 +298,7 @@ fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
     std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
     let tmp = parent.join(format!(
         ".{}.tmp-{}",
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("mcp"),
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("mcp"),
         std::process::id()
     ));
     let pretty = serde_json::to_string_pretty(value).map_err(|e| format!("serialize: {e}"))?;
@@ -420,8 +423,8 @@ fn read_codex_host_file(path: &Path) -> Result<HostFile, String> {
         hf.format = HostFileFormat::Toml;
         return Ok(hf);
     }
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| format!("read {}: {e}", path.display()))?;
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     if text.trim().is_empty() {
         let mut hf = HostFile::empty();
         hf.format = HostFileFormat::Toml;
@@ -469,8 +472,8 @@ fn read_codex_host_file(path: &Path) -> Result<HostFile, String> {
 fn atomic_write_toml(path: &Path, file: &HostFile) -> Result<(), String> {
     // Re-read or create the document so non-MCP settings are preserved.
     let mut doc = if path.exists() {
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         text.parse::<DocumentMut>()
             .map_err(|e| format!("parse TOML for write {}: {e}", path.display()))?
     } else {
@@ -611,7 +614,10 @@ impl HostFile {
         let obj = self.root.as_object_mut().unwrap();
         obj.entry(self.disabled_key.to_string())
             .or_insert_with(|| json!({}));
-        obj.get_mut(self.disabled_key).unwrap().as_object_mut().unwrap()
+        obj.get_mut(self.disabled_key)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
     }
 }
 
@@ -636,7 +642,10 @@ fn detect_transport(raw: &Value) -> Transport {
 
 fn entry_from_value(name: &str, raw: &Value) -> McpServerEntry {
     let transport = detect_transport(raw);
-    let command = raw.get("command").and_then(|v| v.as_str()).map(String::from);
+    let command = raw
+        .get("command")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     let args = raw.get("args").and_then(|v| v.as_array()).map(|a| {
         a.iter()
             .filter_map(|x| x.as_str().map(String::from))
@@ -665,6 +674,55 @@ fn entry_from_value(name: &str, raw: &Value) -> McpServerEntry {
     }
 }
 
+fn claude_desktop_mcp_remote_object(entry: &McpServerEntry) -> serde_json::Map<String, Value> {
+    let url = entry.url.clone().unwrap_or_else(|| {
+        entry
+            .args
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .find(|arg| {
+                let lower = arg.to_ascii_lowercase();
+                lower.starts_with("http://") || lower.starts_with("https://")
+            })
+            .cloned()
+            .unwrap_or_default()
+    });
+    let mut args = vec![
+        "/c".to_string(),
+        "npx".to_string(),
+        "mcp-remote@latest".to_string(),
+        url.clone(),
+    ];
+
+    if let Some(headers) = &entry.headers {
+        let mut pairs = headers.iter().collect::<Vec<_>>();
+        pairs.sort_by(|a, b| a.0.cmp(b.0));
+        for (key, value) in pairs {
+            args.push("--header".to_string());
+            args.push(format!("{key}: {value}"));
+        }
+    }
+    if entry.headers.is_none() {
+        let raw_args = entry.args.as_deref().unwrap_or(&[]);
+        for window in raw_args.windows(2) {
+            if window[0] == "--header" {
+                args.push("--header".to_string());
+                args.push(window[1].clone());
+            }
+        }
+    }
+
+    if url.to_ascii_lowercase().starts_with("http://") {
+        args.push("--allow-http".to_string());
+    }
+
+    let mut obj = serde_json::Map::new();
+    obj.insert("command".into(), json!("cmd"));
+    obj.insert("args".into(), json!(args));
+    obj
+}
+
 /// Convert a NormalizedServer entry into the on-disk JSON for a given host.
 /// Returns (json, support_level).
 fn entry_to_host_value(host: McpHost, entry: &McpServerEntry) -> (Value, SupportLevel) {
@@ -678,6 +736,26 @@ fn entry_to_host_value(host: McpHost, entry: &McpServerEntry) -> (Value, Support
     let obj = base.as_object_mut().unwrap();
 
     let mut support = SupportLevel::Native;
+
+    if matches!(host, McpHost::ClaudeDesktop)
+        && matches!(entry.transport, Transport::Stdio)
+        && entry
+            .command
+            .as_deref()
+            .map(|cmd| cmd.eq_ignore_ascii_case("npx") || cmd.eq_ignore_ascii_case("npx.cmd"))
+            .unwrap_or(false)
+        && entry
+            .args
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .any(|arg| arg.to_ascii_lowercase().starts_with("mcp-remote"))
+    {
+        return (
+            Value::Object(claude_desktop_mcp_remote_object(entry)),
+            SupportLevel::Translated,
+        );
+    }
 
     match entry.transport {
         Transport::Stdio => {
@@ -713,9 +791,21 @@ fn entry_to_host_value(host: McpHost, entry: &McpServerEntry) -> (Value, Support
             if let Some(h) = &entry.headers {
                 obj.insert("headers".into(), json!(h));
             }
-            obj.insert("type".into(), json!("sse"));
-            if matches!(host, McpHost::ClaudeDesktop) {
-                support = SupportLevel::Unsupported;
+            match host {
+                // Cursor stores HTTP servers as SSE internally — round-trip as-is.
+                McpHost::Cursor => {
+                    obj.insert("type".into(), json!("sse"));
+                }
+                // Claude Desktop only supports stdio commands in its JSON config.
+                // Wrap with mcp-remote so it can reach the remote SSE endpoint.
+                McpHost::ClaudeDesktop => {
+                    *obj = claude_desktop_mcp_remote_object(entry);
+                    support = SupportLevel::Translated;
+                }
+                McpHost::ClaudeCode | McpHost::Codex => {
+                    obj.insert("type".into(), json!("http"));
+                    support = SupportLevel::Translated;
+                }
             }
         }
         Transport::Http => {
@@ -732,13 +822,16 @@ fn entry_to_host_value(host: McpHost, entry: &McpServerEntry) -> (Value, Support
                 McpHost::ClaudeCode | McpHost::Codex => {
                     obj.insert("type".into(), json!("http"));
                 }
-                McpHost::Cursor => {
-                    // Cursor accepts SSE-style URL entries; mark as translated.
-                    obj.insert("type".into(), json!("sse"));
+                // Claude Desktop only supports stdio commands in its JSON config.
+                // Wrap with mcp-remote so it can reach the remote HTTP endpoint.
+                McpHost::ClaudeDesktop => {
+                    *obj = claude_desktop_mcp_remote_object(entry);
                     support = SupportLevel::Translated;
                 }
-                McpHost::ClaudeDesktop => {
-                    support = SupportLevel::Unsupported;
+                McpHost::Cursor => {
+                    // Cursor stores HTTP as SSE-style entries.
+                    obj.insert("type".into(), json!("sse"));
+                    support = SupportLevel::Translated;
                 }
             }
         }
@@ -754,20 +847,17 @@ fn read_host_file(path: &Path) -> Result<HostFile, String> {
     if !path.exists() {
         return Ok(HostFile::empty());
     }
-    let text = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     if text.trim().is_empty() {
         return Ok(HostFile::empty());
     }
-    let root: Value = serde_json::from_str(&text)
-        .map_err(|e| format!("parse {}: {e}", path.display()))?;
+    let root: Value =
+        serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
     Ok(HostFile::new(root))
 }
 
-fn host_file_to_config(
-    host: McpHost,
-    scope: McpScope,
-    path: PathBuf,
-) -> McpHostConfig {
+fn host_file_to_config(host: McpHost, scope: McpScope, path: PathBuf) -> McpHostConfig {
     let detected = path.exists();
     if !detected {
         return McpHostConfig {
@@ -826,10 +916,18 @@ fn host_file_to_config(
 fn list_global_hosts() -> Vec<McpHostConfig> {
     let mut out = Vec::new();
     if let Some(p) = claude_desktop_config_path() {
-        out.push(host_file_to_config(McpHost::ClaudeDesktop, McpScope::Global, p));
+        out.push(host_file_to_config(
+            McpHost::ClaudeDesktop,
+            McpScope::Global,
+            p,
+        ));
     }
     if let Some(p) = claude_code_user_config_path() {
-        out.push(host_file_to_config(McpHost::ClaudeCode, McpScope::Global, p));
+        out.push(host_file_to_config(
+            McpHost::ClaudeCode,
+            McpScope::Global,
+            p,
+        ));
     }
     if let Some(p) = cursor_global_config_path() {
         out.push(host_file_to_config(McpHost::Cursor, McpScope::Global, p));
@@ -845,7 +943,11 @@ fn list_project_hosts(projects: &[PathBuf]) -> Vec<McpHostConfig> {
     for root in projects {
         for host in [McpHost::ClaudeCode, McpHost::Cursor] {
             if let Some(p) = project_config_path(host, root) {
-                out.push(host_file_to_config(host, McpScope::Project(root.clone()), p));
+                out.push(host_file_to_config(
+                    host,
+                    McpScope::Project(root.clone()),
+                    p,
+                ));
             }
         }
     }
@@ -895,17 +997,20 @@ fn target_path(target: &HostTarget) -> Option<PathBuf> {
     }
 }
 
-fn set_server_in_file(
-    file: &mut HostFile,
-    name: &str,
-    value: Value,
-    enabled: bool,
-) {
+fn set_server_in_file(file: &mut HostFile, name: &str, value: Value, enabled: bool) {
     // Remove from both maps first to avoid duplication
-    if let Some(m) = file.root.get_mut(file.enabled_key).and_then(|v| v.as_object_mut()) {
+    if let Some(m) = file
+        .root
+        .get_mut(file.enabled_key)
+        .and_then(|v| v.as_object_mut())
+    {
         m.remove(name);
     }
-    if let Some(m) = file.root.get_mut(file.disabled_key).and_then(|v| v.as_object_mut()) {
+    if let Some(m) = file
+        .root
+        .get_mut(file.disabled_key)
+        .and_then(|v| v.as_object_mut())
+    {
         m.remove(name);
     }
     if enabled {
@@ -916,7 +1021,11 @@ fn set_server_in_file(
 }
 
 fn move_server_in_file(file: &mut HostFile, name: &str, enable: bool) -> bool {
-    let from_key = if enable { file.disabled_key } else { file.enabled_key };
+    let from_key = if enable {
+        file.disabled_key
+    } else {
+        file.enabled_key
+    };
     let val = file
         .root
         .get_mut(from_key)
@@ -933,12 +1042,20 @@ fn move_server_in_file(file: &mut HostFile, name: &str, enable: bool) -> bool {
 
 fn remove_server_in_file(file: &mut HostFile, name: &str) -> bool {
     let mut removed = false;
-    if let Some(m) = file.root.get_mut(file.enabled_key).and_then(|v| v.as_object_mut()) {
+    if let Some(m) = file
+        .root
+        .get_mut(file.enabled_key)
+        .and_then(|v| v.as_object_mut())
+    {
         if m.remove(name).is_some() {
             removed = true;
         }
     }
-    if let Some(m) = file.root.get_mut(file.disabled_key).and_then(|v| v.as_object_mut()) {
+    if let Some(m) = file
+        .root
+        .get_mut(file.disabled_key)
+        .and_then(|v| v.as_object_mut())
+    {
         if m.remove(name).is_some() {
             removed = true;
         }
@@ -950,17 +1067,17 @@ fn remove_server_in_file(file: &mut HostFile, name: &str) -> bool {
 
 fn notify_change(app: &AppHandle, affected: &[McpHost], server_name: &str) {
     use tauri_plugin_notification::NotificationExt;
-    let running = crate::process_monitor::running_hosts();
-    let restartable: Vec<McpHost> = affected
-        .iter()
-        .copied()
-        .filter(|h| running.contains(h) && !h.process_names_public().is_empty())
-        .collect();
+    let mut restartable: Vec<McpHost> = Vec::new();
+    for host in affected.iter().copied() {
+        if !restartable.contains(&host) {
+            restartable.push(host);
+        }
+    }
     if restartable.is_empty() {
         return;
     }
     let body = format!(
-        "{} changed in {}. Restart to apply?",
+        "{} changed in {}. Restart its MCP process to apply?",
         server_name,
         restartable
             .iter()
@@ -1085,7 +1202,11 @@ pub fn mcp_set_enabled(
     ensure_backup(&app, &state, target.host, &target.scope, &path)?;
     let mut file = read_host_file_for(target.host, &path)?;
     if !move_server_in_file(&mut file, &server, enabled) {
-        return Err(format!("server '{}' not found in {}", server, path.display()));
+        return Err(format!(
+            "server '{}' not found in {}",
+            server,
+            path.display()
+        ));
     }
     write_host_file(&path, &file)?;
     notify_change(&app, &[target.host], &server);
@@ -1233,11 +1354,7 @@ pub fn mcp_restart_host(host: McpHost) -> Result<(), String> {
         .ok_or_else(|| "host has no restart plan".to_string())?;
     // Brief pause so the OS releases file locks before relaunch.
     match plan {
-        RelaunchPlan::AppNamed(name) => {
-            crate::process_monitor::kill_host(host)?;
-            std::thread::sleep(std::time::Duration::from_millis(400));
-            crate::process_monitor::launch_app_named(name)
-        }
+        RelaunchPlan::AppNamed(name) => crate::process_monitor::restart_app_named(name),
         RelaunchPlan::StoreApp { aumid, kill_image } => {
             crate::process_monitor::kill_store_app(kill_image)?;
             std::thread::sleep(std::time::Duration::from_millis(400));
@@ -1247,7 +1364,89 @@ pub fn mcp_restart_host(host: McpHost) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn mcp_restart_server(app: AppHandle, host: McpHost, server: String) -> Result<(), String> {
+    let mut configs = list_global_hosts();
+    let projects = read_projects(&app);
+    configs.extend(list_project_hosts(&projects));
+
+    let matching: Vec<&McpHostConfig> = configs
+        .iter()
+        .filter(|config| config.host == host && config.readable)
+        .collect();
+
+    let entry_is_enabled = matching.iter().any(|config| {
+        config.enabled.iter().any(|entry| entry.name == server)
+    });
+
+    let entry = matching
+        .iter()
+        .find_map(|config| config.enabled.iter().find(|e| e.name == server))
+        .cloned()
+        .or_else(|| {
+            matching
+                .iter()
+                .find_map(|config| config.disabled.iter().find(|e| e.name == server))
+                .cloned()
+        })
+        .ok_or_else(|| format!("server '{server}' not found for {host:?}"))?;
+
+    let (host_value, _) = entry_to_host_value(host, &entry);
+    let command = host_value
+        .get("command")
+        .and_then(|v| v.as_str())
+        .or(entry.command.as_deref())
+        .ok_or_else(|| format!("server '{server}' has no command to restart"))?;
+    let args = host_value
+        .get("args")
+        .and_then(|v| v.as_array())
+        .map(|args| {
+            args.iter()
+                .filter_map(|arg| arg.as_str().map(String::from))
+                .collect::<Vec<_>>()
+        })
+        .or(entry.args.clone())
+        .unwrap_or_default();
+
+    match crate::process_monitor::restart_mcp_server_process(&server, command, &args) {
+        Ok(()) => Ok(()),
+        Err(restart_error) if restart_error.starts_with("No running MCP process matched") => {
+            // Only auto-launch when the server is enabled; after a disable we must not spawn it.
+            if entry_is_enabled {
+                crate::process_monitor::launch_mcp_server_process(command, &args)
+                    .map_err(|launch_error| format!("{restart_error}; {launch_error}"))
+            } else {
+                Ok(())
+            }
+        }
+        Err(err) => Err(err),
+    }
+}
+
+#[tauri::command]
 pub fn mcp_preview_translation(host: McpHost, server: McpServerEntry) -> Value {
     let (v, support) = entry_to_host_value(host, &server);
     json!({ "value": v, "support": support })
+}
+
+/// Debug: return the resolved config path and raw file contents for a host.
+#[tauri::command]
+pub fn mcp_debug_host(host: McpHost) -> Value {
+    let path = match host {
+        McpHost::ClaudeDesktop => claude_desktop_config_path(),
+        McpHost::ClaudeCode => claude_code_user_config_path(),
+        McpHost::Cursor => cursor_global_config_path(),
+        McpHost::Codex => codex_global_config_path(),
+    };
+    let Some(path) = path else {
+        return json!({ "error": "could not resolve path" });
+    };
+    let path_str = path.display().to_string();
+    let exists = path.exists();
+    if !exists {
+        return json!({ "path": path_str, "exists": false });
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(text) => json!({ "path": path_str, "exists": true, "content": text }),
+        Err(e) => json!({ "path": path_str, "exists": true, "error": e.to_string() }),
+    }
 }
