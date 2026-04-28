@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 #[cfg(target_os = "windows")]
 use std::time::Duration;
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem},
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
@@ -219,7 +219,14 @@ pub fn run() {
             // Build tray menu
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-            let widget = MenuItem::with_id(app, "widget", "Widget", true, None::<&str>)?;
+            let widget = CheckMenuItem::with_id(
+                app,
+                "widget",
+                "Widget",
+                true,
+                is_widget_window_visible(handle),
+                None::<&str>,
+            )?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&refresh, &settings, &widget, &quit])?;
 
@@ -230,6 +237,9 @@ pub fn run() {
 
             // Build tray icon
             let tray_menu = menu;
+            let widget_menu_for_menu_event = widget.clone();
+            #[cfg(target_os = "windows")]
+            let widget_menu_for_tray_event = widget.clone();
             let tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
@@ -265,7 +275,7 @@ pub fn run() {
                         }
                     }
                     "widget" => {
-                        toggle_widget_window(app);
+                        toggle_widget_window(app, Some(&widget_menu_for_menu_event));
                     }
                     "quit" => {
                         app.exit(0);
@@ -281,7 +291,7 @@ pub fn run() {
                         tray_left_click_generation.fetch_add(1, Ordering::SeqCst);
                         suppress_next_tray_left_up.store(true, Ordering::SeqCst);
                         let app = tray.app_handle().clone();
-                        toggle_widget_window(&app);
+                        toggle_widget_window(&app, Some(&widget_menu_for_tray_event));
                     }
                     tauri::tray::TrayIconEvent::Click {
                         button: tauri::tray::MouseButton::Left,
@@ -755,17 +765,31 @@ fn save_widget_visible_to_store(app: &tauri::AppHandle, visible: bool) {
     }
 }
 
-fn toggle_widget_window(app: &tauri::AppHandle) {
+fn is_widget_window_visible(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window("widget")
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false)
+}
+
+fn sync_widget_menu_checked(widget_menu: Option<&CheckMenuItem<tauri::Wry>>, visible: bool) {
+    if let Some(widget_menu) = widget_menu {
+        let _ = widget_menu.set_checked(visible);
+    }
+}
+
+fn toggle_widget_window(app: &tauri::AppHandle, widget_menu: Option<&CheckMenuItem<tauri::Wry>>) {
     if let Some(w) = app.get_webview_window("widget") {
         if w.is_visible().unwrap_or(false) {
             let _ = w.hide();
             save_widget_visible_to_store(app, false);
+            sync_widget_menu_checked(widget_menu, false);
         } else {
             ensure_widget_window_transparent(&w);
             let _ = w.show();
             ensure_widget_window_transparent(&w);
             let _ = w.set_focus();
             save_widget_visible_to_store(app, true);
+            sync_widget_menu_checked(widget_menu, true);
         }
     }
 }
