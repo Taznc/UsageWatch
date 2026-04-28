@@ -54,7 +54,7 @@ async fn fetch_billing_update(cache: &CredentialsCache) -> Option<BillingUpdate>
     }
 }
 
-async fn fetch_claude_update(cache: &CredentialsCache) -> Option<UsageUpdate> {
+async fn fetch_claude_update(app: &AppHandle, cache: &CredentialsCache) -> Option<UsageUpdate> {
     let auth_method = cache.get_claude_auth_method();
 
     let usage_result: Result<UsageData, String> = if auth_method == "oauth" {
@@ -86,9 +86,19 @@ async fn fetch_claude_update(cache: &CredentialsCache) -> Option<UsageUpdate> {
             Err(oauth_err) => match (cache.get_session_key(), cache.get_org_id()) {
                 (Some(sk), Some(oid)) => {
                     let now = chrono::Local::now().format("%H:%M:%S");
-                    eprintln!("[{now}][Claude] OAuth failed, switching to session_key for this session");
-                    cache.set_claude_auth_method("session_key".to_string());
-                    fetch_usage_internal(&sk, &oid).await
+                    eprintln!("[{now}][Claude] OAuth failed, switching to session_key");
+                    let fallback = fetch_usage_internal(&sk, &oid).await;
+                    if fallback.is_ok() {
+                        cache.set_claude_auth_method("session_key".to_string());
+                        if let Err(e) =
+                            commands::credentials::save_to_store(app, "claude_auth_method", "session_key")
+                        {
+                            eprintln!(
+                                "[{now}][Claude] Failed to persist session_key auth fallback: {e}"
+                            );
+                        }
+                    }
+                    fallback
                 }
                 _ => Err(oauth_err),
             },
@@ -168,7 +178,7 @@ pub async fn poll_all_providers(
     latest_billing: &Arc<Mutex<Option<BillingUpdate>>>,
 ) {
     let (claude_opt, codex_update, cursor_update, billing_opt) = tokio::join!(
-        fetch_claude_update(cache),
+        fetch_claude_update(app, cache),
         fetch_codex_update(cache),
         fetch_cursor_update(cache),
         fetch_billing_update(cache),
