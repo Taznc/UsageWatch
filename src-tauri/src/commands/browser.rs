@@ -44,6 +44,43 @@ fn read_electron_cookie_windows(
     result.ok()?.into_iter().find(|c| c.name == cookie_name).map(|c| c.value)
 }
 
+#[cfg(target_os = "windows")]
+fn read_electron_cookie_header_windows(
+    local_state_path: &std::path::Path,
+    cookies_path: &std::path::Path,
+    domains: Option<Vec<String>>,
+) -> Option<String> {
+    let tmp = std::env::temp_dir().join("usagewatch_electron_cookies_tmp.db");
+    let result = if copy_shared(cookies_path, &tmp).is_ok() {
+        let result = rookie::chromium_based(local_state_path.to_path_buf(), tmp.clone(), domains.clone());
+        let _ = std::fs::remove_file(&tmp);
+        result
+    } else {
+        rookie::chromium_based(local_state_path.to_path_buf(), cookies_path.to_path_buf(), domains)
+    };
+
+    claude_cookie_header_from_cookies(&result.ok()?)
+}
+
+fn claude_cookie_header_from_cookies(cookies: &[Cookie]) -> Option<String> {
+    if !cookies.iter().any(|c| c.name == "sessionKey") {
+        return None;
+    }
+
+    let header = cookies
+        .iter()
+        .filter(|c| !c.name.is_empty() && !c.value.is_empty())
+        .map(|c| format!("{}={}", c.name, c.value))
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    if header.is_empty() {
+        None
+    } else {
+        Some(header)
+    }
+}
+
 /// Detailed diagnostic for Claude Desktop cookie detection on Windows.
 /// Returns a list of log lines explaining each step.
 #[tauri::command]
@@ -80,18 +117,21 @@ pub fn debug_claude_desktop_cookies() -> Vec<String> {
     // Copy to temp file first to handle file locking
     let tmp = std::env::temp_dir().join("usagewatch_debug_cookies_tmp.db");
     log.push(format!("📋 Copying to temp: {}", tmp.display()));
-    match copy_shared(&cookies_path, &tmp) {
-        Ok(()) => log.push("✅ Copy succeeded".to_string()),
+    let read_path = match copy_shared(&cookies_path, &tmp) {
+        Ok(()) => {
+            log.push("✅ Copy succeeded".to_string());
+            tmp.clone()
+        }
         Err(e) => {
             log.push(format!("❌ Copy failed: {e}"));
-            log.push("ℹ️  Close Claude Desktop and try again, or use Browser Cookies instead".to_string());
-            return log;
+            log.push("ℹ️  Trying direct read fallback while Claude Desktop is running...".to_string());
+            cookies_path.clone()
         }
-    }
+    };
 
     // Use rookie's chromium_based which handles DPAPI + AES-GCM correctly
     log.push("🔑 Running rookie::chromium_based decryption...".to_string());
-    match rookie::chromium_based(key_path, tmp.clone(), Some(vec!["claude.ai".to_string()])) {
+    match rookie::chromium_based(key_path, read_path, Some(vec!["claude.ai".to_string()])) {
         Ok(cookies) => {
             log.push(format!("✅ Decrypted {} cookies for claude.ai", cookies.len()));
             for c in &cookies {
@@ -100,6 +140,9 @@ pub fn debug_claude_desktop_cookies() -> Vec<String> {
             }
             if let Some(s) = cookies.iter().find(|c| c.name == "sessionKey") {
                 log.push(format!("✅ sessionKey found! len={}", s.value.len()));
+                if let Some(header) = claude_cookie_header_from_cookies(&cookies) {
+                    log.push(format!("✅ full Cookie header built; len={}", header.len()));
+                }
             } else {
                 log.push("❌ sessionKey not in decrypted cookies".to_string());
             }
@@ -182,11 +225,7 @@ pub fn pull_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
                     None
                 };
 
-                // Prefer the longest sessionKey (more likely to be the full, valid one)
-                let session_key = session_cookies
-                    .iter()
-                    .max_by_key(|c| c.value.len())
-                    .map(|c| c.value.clone());
+                let session_key = claude_cookie_header_from_cookies(&cookies);
 
                 if session_key.is_some() || debug.is_some() {
                     results.push(BrowserResult {
@@ -223,10 +262,7 @@ pub fn pull_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
 
             match rookie::chromium_based(&config, cookies_path, domains.clone()) {
                 Ok(cookies) => {
-                    let session_key = cookies
-                        .iter()
-                        .find(|c| c.name == "sessionKey")
-                        .map(|c| c.value.clone());
+                    let session_key = claude_cookie_header_from_cookies(&cookies);
 
                     if session_key.is_some() {
                         results.push(BrowserResult {
@@ -264,11 +300,11 @@ pub fn pull_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
                 continue;
             }
 
-            match read_electron_cookie_windows(&key_path, cookies_path, "sessionKey", Some(vec!["claude.ai".to_string()])) {
-                Some(session_key) => {
+            match read_electron_cookie_header_windows(&key_path, cookies_path, Some(vec!["claude.ai".to_string()])) {
+                Some(cookie_header) => {
                     results.push(BrowserResult {
                         browser: "Claude Desktop".to_string(),
-                        session_key: Some(session_key),
+                        session_key: Some(cookie_header),
                         debug: None,
                     });
                     found = true;

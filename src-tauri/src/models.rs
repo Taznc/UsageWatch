@@ -16,6 +16,8 @@ pub struct UsageData {
     pub seven_day_cowork: Option<UsageWindow>,
     #[serde(default)]
     pub seven_day_omelette: Option<UsageWindow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub omelette_promotional: Option<UsageWindow>,
     #[serde(default)]
     pub extra_usage: Option<ExtraUsage>,
 }
@@ -29,6 +31,7 @@ impl UsageData {
             || self.seven_day_oauth_apps.is_some()
             || self.seven_day_cowork.is_some()
             || self.seven_day_omelette.is_some()
+            || self.omelette_promotional.is_some()
     }
 
     pub fn needs_window_supplement(&self) -> bool {
@@ -40,6 +43,7 @@ impl UsageData {
             || usage_window_needs_supplement(&self.seven_day_oauth_apps)
             || usage_window_needs_supplement(&self.seven_day_cowork)
             || usage_window_needs_supplement(&self.seven_day_omelette)
+            || usage_window_needs_supplement(&self.omelette_promotional)
     }
 
     pub fn fill_missing_from(&mut self, fallback: UsageData) {
@@ -50,8 +54,18 @@ impl UsageData {
         fill_usage_window(&mut self.seven_day_oauth_apps, fallback.seven_day_oauth_apps);
         fill_usage_window(&mut self.seven_day_cowork, fallback.seven_day_cowork);
         fill_usage_window(&mut self.seven_day_omelette, fallback.seven_day_omelette);
+        fill_usage_window(
+            &mut self.omelette_promotional,
+            fallback.omelette_promotional,
+        );
         if self.extra_usage.is_none() {
             self.extra_usage = fallback.extra_usage;
+        }
+    }
+
+    pub fn normalize_aliases(&mut self) {
+        if self.seven_day_omelette.is_none() {
+            self.seven_day_omelette = self.omelette_promotional.clone();
         }
     }
 }

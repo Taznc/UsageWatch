@@ -107,9 +107,10 @@ pub fn get_org_id(cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<Opti
 #[tauri::command]
 pub async fn test_connection(session_key: String) -> Result<Vec<Organization>, String> {
     let client = reqwest::Client::new();
+    let cookie = crate::commands::usage::claude_cookie_header(&session_key);
     let response = client
         .get("https://claude.ai/api/organizations")
-        .header("cookie", format!("sessionKey={}", session_key))
+        .header("cookie", cookie)
         .header("content-type", "application/json")
         .header("user-agent", crate::USER_AGENT)
         .send()

@@ -103,6 +103,15 @@ export function Popover() {
       : cursorData?.on_demand_limit_type === "team"
         ? "team cap"
         : "personal cap";
+  const claudeHasUsageWindows = !!(
+    usageData?.five_hour ||
+    usageData?.seven_day ||
+    usageData?.seven_day_opus ||
+    usageData?.seven_day_sonnet ||
+    usageData?.seven_day_oauth_apps ||
+    usageData?.seven_day_cowork ||
+    usageData?.seven_day_omelette
+  );
 
   // Monitor thresholds and fire native notifications
   useAlertEngine(usageData, burnRate);
@@ -289,6 +298,12 @@ export function Popover() {
                         ? "Peak Hours"
                         : "Off-Peak"}
                       <span style={{ opacity: 0.5, fontSize: "9px", marginLeft: 3 }}>ⓘ</span>
+                    </div>
+                  )}
+
+                  {!claudeHasUsageWindows && usageData.extra_usage?.is_enabled && (
+                    <div className="status-banner" style={{ marginTop: 12 }}>
+                      Claude did not return session or weekly reset windows for this account.
                     </div>
                   )}
 

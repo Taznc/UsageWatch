@@ -2,14 +2,24 @@ use crate::models::{
     BillingInfo, BundlesInfo, CreditGrant, PeakHoursStatus, PrepaidCredits, UsageData,
 };
 
+pub(crate) fn claude_cookie_header(session_key_or_cookie: &str) -> String {
+    let trimmed = session_key_or_cookie.trim();
+    if trimmed.contains('=') || trimmed.contains(';') {
+        trimmed.to_string()
+    } else {
+        format!("sessionKey={trimmed}")
+    }
+}
+
 #[tauri::command]
 pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageData, String> {
     let client = reqwest::Client::new();
     let url = format!("https://claude.ai/api/organizations/{}/usage", org_id);
+    let cookie = claude_cookie_header(&session_key);
 
     let response = client
         .get(&url)
-        .header("cookie", format!("sessionKey={}", session_key))
+        .header("cookie", cookie)
         .header("content-type", "application/json")
         .header("user-agent", crate::USER_AGENT)
         .send()
@@ -31,8 +41,9 @@ pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageDat
         .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    let usage: UsageData = serde_json::from_str(&text)
+    let mut usage: UsageData = serde_json::from_str(&text)
         .map_err(|e| format!("Failed to parse usage data: {}. Raw: {}", e, &text[..text.len().min(500)]))?;
+    usage.normalize_aliases();
 
     Ok(usage)
 }
@@ -41,10 +52,11 @@ pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageDat
 pub async fn fetch_usage_raw(session_key: String, org_id: String) -> Result<String, String> {
     let client = reqwest::Client::new();
     let url = format!("https://claude.ai/api/organizations/{}/usage", org_id);
+    let cookie = claude_cookie_header(&session_key);
 
     let response = client
         .get(&url)
-        .header("cookie", format!("sessionKey={}", session_key))
+        .header("cookie", cookie)
         .header("content-type", "application/json")
         .header("user-agent", crate::USER_AGENT)
         .send()
@@ -60,8 +72,9 @@ pub async fn fetch_usage_raw(session_key: String, org_id: String) -> Result<Stri
 #[tauri::command]
 pub async fn fetch_billing(session_key: String, org_id: String) -> Result<BillingInfo, String> {
     let client = reqwest::Client::new();
+    let cookie = claude_cookie_header(&session_key);
     let headers = |req: reqwest::RequestBuilder| {
-        req.header("cookie", format!("sessionKey={}", session_key))
+        req.header("cookie", cookie.clone())
             .header("content-type", "application/json")
             .header("user-agent", crate::USER_AGENT)
     };
@@ -272,13 +285,15 @@ pub(crate) async fn fetch_usage_oauth(access_token: &str) -> Result<UsageData, S
         .await
         .map_err(|e| format!("Failed to read OAuth usage response: {}", e))?;
 
-    serde_json::from_str::<UsageData>(&text).map_err(|e| {
+    let mut usage = serde_json::from_str::<UsageData>(&text).map_err(|e| {
         format!(
             "Failed to parse OAuth usage data: {}. Raw: {}",
             e,
             &text[..text.len().min(500)]
         )
-    })
+    })?;
+    usage.normalize_aliases();
+    Ok(usage)
 }
 
 /// Fetch peak/off-peak status from PromoClock's public API.

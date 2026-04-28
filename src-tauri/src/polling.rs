@@ -208,7 +208,7 @@ async fn fetch_usage_internal(session_key: &str, org_id: &str) -> Result<UsageDa
 
     let response = client
         .get(&url)
-        .header("cookie", format!("sessionKey={}", session_key))
+        .header("cookie", commands::usage::claude_cookie_header(session_key))
         .header("content-type", "application/json")
         .header("user-agent", crate::USER_AGENT)
         .send()
@@ -224,8 +224,10 @@ async fn fetch_usage_internal(session_key: &str, org_id: &str) -> Result<UsageDa
         .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    serde_json::from_str(&text)
-        .map_err(|e| format!("Failed to parse usage data: {}. Raw: {}", e, &text[..text.len().min(500)]))
+    let mut usage: UsageData = serde_json::from_str(&text)
+        .map_err(|e| format!("Failed to parse usage data: {}. Raw: {}", e, &text[..text.len().min(500)]))?;
+    usage.normalize_aliases();
+    Ok(usage)
 }
 
 /// Single background loop: one aligned tick for all providers (parallel fetches), same interval as user settings.
