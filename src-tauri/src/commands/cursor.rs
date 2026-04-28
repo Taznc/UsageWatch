@@ -19,26 +19,17 @@ fn cursor_global_storage_dir() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         let home = std::env::var("HOME").ok()?;
-        Some(
-            PathBuf::from(home)
-                .join("Library/Application Support/Cursor/User/globalStorage"),
-        )
+        Some(PathBuf::from(home).join("Library/Application Support/Cursor/User/globalStorage"))
     }
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").ok()?;
-        Some(
-            PathBuf::from(appdata)
-                .join("Cursor/User/globalStorage"),
-        )
+        Some(PathBuf::from(appdata).join("Cursor/User/globalStorage"))
     }
     #[cfg(target_os = "linux")]
     {
         let home = std::env::var("HOME").ok()?;
-        Some(
-            PathBuf::from(home)
-                .join(".config/Cursor/User/globalStorage"),
-        )
+        Some(PathBuf::from(home).join(".config/Cursor/User/globalStorage"))
     }
 }
 
@@ -52,7 +43,11 @@ fn read_cursor_key(key: &str) -> Option<String> {
     if json_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&json_path) {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(val) = json.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                if let Some(val) = json
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                {
                     return Some(val.to_owned());
                 }
             }
@@ -67,11 +62,9 @@ fn read_cursor_key(key: &str) -> Option<String> {
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         ) {
             let result: Option<String> = conn
-                .query_row(
-                    "SELECT value FROM ItemTable WHERE key = ?1",
-                    [key],
-                    |row| row.get(0),
-                )
+                .query_row("SELECT value FROM ItemTable WHERE key = ?1", [key], |row| {
+                    row.get(0)
+                })
                 .ok()
                 .filter(|s: &String| !s.is_empty());
             if result.is_some() {
@@ -148,14 +141,21 @@ pub fn scan_cursor_browsers() -> Vec<BrowserResult> {
 fn extract_bearer_from_cookie(cookie_str: &str) -> Option<String> {
     let prefix = "WorkosCursorSessionToken=";
     let start = cookie_str.find(prefix)? + prefix.len();
-    let end = cookie_str[start..].find(';').map(|i| start + i).unwrap_or(cookie_str.len());
+    let end = cookie_str[start..]
+        .find(';')
+        .map(|i| start + i)
+        .unwrap_or(cookie_str.len());
     let raw = cookie_str[start..end].trim();
     // URL-decode %3A -> ':'
     let decoded = raw.replace("%3A", ":").replace("%3a", ":");
     // Split on first "::" — left is userId, right is access_token
     let sep = decoded.find("::")?;
     let token = decoded[sep + 2..].to_string();
-    if token.is_empty() { None } else { Some(token) }
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
+    }
 }
 
 // Protobuf/JSON may encode cents as strings; used by REST + Connect parsers.
@@ -262,7 +262,10 @@ async fn cursor_refresh_access_token(
 }
 
 /// Refresh the access token when it is expired or within two minutes of expiry (if refresh token exists).
-async fn resolve_cursor_bearer(client: &reqwest::Client, initial_bearer: String) -> Result<String, String> {
+async fn resolve_cursor_bearer(
+    client: &reqwest::Client,
+    initial_bearer: String,
+) -> Result<String, String> {
     let Some(rt) = read_cursor_key("cursorAuth/refreshToken").filter(|s| !s.is_empty()) else {
         return Ok(initial_bearer);
     };
@@ -371,7 +374,9 @@ async fn cursor_usage_http_bundle(
                 .send()
                 .await
             {
-                Ok(resp) if resp.status().is_success() => resp.json::<serde_json::Value>().await.ok(),
+                Ok(resp) if resp.status().is_success() => {
+                    resp.json::<serde_json::Value>().await.ok()
+                }
                 _ => None,
             }
         },
@@ -394,6 +399,170 @@ fn parse_usage_summary_meter(v: &serde_json::Value) -> Option<(f64, f64)> {
     }
     pair(v.get("individualUsage").and_then(|u| u.get("overall")))
         .or_else(|| pair(v.get("teamUsage").and_then(|u| u.get("overall"))))
+}
+
+fn parse_cursor_cycle_datetime(
+    value: Option<&serde_json::Value>,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    fn from_millis(ms: i64) -> Option<chrono::DateTime<chrono::Utc>> {
+        chrono::DateTime::from_timestamp_millis(ms)
+    }
+
+    match value? {
+        serde_json::Value::String(s) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            trimmed
+                .parse::<i64>()
+                .ok()
+                .and_then(from_millis)
+                .or_else(|| {
+                    chrono::DateTime::parse_from_rfc3339(trimmed)
+                        .ok()
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                })
+        }
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .or_else(|| n.as_u64().and_then(|u| i64::try_from(u).ok()))
+            .or_else(|| n.as_f64().map(|f| f as i64))
+            .and_then(from_millis),
+        _ => None,
+    }
+}
+
+fn select_cursor_cycle_dates(
+    rest_summary: Option<&serde_json::Value>,
+    usage_json: Option<&serde_json::Value>,
+    plan_info: Option<&serde_json::Value>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> (Option<String>, Option<String>) {
+    let rest_start =
+        parse_cursor_cycle_datetime(rest_summary.and_then(|v| v.get("billingCycleStart")));
+    let rest_end = parse_cursor_cycle_datetime(rest_summary.and_then(|v| v.get("billingCycleEnd")));
+    let usage_start =
+        parse_cursor_cycle_datetime(usage_json.and_then(|v| v.get("billingCycleStart")));
+    let usage_end = parse_cursor_cycle_datetime(usage_json.and_then(|v| v.get("billingCycleEnd")));
+    let plan_end = parse_cursor_cycle_datetime(plan_info.and_then(|p| p.get("billingCycleEnd")));
+
+    let selected_end = rest_end
+        .filter(|dt| *dt > now)
+        .or_else(|| plan_end.filter(|dt| *dt > now))
+        .or_else(|| {
+            usage_end
+                .filter(|end| *end > now && usage_start.map(|start| start != *end).unwrap_or(true))
+        });
+
+    let selected_start = rest_start.or_else(|| {
+        usage_start.filter(|start| {
+            let usage_start_matches_end = usage_end.map(|end| *start == end).unwrap_or(false);
+            selected_end
+                .map(|end| *start < end && *start != end)
+                .unwrap_or(false)
+                && !usage_start_matches_end
+        })
+    });
+
+    (
+        selected_start.map(|dt| dt.to_rfc3339()),
+        selected_end.map(|dt| dt.to_rfc3339()),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn utc(s: &str) -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .unwrap()
+            .with_timezone(&chrono::Utc)
+    }
+
+    #[test]
+    fn cursor_cycle_prefers_usage_summary_over_bogus_current_period() {
+        let rest_summary = json!({
+            "billingCycleStart": "2026-04-01T00:00:00.000Z",
+            "billingCycleEnd": "2026-05-01T00:00:00.000Z"
+        });
+        let usage_json = json!({
+            "billingCycleStart": "1777406203517",
+            "billingCycleEnd": "1777406203517"
+        });
+        let plan_info = json!({
+            "billingCycleEnd": "1777593600000"
+        });
+
+        let (start, end) = select_cursor_cycle_dates(
+            Some(&rest_summary),
+            Some(&usage_json),
+            Some(&plan_info),
+            utc("2026-04-28T19:47:00Z"),
+        );
+
+        assert_eq!(start.as_deref(), Some("2026-04-01T00:00:00+00:00"));
+        assert_eq!(end.as_deref(), Some("2026-05-01T00:00:00+00:00"));
+    }
+
+    #[test]
+    fn cursor_cycle_falls_back_to_plan_info_end() {
+        let usage_json = json!({
+            "billingCycleStart": "1777406203517",
+            "billingCycleEnd": "1777406203517"
+        });
+        let plan_info = json!({
+            "billingCycleEnd": "1777593600000"
+        });
+
+        let (start, end) = select_cursor_cycle_dates(
+            None,
+            Some(&usage_json),
+            Some(&plan_info),
+            utc("2026-04-28T19:47:00Z"),
+        );
+
+        assert_eq!(start, None);
+        assert_eq!(end.as_deref(), Some("2026-05-01T00:00:00+00:00"));
+    }
+
+    #[test]
+    fn cursor_cycle_rejects_identical_current_period_start_and_end() {
+        let usage_json = json!({
+            "billingCycleStart": "1777406203517",
+            "billingCycleEnd": "1777406203517"
+        });
+
+        let (start, end) =
+            select_cursor_cycle_dates(None, Some(&usage_json), None, utc("2026-04-28T19:47:00Z"));
+
+        assert_eq!(start, None);
+        assert_eq!(end, None);
+    }
+
+    #[test]
+    fn cursor_cycle_parses_iso_string_ms_string_and_numeric_ms() {
+        assert_eq!(
+            parse_cursor_cycle_datetime(Some(&json!("2026-05-01T00:00:00.000Z")))
+                .map(|dt| dt.to_rfc3339())
+                .as_deref(),
+            Some("2026-05-01T00:00:00+00:00")
+        );
+        assert_eq!(
+            parse_cursor_cycle_datetime(Some(&json!("1777593600000")))
+                .map(|dt| dt.to_rfc3339())
+                .as_deref(),
+            Some("2026-05-01T00:00:00+00:00")
+        );
+        assert_eq!(
+            parse_cursor_cycle_datetime(Some(&json!(1777593600000_i64)))
+                .map(|dt| dt.to_rfc3339())
+                .as_deref(),
+            Some("2026-05-01T00:00:00+00:00")
+        );
+    }
 }
 
 async fn fetch_cursor_usage_summary_rest(
@@ -435,7 +604,9 @@ async fn fetch_cursor_usage_summary_rest(
 //   2. Manual token    → bearer if no '=' chars, otherwise treat as cookie and extract
 //   3. Desktop token   → read cursorAuth/accessToken from storage.json / state.vscdb
 
-pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) -> Result<CursorUsageData, String> {
+pub(crate) async fn fetch_cursor_usage_internal(
+    manual_token: Option<String>,
+) -> Result<CursorUsageData, String> {
     // Session cookie from manual entry (cookie string) — not from browser scanning,
     // which triggers macOS keychain prompts on every call.
     let session_cookie: Option<String> = manual_token
@@ -454,7 +625,8 @@ pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) ->
         })
         .or_else(|| read_cursor_key("cursorAuth/accessToken"))
         .ok_or_else(|| {
-            "No Cursor auth found — sign into the Cursor desktop app or enter a token manually.".to_string()
+            "No Cursor auth found — sign into the Cursor desktop app or enter a token manually."
+                .to_string()
         })?;
 
     let email = read_cursor_key("cursorAuth/cachedEmail");
@@ -492,7 +664,8 @@ pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) ->
 
     let included_spend = cursor_get_f64(plan_usage, "includedSpend").unwrap_or(0.0);
     let total_spend = cursor_get_f64(plan_usage, "totalSpend").filter(|v| v.is_finite());
-    let bonus_spend = cursor_get_f64(plan_usage, "bonusSpend").filter(|v| v.is_finite() && *v > 0.0);
+    let bonus_spend =
+        cursor_get_f64(plan_usage, "bonusSpend").filter(|v| v.is_finite() && *v > 0.0);
     let bonus_tooltip = plan_usage
         .and_then(|p| p.get("bonusTooltip")?.as_str())
         .map(|s| s.to_string())
@@ -528,11 +701,15 @@ pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) ->
 
     let spend_limit = usage_json.as_ref().and_then(|v| v.get("spendLimitUsage"));
     let on_demand_used = cursor_get_f64(spend_limit, "individualUsed").filter(|v| v.is_finite());
-    let on_demand_limit = cursor_get_f64(spend_limit, "individualLimit").filter(|v| v.is_finite() && *v > 0.0);
-    let on_demand_remaining = cursor_get_f64(spend_limit, "individualRemaining").filter(|v| v.is_finite());
+    let on_demand_limit =
+        cursor_get_f64(spend_limit, "individualLimit").filter(|v| v.is_finite() && *v > 0.0);
+    let on_demand_remaining =
+        cursor_get_f64(spend_limit, "individualRemaining").filter(|v| v.is_finite());
     let on_demand_pooled_used = cursor_get_f64(spend_limit, "pooledUsed").filter(|v| v.is_finite());
-    let on_demand_pooled_limit = cursor_get_f64(spend_limit, "pooledLimit").filter(|v| v.is_finite() && *v > 0.0);
-    let on_demand_pooled_remaining = cursor_get_f64(spend_limit, "pooledRemaining").filter(|v| v.is_finite());
+    let on_demand_pooled_limit =
+        cursor_get_f64(spend_limit, "pooledLimit").filter(|v| v.is_finite() && *v > 0.0);
+    let on_demand_pooled_remaining =
+        cursor_get_f64(spend_limit, "pooledRemaining").filter(|v| v.is_finite());
     let on_demand_limit_type = spend_limit
         .and_then(|s| s.get("limitType")?.as_str())
         .map(|s| s.to_string())
@@ -591,26 +768,12 @@ pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) ->
         || on_demand_limit_type.as_deref() == Some("team")
         || on_demand_pooled_limit.is_some();
 
-    fn parse_cursor_ms(value: Option<&serde_json::Value>) -> Option<String> {
-        value
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse::<i64>().ok())
-            .and_then(|ms| chrono::DateTime::from_timestamp(ms / 1000, 0))
-            .map(|dt| dt.to_rfc3339())
-    }
-
-    let billing_cycle_start =
-        parse_cursor_ms(usage_json.as_ref().and_then(|v| v.get("billingCycleStart")));
-
-    // billingCycleEnd: Connect uses epoch ms string; usage-summary often uses an ISO timestamp.
-    let cycle_end = parse_cursor_ms(usage_json.as_ref().and_then(|v| v.get("billingCycleEnd")))
-        .or_else(|| parse_cursor_ms(plan_info.and_then(|p| p.get("billingCycleEnd"))))
-        .or_else(|| {
-            rest_summary
-                .as_ref()
-                .and_then(|v| v.get("billingCycleEnd")?.as_str())
-                .map(|s| s.to_string())
-        });
+    let (billing_cycle_start, cycle_end) = select_cursor_cycle_dates(
+        rest_summary.as_ref(),
+        usage_json.as_ref(),
+        plan_info,
+        chrono::Utc::now(),
+    );
 
     // ── Parse Stripe balance ──────────────────────────────────────────────
     // customerBalance is in cents; negative = prepaid credit available.
@@ -641,10 +804,7 @@ pub(crate) async fn fetch_cursor_usage_internal(manual_token: Option<String>) ->
 
     let mut extras_map = serde_json::Map::new();
     if let Some(v) = grants_status {
-        extras_map.insert(
-            "GetUsageLimitStatusAndActiveGrants".to_string(),
-            v,
-        );
+        extras_map.insert("GetUsageLimitStatusAndActiveGrants".to_string(), v);
     }
     if let Some(v) = policy_status {
         extras_map.insert("GetUsageLimitPolicyStatus".to_string(), v);
@@ -714,12 +874,7 @@ fn debug_scalar_preview(v: &serde_json::Value) -> serde_json::Value {
         serde_json::Value::Number(n) => json!(n),
         serde_json::Value::Bool(b) => json!(b),
         serde_json::Value::Null => json!(null),
-        _ => json!(
-            v.to_string()
-                .chars()
-                .take(72)
-                .collect::<String>()
-        ),
+        _ => json!(v.to_string().chars().take(72).collect::<String>()),
     }
 }
 
@@ -795,7 +950,11 @@ async fn inspect_cursor_dashboard_rpc(
         out["spend_limit_usage_values"] = json!(samples);
     }
     if method == "GetAggregatedUsageEvents" {
-        if let Some(n) = p.get("aggregations").and_then(|x| x.as_array()).map(|a| a.len()) {
+        if let Some(n) = p
+            .get("aggregations")
+            .and_then(|x| x.as_array())
+            .map(|a| a.len())
+        {
             out["aggregations_count"] = json!(n);
         }
         if let Some(tc) = p.get("totalCostCents") {
@@ -902,11 +1061,13 @@ pub async fn debug_cursor_api(
                     let txt = resp.text().await.unwrap_or_default();
                     let keys = serde_json::from_str::<serde_json::Value>(&txt)
                         .ok()
-                        .and_then(|v| v.as_object().map(|o| {
-                            let mut k: Vec<_> = o.keys().cloned().collect();
-                            k.sort();
-                            k
-                        }));
+                        .and_then(|v| {
+                            v.as_object().map(|o| {
+                                let mut k: Vec<_> = o.keys().cloned().collect();
+                                k.sort();
+                                k
+                            })
+                        });
                     json!({ "ok": ok, "http_status": st, "body_len": txt.len(), "top_level_keys": keys })
                 }
                 Err(e) => json!({ "ok": false, "transport_error": e.to_string() }),
@@ -942,11 +1103,13 @@ pub async fn debug_cursor_api(
             let txt = r.text().await.unwrap_or_default();
             let keys = serde_json::from_str::<serde_json::Value>(&txt)
                 .ok()
-                .and_then(|v| v.as_object().map(|o| {
-                    let mut k: Vec<_> = o.keys().cloned().collect();
-                    k.sort();
-                    k
-                }));
+                .and_then(|v| {
+                    v.as_object().map(|o| {
+                        let mut k: Vec<_> = o.keys().cloned().collect();
+                        k.sort();
+                        k
+                    })
+                });
             json!({
                 "http_status": st,
                 "body_len": txt.len(),
@@ -956,12 +1119,8 @@ pub async fn debug_cursor_api(
         Err(e) => json!({ "transport_error": e.to_string() }),
     };
 
-    let usage_summary = match fetch_cursor_usage_summary_rest(
-        &client,
-        &bearer,
-        cursor_com_cookie,
-    )
-    .await
+    let usage_summary = match fetch_cursor_usage_summary_rest(&client, &bearer, cursor_com_cookie)
+        .await
     {
         Some(v) => {
             let keys = v.as_object().map(|o| {
@@ -969,9 +1128,8 @@ pub async fn debug_cursor_api(
                 k.sort();
                 k
             });
-            let meter = parse_usage_summary_meter(&v).map(|(used, lim)| {
-                json!({ "used_cents": used, "limit_cents": lim })
-            });
+            let meter = parse_usage_summary_meter(&v)
+                .map(|(used, lim)| json!({ "used_cents": used, "limit_cents": lim }));
             json!({
                 "ok": true,
                 "auth": if cursor_com_cookie.is_some() { "cookie" } else { "bearer" },
