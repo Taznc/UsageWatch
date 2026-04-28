@@ -32,6 +32,11 @@ export function DebugPanel() {
     return lines.join("\n");
   });
 
+  const debugClaudeApi = () => run("Claude API…", async () => {
+    const text = await invoke<string>("debug_claude_api");
+    return text;
+  });
+
   const debugCursorApi = () => run("Cursor API…", async () => {
     const text = await invoke<string>("debug_cursor_api");
     return text;
@@ -45,6 +50,9 @@ export function DebugPanel() {
         </button>
         <button className="btn secondary" onClick={debugClaudeDesktop} disabled={loading}>
           {loading && activeAction === "Diagnosing..." ? "Diagnosing..." : "Diagnose Claude Desktop (Windows)"}
+        </button>
+        <button className="btn secondary" onClick={debugClaudeApi} disabled={loading}>
+          {loading && activeAction === "Claude API…" ? "Running…" : "Claude API diagnostics"}
         </button>
         <button className="btn secondary" onClick={debugCursorApi} disabled={loading}>
           {loading && activeAction === "Cursor API…" ? "Running…" : "Cursor API diagnostics"}

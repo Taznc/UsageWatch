@@ -11,6 +11,47 @@ pub(crate) fn claude_cookie_header(session_key_or_cookie: &str) -> String {
     }
 }
 
+fn summarize_usage_windows(value: &serde_json::Value) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    for key in [
+        "five_hour",
+        "seven_day",
+        "seven_day_opus",
+        "seven_day_sonnet",
+        "seven_day_oauth_apps",
+        "seven_day_cowork",
+        "seven_day_omelette",
+        "omelette_promotional",
+    ] {
+        let Some(window) = value.get(key) else {
+            out.insert(key.to_string(), serde_json::json!({ "present": false }));
+            continue;
+        };
+        out.insert(
+            key.to_string(),
+            serde_json::json!({
+                "present": !window.is_null(),
+                "utilization": window.get("utilization"),
+                "resets_at": window.get("resets_at"),
+            }),
+        );
+    }
+    out.insert(
+        "first_reset_like_value".to_string(),
+        serde_json::json!(extract_reset_datetime(value)),
+    );
+    serde_json::Value::Object(out)
+}
+
+fn top_level_keys(value: &serde_json::Value) -> Vec<String> {
+    let mut keys = value
+        .as_object()
+        .map(|o| o.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    keys.sort();
+    keys
+}
+
 #[tauri::command]
 pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageData, String> {
     let client = reqwest::Client::new();
@@ -129,6 +170,140 @@ pub async fn fetch_billing(session_key: String, org_id: String) -> Result<Billin
         credit_grant,
         bundles,
     })
+}
+
+#[tauri::command]
+pub async fn debug_claude_api(
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let session_key = cache.get_session_key();
+    let org_id = cache.get_org_id();
+    let auth_method = cache.get_claude_auth_method();
+
+    let mut out = serde_json::json!({
+        "stored_auth_method": auth_method,
+        "has_web_cookie_or_session_key": session_key.is_some(),
+        "stored_value_is_cookie_header": session_key.as_ref().is_some_and(|s| s.contains('=') || s.contains(';')),
+        "has_org_id": org_id.is_some(),
+        "org_id": org_id,
+        "oauth_usage": null,
+        "web_usage": null,
+        "billing": null,
+        "interpretation": null,
+    });
+
+    out["oauth_usage"] = match crate::commands::claude_oauth::get_claude_oauth_token().await {
+        Ok(token) => {
+            let resp = client
+                .get("https://api.anthropic.com/api/oauth/usage")
+                .header("Authorization", format!("Bearer {}", token))
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .header("anthropic-beta", "oauth-2025-04-20")
+                .header("user-agent", crate::USER_AGENT)
+                .send()
+                .await
+                .map_err(|e| format!("OAuth usage request failed: {e}"))?;
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            match serde_json::from_str::<serde_json::Value>(&text) {
+                Ok(json) => serde_json::json!({
+                    "http_status": status,
+                    "top_level_keys": top_level_keys(&json),
+                    "windows": summarize_usage_windows(&json),
+                }),
+                Err(_) => serde_json::json!({
+                    "http_status": status,
+                    "non_json_body_len": text.len(),
+                }),
+            }
+        }
+        Err(e) => serde_json::json!({ "error": e }),
+    };
+
+    if let (Some(session_key), Some(org_id)) = (session_key, cache.get_org_id()) {
+        let cookie = claude_cookie_header(&session_key);
+        let usage_url = format!("https://claude.ai/api/organizations/{org_id}/usage");
+        let resp = client
+            .get(&usage_url)
+            .header("cookie", &cookie)
+            .header("accept", "application/json")
+            .header("content-type", "application/json")
+            .header("user-agent", crate::USER_AGENT)
+            .send()
+            .await
+            .map_err(|e| format!("Web usage request failed: {e}"))?;
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        out["web_usage"] = match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(json) => serde_json::json!({
+                "http_status": status,
+                "top_level_keys": top_level_keys(&json),
+                "windows": summarize_usage_windows(&json),
+            }),
+            Err(_) => serde_json::json!({
+                "http_status": status,
+                "non_json_body_len": text.len(),
+            }),
+        };
+
+        let mut billing = serde_json::Map::new();
+        for (name, path) in [
+            ("prepaid_bundles", "prepaid/bundles"),
+            ("overage_spend_limit", "overage_spend_limit"),
+            ("prepaid_credits", "prepaid/credits"),
+            ("overage_credit_grant", "overage_credit_grant"),
+        ] {
+            let url = format!("https://claude.ai/api/organizations/{org_id}/{path}");
+            let resp = client
+                .get(&url)
+                .header("cookie", &cookie)
+                .header("accept", "application/json")
+                .header("content-type", "application/json")
+                .header("user-agent", crate::USER_AGENT)
+                .send()
+                .await
+                .map_err(|e| format!("{name} request failed: {e}"))?;
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            let summary = match serde_json::from_str::<serde_json::Value>(&text) {
+                Ok(json) => serde_json::json!({
+                    "http_status": status,
+                    "top_level_keys": top_level_keys(&json),
+                    "first_reset_like_value": extract_reset_datetime(&json),
+                }),
+                Err(_) => serde_json::json!({
+                    "http_status": status,
+                    "non_json_body_len": text.len(),
+                }),
+            };
+            billing.insert(name.to_string(), summary);
+        }
+        out["billing"] = serde_json::Value::Object(billing);
+    }
+
+    let web_reset = out
+        .pointer("/web_usage/windows/first_reset_like_value")
+        .and_then(|v| v.as_str());
+    let oauth_reset = out
+        .pointer("/oauth_usage/windows/first_reset_like_value")
+        .and_then(|v| v.as_str());
+    let billing_reset = out
+        .get("billing")
+        .and_then(|v| v.as_object())
+        .and_then(|billing| {
+            billing
+                .values()
+                .find_map(|v| v.get("first_reset_like_value").and_then(|r| r.as_str()))
+        });
+    out["interpretation"] = if web_reset.or(oauth_reset).or(billing_reset).is_some() {
+        serde_json::json!("At least one Claude source returned a reset-like timestamp.")
+    } else {
+        serde_json::json!("No checked Claude source returned a reset timestamp. On Enterprise, Claude may only expose a reset time after a hard limit is reached.")
+    };
+
+    serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
 }
 
 fn merge_bundle_reset(

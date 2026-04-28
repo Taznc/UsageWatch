@@ -123,6 +123,7 @@ pub fn run() {
             commands::credentials::test_connection,
             commands::usage::fetch_usage,
             commands::usage::fetch_usage_raw,
+            commands::usage::debug_claude_api,
             commands::browser::pull_session_from_browsers,
             commands::browser::pull_codex_session_from_browsers,
             commands::browser::debug_claude_desktop_cookies,

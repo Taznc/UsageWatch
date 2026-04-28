@@ -335,6 +335,11 @@ export function Popover() {
                               Resets {new Date(billing.bundles.purchases_reset_at).toLocaleDateString([], { month: "short", day: "numeric" })}
                             </div>
                           )}
+                          {!billing?.bundles?.purchases_reset_at && !claudeHasUsageWindows && (
+                            <div className="extra-usage-reset">
+                              Reset date not returned by Claude
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
