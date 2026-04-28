@@ -1,6 +1,6 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, LogicalPosition, LogicalSize } from "@tauri-apps/api/window";
+import { availableMonitors, getCurrentWindow, LogicalSize, PhysicalPosition } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWidget } from "../context/WidgetContext";
 import { useWidgetData } from "../hooks/useWidgetData";
@@ -18,6 +18,19 @@ type Hitbox = {
   width: number;
   height: number;
 };
+
+type DesktopRect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+const DEFAULT_WIDGET_PHYSICAL_POSITION = { x: 200, y: 100 };
+const WIDGET_VISIBLE_MARGIN = 16;
+const WIDGET_MIN_VISIBLE_PX = 48;
 
 function isInHitbox(deviceX: number, deviceY: number, hitbox: Hitbox): boolean {
   const x = deviceX / window.devicePixelRatio;
@@ -45,6 +58,88 @@ function measureWindowBounds(element: HTMLDivElement, scale: number) {
 
 function compactLabel(card: WidgetCardViewModel) {
   return card.shortTitle ?? card.title.slice(0, 3).toUpperCase();
+}
+
+function isFinitePosition(position: { x: number; y: number }) {
+  return Number.isFinite(position.x) && Number.isFinite(position.y);
+}
+
+function monitorWorkAreaRect(monitor: Awaited<ReturnType<typeof availableMonitors>>[number]): DesktopRect {
+  const left = monitor.workArea.position.x;
+  const top = monitor.workArea.position.y;
+  const width = monitor.workArea.size.width;
+  const height = monitor.workArea.size.height;
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+  };
+}
+
+function hasVisibleIntersection(
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  area: DesktopRect,
+) {
+  const visibleWidth = Math.min(position.x + size.width, area.right) - Math.max(position.x, area.left);
+  const visibleHeight = Math.min(position.y + size.height, area.bottom) - Math.max(position.y, area.top);
+  return visibleWidth >= WIDGET_MIN_VISIBLE_PX && visibleHeight >= WIDGET_MIN_VISIBLE_PX;
+}
+
+function nearestArea(
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  areas: DesktopRect[],
+) {
+  const centerX = position.x + size.width / 2;
+  const centerY = position.y + size.height / 2;
+
+  return areas.reduce((nearest, area) => {
+    const areaCenterX = area.left + area.width / 2;
+    const areaCenterY = area.top + area.height / 2;
+    const distance = Math.hypot(centerX - areaCenterX, centerY - areaCenterY);
+    return distance < nearest.distance ? { area, distance } : nearest;
+  }, { area: areas[0], distance: Number.POSITIVE_INFINITY }).area;
+}
+
+function clampToArea(value: number, min: number, max: number) {
+  if (max < min) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
+async function resolveVisibleWidgetPosition(position: { x: number; y: number }) {
+  const win = getCurrentWindow();
+  const [monitors, size] = await Promise.all([
+    availableMonitors(),
+    win.outerSize().catch(() => ({ width: 380, height: 300 })),
+  ]);
+  const areas = monitors.map(monitorWorkAreaRect);
+
+  if (!areas.length) {
+    return isFinitePosition(position) ? position : DEFAULT_WIDGET_PHYSICAL_POSITION;
+  }
+
+  const desired = isFinitePosition(position) ? position : DEFAULT_WIDGET_PHYSICAL_POSITION;
+  if (areas.some((area) => hasVisibleIntersection(desired, size, area))) {
+    return desired;
+  }
+
+  const area = nearestArea(desired, size, areas);
+  return {
+    x: clampToArea(
+      desired.x,
+      area.left + WIDGET_VISIBLE_MARGIN,
+      area.right - Math.min(size.width, area.width) - WIDGET_VISIBLE_MARGIN,
+    ),
+    y: clampToArea(
+      desired.y,
+      area.top + WIDGET_VISIBLE_MARGIN,
+      area.bottom - Math.min(size.height, area.height) - WIDGET_VISIBLE_MARGIN,
+    ),
+  };
 }
 
 function TickerCell({
@@ -168,15 +263,31 @@ export function WidgetOverlay() {
   // mid-drag causes the flashing/fighting feedback loop.
   useEffect(() => {
     if (!tauri || !hydrated || dragRef.current) return;
+    let cancelled = false;
     programmaticSetRef.current = true;
-    getCurrentWindow()
-      .setPosition(new LogicalPosition(state.layout.position.x, state.layout.position.y))
+    resolveVisibleWidgetPosition(state.layout.position)
+      .then((position) => {
+        if (cancelled) return;
+        return getCurrentWindow()
+          .setPosition(new PhysicalPosition(Math.round(position.x), Math.round(position.y)))
+          .then(() => {
+            if (
+              Math.round(position.x) !== Math.round(state.layout.position.x) ||
+              Math.round(position.y) !== Math.round(state.layout.position.y)
+            ) {
+              savePosition(Math.round(position.x), Math.round(position.y));
+            }
+          });
+      })
       .catch(() => {});
     getCurrentWindow().setIgnoreCursorEvents(true).catch(() => {});
     ignoreStateRef.current = true;
     // Clear after 150ms — long enough for any onMoved echo from this setPosition to arrive.
     const t = setTimeout(() => { programmaticSetRef.current = false; }, 150);
-    return () => clearTimeout(t);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [state.layout.position.x, state.layout.position.y, tauri, hydrated]);
 
   useEffect(() => {
@@ -237,10 +348,8 @@ export function WidgetOverlay() {
       // dragRef.current is NOT used here: startDragging() resolves immediately on
       // Windows (non-blocking), so dragRef is already false by the time onMoved fires.
       if (programmaticSetRef.current) return;
-      // payload is in physical pixels; convert to logical before saving so that
-      // LogicalPosition restores correctly on any DPI scaling level.
-      const dpr = window.devicePixelRatio || 1;
-      savePosition(payload.x / dpr, payload.y / dpr);
+      if (!Number.isFinite(payload.x) || !Number.isFinite(payload.y)) return;
+      savePosition(payload.x, payload.y);
     });
 
     return () => {

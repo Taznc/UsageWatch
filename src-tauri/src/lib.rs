@@ -32,6 +32,11 @@ pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWeb
 use models::{AlertConfig, TrayConfig, TrayFormat};
 use polling::{CodexUpdate, CursorUpdate, UsageUpdate};
 
+const DEFAULT_WIDGET_PHYSICAL_X: f64 = 200.0;
+const DEFAULT_WIDGET_PHYSICAL_Y: f64 = 100.0;
+const WIDGET_VISIBLE_MARGIN: f64 = 16.0;
+const WIDGET_MIN_VISIBLE_PX: f64 = 48.0;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let poll_interval = Arc::new(Mutex::new(60u64));
@@ -840,11 +845,108 @@ fn json_value_as_f64(v: &serde_json::Value) -> Option<f64> {
 }
 
 /// `widget_layout` from the frontend store (`WIDGET_LAYOUT_STORE_KEY`).
-fn widget_layout_logical_position(layout: &serde_json::Value) -> Option<(f64, f64)> {
+fn widget_layout_physical_position(layout: &serde_json::Value) -> Option<(f64, f64)> {
     let pos = layout.get("position")?;
     let x = json_value_as_f64(pos.get("x")?)?;
     let y = json_value_as_f64(pos.get("y")?)?;
     Some((x, y))
+}
+
+fn widget_rect_intersects_work_area(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    work_area: &tauri::PhysicalRect<i32, u32>,
+) -> bool {
+    let left = work_area.position.x as f64;
+    let top = work_area.position.y as f64;
+    let right = left + work_area.size.width as f64;
+    let bottom = top + work_area.size.height as f64;
+
+    let visible_width = (x + width).min(right) - x.max(left);
+    let visible_height = (y + height).min(bottom) - y.max(top);
+    visible_width >= WIDGET_MIN_VISIBLE_PX && visible_height >= WIDGET_MIN_VISIBLE_PX
+}
+
+fn clamp_f64(value: f64, min: f64, max: f64) -> f64 {
+    if max < min {
+        min
+    } else {
+        value.max(min).min(max)
+    }
+}
+
+fn nearest_monitor_work_area(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    monitors: &[tauri::Monitor],
+) -> Option<&tauri::PhysicalRect<i32, u32>> {
+    let center_x = x + width / 2.0;
+    let center_y = y + height / 2.0;
+
+    monitors
+        .iter()
+        .min_by(|a, b| {
+            let a_area = a.work_area();
+            let b_area = b.work_area();
+            let a_center_x = a_area.position.x as f64 + a_area.size.width as f64 / 2.0;
+            let a_center_y = a_area.position.y as f64 + a_area.size.height as f64 / 2.0;
+            let b_center_x = b_area.position.x as f64 + b_area.size.width as f64 / 2.0;
+            let b_center_y = b_area.position.y as f64 + b_area.size.height as f64 / 2.0;
+            let a_distance = (center_x - a_center_x).hypot(center_y - a_center_y);
+            let b_distance = (center_x - b_center_x).hypot(center_y - b_center_y);
+            a_distance
+                .partial_cmp(&b_distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|monitor| monitor.work_area())
+}
+
+fn visible_widget_physical_position(
+    w: &tauri::WebviewWindow,
+    position: Option<(f64, f64)>,
+) -> (f64, f64) {
+    let (x, y) = position.unwrap_or((DEFAULT_WIDGET_PHYSICAL_X, DEFAULT_WIDGET_PHYSICAL_Y));
+    let size = w.outer_size().ok();
+    let width = size.as_ref().map(|s| s.width as f64).unwrap_or(380.0);
+    let height = size.as_ref().map(|s| s.height as f64).unwrap_or(300.0);
+    let monitors = w.available_monitors().unwrap_or_default();
+
+    if monitors.is_empty() {
+        return (x, y);
+    }
+
+    if monitors
+        .iter()
+        .any(|monitor| widget_rect_intersects_work_area(x, y, width, height, monitor.work_area()))
+    {
+        return (x, y);
+    }
+
+    let Some(work_area) = nearest_monitor_work_area(x, y, width, height, &monitors) else {
+        return (DEFAULT_WIDGET_PHYSICAL_X, DEFAULT_WIDGET_PHYSICAL_Y);
+    };
+
+    let left = work_area.position.x as f64;
+    let top = work_area.position.y as f64;
+    let right = left + work_area.size.width as f64;
+    let bottom = top + work_area.size.height as f64;
+
+    (
+        clamp_f64(
+            x,
+            left + WIDGET_VISIBLE_MARGIN,
+            right - width.min(work_area.size.width as f64) - WIDGET_VISIBLE_MARGIN,
+        ),
+        clamp_f64(
+            y,
+            top + WIDGET_VISIBLE_MARGIN,
+            bottom - height.min(work_area.size.height as f64) - WIDGET_VISIBLE_MARGIN,
+        ),
+    )
 }
 
 fn restore_widget_window_from_store(app: &tauri::AppHandle) {
@@ -857,9 +959,28 @@ fn restore_widget_window_from_store(app: &tauri::AppHandle) {
     };
 
     if let Some(layout) = store.get("widget_layout") {
-        if let Some((x, y)) = widget_layout_logical_position(&layout) {
-            let _ = w.set_position(tauri::LogicalPosition::new(x, y));
+        let saved_position = widget_layout_physical_position(&layout);
+        let (x, y) = visible_widget_physical_position(&w, saved_position);
+        let _ = w.set_position(tauri::PhysicalPosition::new(x.round() as i32, y.round() as i32));
+
+        if saved_position
+            .map(|(saved_x, saved_y)| {
+                saved_x.round() as i32 != x.round() as i32 || saved_y.round() as i32 != y.round() as i32
+            })
+            .unwrap_or(true)
+        {
+            if let Some(mut layout_obj) = layout.as_object().cloned() {
+                layout_obj.insert(
+                    "position".to_string(),
+                    serde_json::json!({ "x": x.round(), "y": y.round() }),
+                );
+                store.set("widget_layout", serde_json::Value::Object(layout_obj));
+                let _ = store.save();
+            }
         }
+    } else {
+        let (x, y) = visible_widget_physical_position(&w, None);
+        let _ = w.set_position(tauri::PhysicalPosition::new(x.round() as i32, y.round() as i32));
     }
 
     if store.get("widget_visible").and_then(|v| v.as_bool()) == Some(true) {
