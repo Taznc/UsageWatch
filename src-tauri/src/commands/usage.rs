@@ -176,6 +176,20 @@ pub async fn fetch_billing(session_key: String, org_id: String) -> Result<Billin
 pub async fn debug_claude_api(
     cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
 ) -> Result<String, String> {
+    debug_claude_api_impl(cache.inner(), false).await
+}
+
+#[tauri::command]
+pub async fn debug_claude_api_raw(
+    cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
+) -> Result<String, String> {
+    debug_claude_api_impl(cache.inner(), true).await
+}
+
+async fn debug_claude_api_impl(
+    cache: &std::sync::Arc<crate::credentials_cache::CredentialsCache>,
+    include_raw: bool,
+) -> Result<String, String> {
     let client = reqwest::Client::new();
     let session_key = cache.get_session_key();
     let org_id = cache.get_org_id();
@@ -212,10 +226,12 @@ pub async fn debug_claude_api(
                     "http_status": status,
                     "top_level_keys": top_level_keys(&json),
                     "windows": summarize_usage_windows(&json),
+                    "raw_body": if include_raw { Some(json) } else { None },
                 }),
                 Err(_) => serde_json::json!({
                     "http_status": status,
                     "non_json_body_len": text.len(),
+                    "raw_body": if include_raw { Some(serde_json::Value::String(text)) } else { None },
                 }),
             }
         }
@@ -241,10 +257,12 @@ pub async fn debug_claude_api(
                 "http_status": status,
                 "top_level_keys": top_level_keys(&json),
                 "windows": summarize_usage_windows(&json),
+                "raw_body": if include_raw { Some(json) } else { None },
             }),
             Err(_) => serde_json::json!({
                 "http_status": status,
                 "non_json_body_len": text.len(),
+                "raw_body": if include_raw { Some(serde_json::Value::String(text)) } else { None },
             }),
         };
 
@@ -272,10 +290,12 @@ pub async fn debug_claude_api(
                     "http_status": status,
                     "top_level_keys": top_level_keys(&json),
                     "first_reset_like_value": extract_reset_datetime(&json),
+                    "raw_body": if include_raw { Some(json) } else { None },
                 }),
                 Err(_) => serde_json::json!({
                     "http_status": status,
                     "non_json_body_len": text.len(),
+                    "raw_body": if include_raw { Some(serde_json::Value::String(text)) } else { None },
                 }),
             };
             billing.insert(name.to_string(), summary);
