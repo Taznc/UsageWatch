@@ -20,6 +20,60 @@ pub struct UsageData {
     pub extra_usage: Option<ExtraUsage>,
 }
 
+impl UsageData {
+    pub fn has_usage_windows(&self) -> bool {
+        self.five_hour.is_some()
+            || self.seven_day.is_some()
+            || self.seven_day_opus.is_some()
+            || self.seven_day_sonnet.is_some()
+            || self.seven_day_oauth_apps.is_some()
+            || self.seven_day_cowork.is_some()
+            || self.seven_day_omelette.is_some()
+    }
+
+    pub fn needs_window_supplement(&self) -> bool {
+        !self.has_usage_windows()
+            || usage_window_needs_supplement(&self.five_hour)
+            || usage_window_needs_supplement(&self.seven_day)
+            || usage_window_needs_supplement(&self.seven_day_opus)
+            || usage_window_needs_supplement(&self.seven_day_sonnet)
+            || usage_window_needs_supplement(&self.seven_day_oauth_apps)
+            || usage_window_needs_supplement(&self.seven_day_cowork)
+            || usage_window_needs_supplement(&self.seven_day_omelette)
+    }
+
+    pub fn fill_missing_from(&mut self, fallback: UsageData) {
+        fill_usage_window(&mut self.five_hour, fallback.five_hour);
+        fill_usage_window(&mut self.seven_day, fallback.seven_day);
+        fill_usage_window(&mut self.seven_day_opus, fallback.seven_day_opus);
+        fill_usage_window(&mut self.seven_day_sonnet, fallback.seven_day_sonnet);
+        fill_usage_window(&mut self.seven_day_oauth_apps, fallback.seven_day_oauth_apps);
+        fill_usage_window(&mut self.seven_day_cowork, fallback.seven_day_cowork);
+        fill_usage_window(&mut self.seven_day_omelette, fallback.seven_day_omelette);
+        if self.extra_usage.is_none() {
+            self.extra_usage = fallback.extra_usage;
+        }
+    }
+}
+
+fn usage_window_needs_supplement(window: &Option<UsageWindow>) -> bool {
+    window
+        .as_ref()
+        .is_some_and(|window| window.resets_at.is_none())
+}
+
+fn fill_usage_window(target: &mut Option<UsageWindow>, fallback: Option<UsageWindow>) {
+    match (target.as_mut(), fallback) {
+        (None, Some(fallback)) => {
+            *target = Some(fallback);
+        }
+        (Some(target), Some(fallback)) if target.resets_at.is_none() => {
+            target.resets_at = fallback.resets_at;
+        }
+        _ => {}
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageWindow {
     #[serde(default)]

@@ -36,10 +36,6 @@ pub struct BillingUpdate {
 }
 
 async fn fetch_billing_update(cache: &CredentialsCache) -> Option<BillingUpdate> {
-    let auth_method = cache.get_claude_auth_method();
-    if auth_method == "oauth" {
-        return None; // billing fetch requires session key, not available via OAuth
-    }
     let (session_key, org_id) = match (cache.get_session_key(), cache.get_org_id()) {
         (Some(sk), Some(oid)) => (sk, oid),
         _ => return None,
@@ -69,7 +65,24 @@ async fn fetch_claude_update(cache: &CredentialsCache) -> Option<UsageUpdate> {
         // If OAuth failed but session_key + org_id exist, fall back silently
         // and switch the in-memory auth method so future ticks skip OAuth entirely.
         match oauth_result {
-            Ok(data) => Ok(data),
+            Ok(mut data) => {
+                if data.needs_window_supplement() {
+                    if let (Some(sk), Some(oid)) = (cache.get_session_key(), cache.get_org_id()) {
+                        match fetch_usage_internal(&sk, &oid).await {
+                            Ok(fallback) => {
+                                data.fill_missing_from(fallback);
+                            }
+                            Err(e) => {
+                                let now = chrono::Local::now().format("%H:%M:%S");
+                                eprintln!(
+                                    "[{now}][Claude] Session-key supplemental usage fetch failed: {e}"
+                                );
+                            }
+                        }
+                    }
+                }
+                Ok(data)
+            }
             Err(oauth_err) => match (cache.get_session_key(), cache.get_org_id()) {
                 (Some(sk), Some(oid)) => {
                     let now = chrono::Local::now().format("%H:%M:%S");
