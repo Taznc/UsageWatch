@@ -103,22 +103,30 @@ fn cursor_browser_list() -> Vec<(&'static str, BrowserFn)> {
 
 /// Scan all browsers for cursor.com session cookies, returning per-browser results.
 pub fn scan_cursor_browsers() -> Vec<BrowserResult> {
-    let domains = Some(vec!["cursor.com".to_string()]);
+    let domains = Some(vec!["cursor.com".to_string(), "cursor.sh".to_string()]);
     let mut results = Vec::new();
 
     for (name, fetch_fn) in cursor_browser_list() {
         match fetch_fn(domains.clone()) {
             Ok(cookies) if !cookies.is_empty() => {
-                let cookie_str: String = cookies
-                    .iter()
-                    .map(|c| format!("{}={}", c.name, c.value))
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                results.push(BrowserResult {
-                    browser: name.to_string(),
-                    session_key: Some(cookie_str),
-                    debug: Some(format!("cookies={}", cookies.len())),
-                });
+                let cookie_str = extract_cursor_session_cookie_header(&cookies);
+                let debug = Some(format!(
+                    "total_cookies={}, auth_cookie_names={:?}",
+                    cookies.len(),
+                    cookies
+                        .iter()
+                        .filter(|c| is_cursor_session_cookie_name(&c.name))
+                        .map(|c| c.name.as_str())
+                        .collect::<Vec<_>>()
+                ));
+
+                if cookie_str.is_some() {
+                    results.push(BrowserResult {
+                        browser: name.to_string(),
+                        session_key: cookie_str,
+                        debug,
+                    });
+                }
             }
             Ok(cookies) if cookies.is_empty() => {}
             Ok(_) => {}
@@ -129,6 +137,27 @@ pub fn scan_cursor_browsers() -> Vec<BrowserResult> {
     }
 
     results
+}
+
+fn is_cursor_session_cookie_name(name: &str) -> bool {
+    matches!(
+        name,
+        "WorkosCursorSessionToken" | "__Secure-next-auth.session-token" | "next-auth.session-token"
+    )
+}
+
+fn extract_cursor_session_cookie_header(cookies: &[Cookie]) -> Option<String> {
+    let auth_cookies: Vec<String> = cookies
+        .iter()
+        .filter(|c| is_cursor_session_cookie_name(&c.name))
+        .map(|c| format!("{}={}", c.name, c.value))
+        .collect();
+
+    if auth_cookies.is_empty() {
+        None
+    } else {
+        Some(auth_cookies.join("; "))
+    }
 }
 
 // ── Cookie bearer extraction ──────────────────────────────────────────────
@@ -336,6 +365,22 @@ async fn fetch_cursor_enterprise_usage(
     resp.json().await.ok()
 }
 
+async fn fetch_cursor_auth_me(client: &reqwest::Client, cookie: &str) -> Option<serde_json::Value> {
+    let resp = client
+        .get("https://cursor.com/api/auth/me")
+        .header("Cookie", cookie)
+        .header("Origin", "https://cursor.com")
+        .header("Referer", "https://cursor.com/dashboard/usage")
+        .header("User-Agent", crate::USER_AGENT)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.json().await.ok()
+}
+
 type CursorUsageBundle = (
     Option<serde_json::Value>,
     (Option<serde_json::Value>, u16),
@@ -399,6 +444,50 @@ fn parse_usage_summary_meter(v: &serde_json::Value) -> Option<(f64, f64)> {
     }
     pair(v.get("individualUsage").and_then(|u| u.get("overall")))
         .or_else(|| pair(v.get("teamUsage").and_then(|u| u.get("overall"))))
+}
+
+fn parse_usage_summary_on_demand_meter(v: &serde_json::Value) -> Option<(f64, f64)> {
+    fn pair(summary: Option<&serde_json::Value>) -> Option<(f64, f64)> {
+        let summary = summary?;
+        for key in [
+            "onDemand",
+            "onDemandUsage",
+            "usageBased",
+            "spendLimit",
+            "extraUsage",
+        ] {
+            if let Some(section) = summary.get(key) {
+                let used = cursor_get_f64(Some(section), "used")
+                    .or_else(|| cursor_get_f64(Some(section), "spend"))
+                    .unwrap_or(0.0);
+                let limit = cursor_get_f64(Some(section), "limit").filter(|l| *l > 0.0)?;
+                return Some((used, limit));
+            }
+        }
+        None
+    }
+
+    pair(v.get("individualUsage")).or_else(|| pair(v.get("teamUsage")))
+}
+
+fn parse_cursor_auth_email(v: Option<&serde_json::Value>) -> Option<String> {
+    let v = v?;
+    for key in ["email", "userEmail"] {
+        if let Some(email) = v
+            .get(key)
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            return Some(email.to_string());
+        }
+    }
+    v.get("user")
+        .and_then(|u| u.get("email"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
 }
 
 fn parse_cursor_cycle_datetime(
@@ -594,6 +683,96 @@ async fn fetch_cursor_usage_summary_rest(
     resp.json().await.ok()
 }
 
+async fn fetch_cursor_usage_cookie_only(
+    client: &reqwest::Client,
+    cookie: &str,
+    stored_email: Option<String>,
+    stored_membership_type: Option<String>,
+    stored_subscription_status: Option<String>,
+) -> Result<CursorUsageData, String> {
+    let (rest_summary, stripe_json, enterprise_json, auth_me) = tokio::join!(
+        fetch_cursor_usage_summary_rest(client, "", Some(cookie)),
+        async {
+            match client
+                .get("https://cursor.com/api/auth/stripe")
+                .header("Cookie", cookie)
+                .header("User-Agent", crate::USER_AGENT)
+                .send()
+                .await
+            {
+                Ok(resp) if resp.status().is_success() => {
+                    resp.json::<serde_json::Value>().await.ok()
+                }
+                _ => None,
+            }
+        },
+        fetch_cursor_enterprise_usage(client, cookie),
+        fetch_cursor_auth_me(client, cookie),
+    );
+
+    let Some(rest_summary) = rest_summary else {
+        return Err("Cursor cookie is invalid or usage-summary returned no data.".to_string());
+    };
+
+    let (spend_cents, limit_cents) = parse_usage_summary_meter(&rest_summary).unwrap_or((0.0, 0.0));
+    let (on_demand_used_cents, on_demand_limit_cents) =
+        parse_usage_summary_on_demand_meter(&rest_summary)
+            .map(|(used, limit)| (Some(used), Some(limit)))
+            .unwrap_or((None, None));
+
+    let (billing_cycle_start, cycle_end) = select_cursor_cycle_dates(
+        Some(&rest_summary),
+        enterprise_json.as_ref(),
+        None,
+        chrono::Utc::now(),
+    );
+
+    let plan_name = rest_summary
+        .get("membershipType")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| stored_membership_type.clone());
+
+    let membership_type = stripe_json
+        .as_ref()
+        .and_then(|v| v.get("membershipType")?.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .or(stored_membership_type)
+        .or_else(|| plan_name.clone());
+    let subscription_status = stripe_json
+        .as_ref()
+        .and_then(|v| v.get("subscriptionStatus")?.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .or(stored_subscription_status);
+    let stripe_balance_cents = stripe_json
+        .as_ref()
+        .and_then(|v| v.get("customerBalance").and_then(cursor_json_f64))
+        .map(|cents| -cents)
+        .filter(|&v| v > 0.0);
+
+    let is_team = rest_summary.get("teamUsage").is_some() || plan_name.as_deref() == Some("Team");
+
+    Ok(CursorUsageData::from_assembly(CursorUsageAssembly {
+        plan_name,
+        spend_cents,
+        limit_cents,
+        on_demand_used_cents,
+        on_demand_limit_cents,
+        is_team,
+        membership_type,
+        subscription_status,
+        stripe_balance_cents,
+        cycle_end,
+        billing_cycle_start,
+        email: parse_cursor_auth_email(auth_me.as_ref()).or(stored_email),
+        enterprise_usage: enterprise_json.filter(|v| !v.is_null()),
+        ..CursorUsageAssembly::default()
+    }))
+}
+
 // ── API fetch ─────────────────────────────────────────────────────────────
 //
 // Primary endpoint: Connect RPC v1 on api2.cursor.sh (requires Bearer auth).
@@ -614,7 +793,7 @@ pub(crate) async fn fetch_cursor_usage_internal(
         .filter(|t| t.contains('=') || t.contains(';'))
         .cloned();
 
-    let bearer_initial: String = session_cookie
+    let bearer_initial: Option<String> = session_cookie
         .as_deref()
         .and_then(extract_bearer_from_cookie)
         .or_else(|| {
@@ -623,16 +802,29 @@ pub(crate) async fn fetch_cursor_usage_internal(
                 .filter(|t| !t.contains('=') && !t.contains(';'))
                 .cloned()
         })
-        .or_else(|| read_cursor_key("cursorAuth/accessToken"))
-        .ok_or_else(|| {
-            "No Cursor auth found — sign into the Cursor desktop app or enter a token manually."
-                .to_string()
-        })?;
+        .or_else(|| read_cursor_key("cursorAuth/accessToken"));
 
     let email = read_cursor_key("cursorAuth/cachedEmail");
     let stored_membership_type = read_cursor_key("cursorAuth/stripeMembershipType");
     let stored_subscription_status = read_cursor_key("cursorAuth/stripeSubscriptionStatus");
     let client = reqwest::Client::new();
+
+    let Some(bearer_initial) = bearer_initial else {
+        if let Some(cookie) = session_cookie {
+            return fetch_cursor_usage_cookie_only(
+                &client,
+                &cookie,
+                email,
+                stored_membership_type,
+                stored_subscription_status,
+            )
+            .await;
+        }
+        return Err(
+            "No Cursor auth found — sign into the Cursor desktop app or enter a token manually."
+                .to_string(),
+        );
+    };
 
     let mut bearer = resolve_cursor_bearer(&client, bearer_initial).await?;
 
