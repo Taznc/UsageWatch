@@ -30,6 +30,7 @@ dist-ssr
 .remember/
 .claude/settings.local.json
 mcp-server/.claude/
+src-tauri/.claude/
 
 # Screenshots / one-off artifacts
 playwright-widget.png
