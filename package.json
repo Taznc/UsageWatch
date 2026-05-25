@@ -13,7 +13,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "install:mac": "bash scripts/install-mac.sh",
+    "install:mac:universal": "bash scripts/install-mac.sh --universal"
   },
   "dependencies": {
     "@composio/mcp": "^1.0.9",
