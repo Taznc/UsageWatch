@@ -110,8 +110,27 @@ export function Popover() {
     usageData?.seven_day_sonnet ||
     usageData?.seven_day_oauth_apps ||
     usageData?.seven_day_cowork ||
-    usageData?.seven_day_omelette
+    usageData?.seven_day_omelette ||
+    usageData?.tangelo ||
+    usageData?.iguana_necktie
   );
+
+  const formatDisabledReason = (reason: string | null | undefined): string | null => {
+    if (!reason) return null;
+    switch (reason) {
+      case "org_level_disabled_until":
+        return "Disabled at the organization level.";
+      case "org_level_disabled":
+        return "Disabled at the organization level.";
+      case "plan_does_not_support":
+      case "not_supported":
+        return "Your plan does not include extra usage.";
+      default:
+        return reason
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  };
 
   // Monitor thresholds and fire native notifications
   useAlertEngine(usageData, burnRate);
@@ -220,7 +239,7 @@ export function Popover() {
                     </div>
                   )}
 
-                  {(usageData.seven_day || usageData.seven_day_opus || usageData.seven_day_sonnet || usageData.seven_day_oauth_apps || usageData.seven_day_cowork || usageData.seven_day_omelette) && (
+                  {(usageData.seven_day || usageData.seven_day_opus || usageData.seven_day_sonnet || usageData.seven_day_oauth_apps || usageData.seven_day_cowork || usageData.seven_day_omelette || usageData.tangelo || usageData.iguana_necktie) && (
                     <div className="usage-section">
                       <h2 className="section-heading">Weekly Limits</h2>
                       {usageData.seven_day && (
@@ -277,6 +296,24 @@ export function Popover() {
                             showRemaining={show_remaining}
                           />
                         )}
+                      {usageData.tangelo &&
+                        usageData.tangelo.utilization > 0 && (
+                          <UsageBar
+                            label="Tangelo"
+                            percentage={usageData.tangelo.utilization}
+                            resetAt={usageData.tangelo.resets_at}
+                            showRemaining={show_remaining}
+                          />
+                        )}
+                      {usageData.iguana_necktie &&
+                        usageData.iguana_necktie.utilization > 0 && (
+                          <UsageBar
+                            label="Iguana Necktie"
+                            percentage={usageData.iguana_necktie.utilization}
+                            resetAt={usageData.iguana_necktie.resets_at}
+                            showRemaining={show_remaining}
+                          />
+                        )}
                     </div>
                   )}
 
@@ -306,6 +343,22 @@ export function Popover() {
                       Claude did not return session or weekly reset windows for this account.
                     </div>
                   )}
+
+                  {usageData.extra_usage &&
+                    !usageData.extra_usage.is_enabled &&
+                    usageData.extra_usage.disabled_reason && (
+                      <div className="usage-section">
+                        <h2 className="section-heading">Extra Usage</h2>
+                        <div className="extra-usage" style={{ opacity: 0.85 }}>
+                          <div className="extra-usage-details">
+                            <span>{formatDisabledReason(usageData.extra_usage.disabled_reason)}</span>
+                            {usageData.extra_usage.currency && (
+                              <span style={{ opacity: 0.6 }}>{usageData.extra_usage.currency}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                   {usageData.extra_usage &&
                     usageData.extra_usage.is_enabled && (

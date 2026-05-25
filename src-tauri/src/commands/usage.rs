@@ -22,6 +22,8 @@ fn summarize_usage_windows(value: &serde_json::Value) -> serde_json::Value {
         "seven_day_cowork",
         "seven_day_omelette",
         "omelette_promotional",
+        "tangelo",
+        "iguana_necktie",
     ] {
         let Some(window) = value.get(key) else {
             out.insert(key.to_string(), serde_json::json!({ "present": false }));

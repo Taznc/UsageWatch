@@ -18,6 +18,13 @@ pub struct UsageData {
     pub seven_day_omelette: Option<UsageWindow>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub omelette_promotional: Option<UsageWindow>,
+    /// Codename window introduced with MAX 20x — surfaced as a generic usage bar
+    /// until Anthropic publishes a friendly name.
+    #[serde(default)]
+    pub tangelo: Option<UsageWindow>,
+    /// Codename window introduced with MAX 20x.
+    #[serde(default)]
+    pub iguana_necktie: Option<UsageWindow>,
     #[serde(default)]
     pub extra_usage: Option<ExtraUsage>,
 }
@@ -32,6 +39,8 @@ impl UsageData {
             || self.seven_day_cowork.is_some()
             || self.seven_day_omelette.is_some()
             || self.omelette_promotional.is_some()
+            || self.tangelo.is_some()
+            || self.iguana_necktie.is_some()
     }
 
     pub fn needs_window_supplement(&self) -> bool {
@@ -44,6 +53,8 @@ impl UsageData {
             || usage_window_needs_supplement(&self.seven_day_cowork)
             || usage_window_needs_supplement(&self.seven_day_omelette)
             || usage_window_needs_supplement(&self.omelette_promotional)
+            || usage_window_needs_supplement(&self.tangelo)
+            || usage_window_needs_supplement(&self.iguana_necktie)
     }
 
     pub fn fill_missing_from(&mut self, fallback: UsageData) {
@@ -58,6 +69,8 @@ impl UsageData {
             &mut self.omelette_promotional,
             fallback.omelette_promotional,
         );
+        fill_usage_window(&mut self.tangelo, fallback.tangelo);
+        fill_usage_window(&mut self.iguana_necktie, fallback.iguana_necktie);
         if self.extra_usage.is_none() {
             self.extra_usage = fallback.extra_usage;
         }
@@ -106,6 +119,14 @@ pub struct ExtraUsage {
     pub used_credits: Option<f64>,
     #[serde(default)]
     pub utilization: Option<f64>,
+    /// ISO currency code (e.g. "USD"). Returned on MAX plans where extra usage
+    /// participates in monetary spend rather than credits.
+    #[serde(default)]
+    pub currency: Option<String>,
+    /// Why extra usage is currently unavailable (e.g. "org_level_disabled_until").
+    /// Only populated when `is_enabled` is false on plans that *could* enable it.
+    #[serde(default)]
+    pub disabled_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

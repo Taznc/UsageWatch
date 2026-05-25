@@ -72,9 +72,17 @@ function formatClaude(update: UsageUpdate): string {
   out += windowLine("Weekly Sonnet", d.seven_day_sonnet);
   out += windowLine("Weekly OAuth Apps", d.seven_day_oauth_apps);
   out += windowLine("Weekly Cowork", d.seven_day_cowork);
+  out += windowLine("Weekly Design", d.seven_day_omelette);
+  out += windowLine("Weekly Tangelo", d.tangelo);
+  out += windowLine("Weekly Iguana Necktie", d.iguana_necktie);
   if (d.extra_usage?.is_enabled) {
     const e = d.extra_usage;
-    out += `  Extra usage: ${pct(e.utilization)} (${cents(e.used_credits)} / ${cents(e.monthly_limit)})\n`;
+    const utilPct = e.utilization != null ? pct(e.utilization) : "--";
+    const usedStr = e.used_credits != null ? cents(e.used_credits) : "$0.00";
+    const limitStr = e.monthly_limit != null ? cents(e.monthly_limit) : "no limit";
+    out += `  Extra usage: ${utilPct} (${usedStr} / ${limitStr})${e.currency ? ` ${e.currency}` : ""}\n`;
+  } else if (d.extra_usage?.disabled_reason) {
+    out += `  Extra usage: disabled (${d.extra_usage.disabled_reason})\n`;
   }
   if (update.peak_hours) {
     const ph = update.peak_hours;

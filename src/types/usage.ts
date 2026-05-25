@@ -8,6 +8,10 @@ export interface ExtraUsage {
   monthly_limit: number | null;
   used_credits: number | null;
   utilization: number | null;
+  /** ISO currency code returned alongside monetary extra usage (MAX plans). */
+  currency?: string | null;
+  /** Reason extra usage is unavailable (e.g. "org_level_disabled_until"). */
+  disabled_reason?: string | null;
 }
 
 export interface UsageData {
@@ -18,6 +22,10 @@ export interface UsageData {
   seven_day_oauth_apps: UsageWindow | null;
   seven_day_cowork: UsageWindow | null;
   seven_day_omelette: UsageWindow | null;
+  /** Codename window introduced with MAX 20x — friendly name TBD. */
+  tangelo?: UsageWindow | null;
+  /** Codename window introduced with MAX 20x — friendly name TBD. */
+  iguana_necktie?: UsageWindow | null;
   extra_usage: ExtraUsage | null;
 }
 

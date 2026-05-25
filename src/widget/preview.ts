@@ -17,11 +17,15 @@ export const previewUsageData: UsageData = {
   seven_day_oauth_apps: { utilization: 21, resets_at: futureIso(61) },
   seven_day_cowork: { utilization: 12, resets_at: futureIso(61) },
   seven_day_omelette: { utilization: 55, resets_at: futureIso(61) },
+  tangelo: { utilization: 8, resets_at: futureIso(61) },
+  iguana_necktie: { utilization: 3, resets_at: futureIso(61) },
   extra_usage: {
     is_enabled: true,
     monthly_limit: 2500,
     used_credits: 730,
     utilization: 29.2,
+    currency: "USD",
+    disabled_reason: null,
   },
 };
 

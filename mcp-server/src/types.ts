@@ -9,9 +9,11 @@ export interface UsageWindow {
 
 export interface ExtraUsage {
   is_enabled: boolean;
-  monthly_limit: number;
-  used_credits: number;
-  utilization: number;
+  monthly_limit: number | null;
+  used_credits: number | null;
+  utilization: number | null;
+  currency?: string | null;
+  disabled_reason?: string | null;
 }
 
 export interface PeakHoursStatus {
@@ -27,6 +29,11 @@ export interface UsageData {
   seven_day_sonnet?: UsageWindow;
   seven_day_oauth_apps?: UsageWindow;
   seven_day_cowork?: UsageWindow;
+  seven_day_omelette?: UsageWindow;
+  /** Codename window introduced with MAX 20x — friendly name TBD. */
+  tangelo?: UsageWindow;
+  /** Codename window introduced with MAX 20x — friendly name TBD. */
+  iguana_necktie?: UsageWindow;
   extra_usage?: ExtraUsage;
 }
 
