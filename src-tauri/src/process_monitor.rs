@@ -641,15 +641,15 @@ fn parse_process_json(text: &str) -> Result<Vec<ProcessSnapshot>, String> {
 
 #[cfg(not(target_os = "windows"))]
 fn parse_ps_line(line: &str) -> Option<ProcessSnapshot> {
-    let mut parts = line.trim_start().splitn(4, char::is_whitespace);
-    let pid = parts.next()?.trim().parse().ok()?;
-    let rest = parts.as_str();
-    let mut rest_parts = rest.trim_start().splitn(3, char::is_whitespace);
-    let ppid = rest_parts.next()?.trim().parse().ok()?;
-    let rest = rest_parts.as_str();
-    let mut rest_parts = rest.trim_start().splitn(2, char::is_whitespace);
-    let name = rest_parts.next()?.to_string();
-    let command_line = rest_parts.as_str().trim().to_string();
+    let (pid_str, rest) = line.trim_start().split_once(char::is_whitespace)?;
+    let pid = pid_str.trim().parse().ok()?;
+    let (ppid_str, rest) = rest.trim_start().split_once(char::is_whitespace)?;
+    let ppid = ppid_str.trim().parse().ok()?;
+    let (name, command_line) = rest
+        .trim_start()
+        .split_once(char::is_whitespace)
+        .map(|(n, c)| (n.to_string(), c.trim().to_string()))
+        .unwrap_or_else(|| (rest.trim_start().to_string(), String::new()));
     Some(ProcessSnapshot {
         pid,
         ppid,
