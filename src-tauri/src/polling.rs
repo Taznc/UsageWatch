@@ -178,10 +178,70 @@ pub async fn poll_all_providers(
     latest_billing: &Arc<Mutex<Option<BillingUpdate>>>,
 ) {
     let (claude_opt, codex_update, cursor_update, billing_opt) = tokio::join!(
-        fetch_claude_update(app, cache),
-        fetch_codex_update(cache),
-        fetch_cursor_update(cache),
-        fetch_billing_update(cache),
+        async {
+            match tokio::time::timeout(
+                Duration::from_secs(30),
+                fetch_claude_update(app, cache),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => {
+                    eprintln!("[poll] Claude fetch timed out after 30s");
+                    None
+                }
+            }
+        },
+        async {
+            match tokio::time::timeout(
+                Duration::from_secs(30),
+                fetch_codex_update(cache),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => {
+                    eprintln!("[poll] Codex fetch timed out after 30s");
+                    CodexUpdate {
+                        data: None,
+                        error: Some("Fetch timed out".to_string()),
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                    }
+                }
+            }
+        },
+        async {
+            match tokio::time::timeout(
+                Duration::from_secs(30),
+                fetch_cursor_update(cache),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => {
+                    eprintln!("[poll] Cursor fetch timed out after 30s");
+                    CursorUpdate {
+                        data: None,
+                        error: Some("Fetch timed out".to_string()),
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                    }
+                }
+            }
+        },
+        async {
+            match tokio::time::timeout(
+                Duration::from_secs(30),
+                fetch_billing_update(cache),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => {
+                    eprintln!("[poll] Billing fetch timed out after 30s");
+                    None
+                }
+            }
+        },
     );
 
     if let Some(update) = claude_opt {
@@ -203,7 +263,7 @@ pub async fn poll_all_providers(
 }
 
 async fn fetch_usage_internal(session_key: &str, org_id: &str) -> Result<UsageData, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("https://claude.ai/api/organizations/{}/usage", org_id);
 
     let response = client
@@ -225,7 +285,13 @@ async fn fetch_usage_internal(session_key: &str, org_id: &str) -> Result<UsageDa
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
     let mut usage: UsageData = serde_json::from_str(&text)
-        .map_err(|e| format!("Failed to parse usage data: {}. Raw: {}", e, &text[..text.len().min(500)]))?;
+        .map_err(|e| {
+            eprintln!(
+                "[poll] Failed to parse Claude usage data: {e}. Raw (first 500B): {}",
+                &text[..text.len().min(500)]
+            );
+            format!("Failed to parse usage data: {e}")
+        })?;
     usage.normalize_aliases();
     Ok(usage)
 }

@@ -380,9 +380,11 @@ export function WidgetOverlay() {
 
     window.addEventListener("pointerup", stopDragging);
     window.addEventListener("mouseup", stopDragging);
+    window.addEventListener("blur", stopDragging);
     return () => {
       window.removeEventListener("pointerup", stopDragging);
       window.removeEventListener("mouseup", stopDragging);
+      window.removeEventListener("blur", stopDragging);
     };
   }, []);
 

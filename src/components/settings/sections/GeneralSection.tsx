@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useApp } from "../../../context/AppContext";
 import { Toggle } from "../shared/Toggle";
 import { SettingRow } from "../shared/SettingRow";
@@ -15,6 +16,14 @@ export function GeneralSection() {
     invoke<boolean>("get_http_server_enabled")
       .then(setHttpServerEnabled)
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    isEnabled().then((enabled) => {
+      if (enabled !== settings.autostart) {
+        dispatch({ type: "UPDATE_SETTINGS", settings: { autostart: enabled } });
+      }
+    }).catch(() => {});
   }, []);
 
   const updatePollInterval = async (secs: number) => {
@@ -60,9 +69,15 @@ export function GeneralSection() {
         <SettingRow label="Launch at login">
           <Toggle
             checked={settings.autostart}
-            onChange={(v) =>
-              dispatch({ type: "UPDATE_SETTINGS", settings: { autostart: v } })
-            }
+            onChange={async (v) => {
+              dispatch({ type: "UPDATE_SETTINGS", settings: { autostart: v } });
+              try {
+                if (v) { await enable(); } else { await disable(); }
+              } catch {
+                // Revert optimistic update on failure
+                dispatch({ type: "UPDATE_SETTINGS", settings: { autostart: !v } });
+              }
+            }}
           />
         </SettingRow>
       </SettingGroup>

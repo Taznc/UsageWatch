@@ -12,6 +12,10 @@ const REFRESH_BACKOFF: Duration = Duration::from_secs(30 * 60); // 30 minutes
 /// the backoff is bypassed automatically.
 static REFRESH_FAILURE: Mutex<Option<(Instant, String)>> = Mutex::new(None);
 
+/// Serializes concurrent refresh attempts. A concurrent caller waits here, then
+/// re-reads the freshly-written token and returns it without a second network call.
+static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 const CLAUDE_OAUTH_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const CLAUDE_OAUTH_TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
 const CLAUDE_OAUTH_SCOPE: &str =
@@ -96,13 +100,9 @@ fn write_oauth_to_keychain(oauth: &ClaudeAiOauth) -> Result<(), String> {
 
     let account = std::env::var("USER").unwrap_or_else(|_| "claude".to_string());
 
-    // Delete existing entry first (add fails if it already exists)
-    let _ = std::process::Command::new("security")
-        .args(["delete-generic-password", "-s", "Claude Code-credentials"])
-        .output();
-
+    // Use -U (upsert) so the update is atomic — no delete+add window where the item is gone.
     let status = std::process::Command::new("security")
-        .args(["add-generic-password", "-s", "Claude Code-credentials", "-a", &account, "-w", &json])
+        .args(["add-generic-password", "-U", "-s", "Claude Code-credentials", "-a", &account, "-w", &json])
         .status()
         .map_err(|e| format!("security command failed: {e}"))?;
 
@@ -139,6 +139,9 @@ fn read_oauth() -> Option<ClaudeAiOauth> {
 // ── Token expiry check ─────────────────────────────────────────────────────
 
 fn is_expiring_soon(expires_at_ms: u64) -> bool {
+    if expires_at_ms == 0 {
+        return false; // unknown expiry — treat as fresh, avoid unnecessary refresh
+    }
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -150,7 +153,7 @@ fn is_expiring_soon(expires_at_ms: u64) -> bool {
 // ── Token refresh ──────────────────────────────────────────────────────────
 
 async fn do_oauth_refresh(refresh_token: &str) -> Result<OAuthRefreshResponse, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let response = client
         .post(CLAUDE_OAUTH_TOKEN_URL)
         .header("Content-Type", "application/json")
@@ -192,7 +195,8 @@ async fn do_oauth_refresh(refresh_token: &str) -> Result<OAuthRefreshResponse, S
 /// Returns the current access token, refreshing proactively if within 5 minutes
 /// of expiry. Writes the updated token back to keychain (macOS) or file.
 pub async fn get_claude_oauth_token() -> Result<String, String> {
-    let mut oauth = read_oauth().ok_or_else(|| {
+    // Fast path: token is fresh — no lock needed.
+    let oauth = read_oauth().ok_or_else(|| {
         #[cfg(target_os = "macos")]
         return "Claude Code credentials not found. Sign in with the Claude CLI first (run 'claude' in a terminal).".to_string();
         #[cfg(not(target_os = "macos"))]
@@ -207,7 +211,28 @@ pub async fn get_claude_oauth_token() -> Result<String, String> {
         return Ok(oauth.access_token.clone());
     }
 
-    // Token is expiring/expired.  Check if we should back off.
+    // Token is expiring. Acquire exclusive lock before refreshing.
+    // A concurrent caller holding this lock will have just refreshed;
+    // when we acquire it, we re-read and likely find a fresh token.
+    let _guard = REFRESH_LOCK.lock().await;
+
+    // Double-check after acquiring the lock.
+    let mut oauth = read_oauth().ok_or_else(|| {
+        #[cfg(target_os = "macos")]
+        return "Claude Code credentials not found. Sign in with the Claude CLI first (run 'claude' in a terminal).".to_string();
+        #[cfg(not(target_os = "macos"))]
+        return "~/.claude/.credentials.json not found. Sign in with the Claude CLI first.".to_string();
+    })?;
+
+    if !is_expiring_soon(oauth.expires_at) {
+        // Another caller refreshed while we waited — reuse their result.
+        if let Ok(mut g) = REFRESH_FAILURE.lock() {
+            *g = None;
+        }
+        return Ok(oauth.access_token.clone());
+    }
+
+    // Still expiring — we hold the lock, proceed with backoff check + refresh.
     // Backoff is keyed on the refresh token: if the user re-authenticated, their
     // refresh token changes and the backoff is bypassed immediately.
     if let Ok(g) = REFRESH_FAILURE.lock() {
@@ -259,12 +284,18 @@ pub async fn get_claude_oauth_token() -> Result<String, String> {
     {
         let path = claude_credentials_path();
         let file = ClaudeCredentialsFile { claude_ai_oauth: Some(oauth.clone()) };
+        let tmp_path = path.with_extension("tmp");
         if let Ok(json) = serde_json::to_string_pretty(&file) {
-            let _ = std::fs::write(&path, json);
+            if let Ok(()) = std::fs::write(&tmp_path, &json) {
+                if let Err(_) = std::fs::rename(&tmp_path, &path) {
+                    let _ = std::fs::remove_file(&tmp_path); // best-effort cleanup
+                }
+            }
         }
     }
 
     eprintln!("[{ts}][ClaudeOAuth] Token refreshed.");
+    // _guard drops here, releasing REFRESH_LOCK
     Ok(refreshed.access_token)
 }
 

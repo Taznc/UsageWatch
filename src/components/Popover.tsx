@@ -218,9 +218,9 @@ export function Popover() {
             </div>
           )}
 
-          {error && !usageData && (
+          {error && (
             <div className="status-banner error">
-              {error}
+              {error}{usageData ? " (showing last known data)" : ""}
             </div>
           )}
 

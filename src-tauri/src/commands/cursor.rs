@@ -807,7 +807,7 @@ pub(crate) async fn fetch_cursor_usage_internal(
     let email = read_cursor_key("cursorAuth/cachedEmail");
     let stored_membership_type = read_cursor_key("cursorAuth/stripeMembershipType");
     let stored_subscription_status = read_cursor_key("cursorAuth/stripeSubscriptionStatus");
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
 
     let Some(bearer_initial) = bearer_initial else {
         if let Some(cookie) = session_cookie {
@@ -1191,7 +1191,7 @@ pub async fn debug_cursor_api(
                 .to_string()
         })?;
 
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let bearer = resolve_cursor_bearer(&client, bearer_initial).await?;
 
     let cookie_for_cursor_com = session_cookie
@@ -1374,7 +1374,7 @@ pub fn pull_cursor_session_from_browsers() -> Result<Vec<BrowserResult>, String>
 /// Validate a cookie string by hitting the Cursor usage API.
 #[tauri::command]
 pub async fn test_cursor_connection(cookie: String) -> Result<bool, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let response = client
         .get("https://cursor.com/api/usage-summary")
         .header("Cookie", &cookie)

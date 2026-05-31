@@ -135,8 +135,7 @@ pub fn debug_claude_desktop_cookies() -> Vec<String> {
         Ok(cookies) => {
             log.push(format!("✅ Decrypted {} cookies for claude.ai", cookies.len()));
             for c in &cookies {
-                let preview = if c.value.len() > 20 { format!("{}...", &c.value[..20]) } else { c.value.clone() };
-                log.push(format!("   name={:?} domain={} len={} val={}", c.name, c.domain, c.value.len(), preview));
+                log.push(format!("   name={:?} domain={} len={}", c.name, c.domain, c.value.len()));
             }
             if let Some(s) = cookies.iter().find(|c| c.name == "sessionKey") {
                 log.push(format!("✅ sessionKey found! len={}", s.value.len()));
@@ -195,14 +194,9 @@ pub fn pull_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
                     .iter()
                     .enumerate()
                     .map(|(i, c)| {
-                        let prefix = if c.value.len() > 30 {
-                            format!("{}...", &c.value[..30])
-                        } else {
-                            c.value.clone()
-                        };
                         format!(
-                            "  [{}] domain={}, path={}, len={}, prefix={}",
-                            i, c.domain, c.path, c.value.len(), prefix,
+                            "  [{}] domain={}, path={}, len={}",
+                            i, c.domain, c.path, c.value.len(),
                         )
                     })
                     .collect();

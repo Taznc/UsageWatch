@@ -2,8 +2,11 @@ use std::sync::{Arc, Mutex};
 
 use axum::{
     Json, Router,
+    body::Body,
     extract::State,
-    http::StatusCode,
+    http::{Request, StatusCode, header::HOST},
+    middleware::{self, Next},
+    response::Response,
     routing::{get, post},
 };
 use tauri::{AppHandle, Emitter, Manager};
@@ -51,6 +54,7 @@ pub fn start(
             .route("/api/billing", get(get_billing))
             .route("/api/open", post(open_window))
             .layer(cors)
+            .layer(middleware::from_fn(validate_host))
             .with_state(state);
 
         match tokio::net::TcpListener::bind("127.0.0.1:52700").await {
@@ -66,6 +70,26 @@ pub fn start(
             }
         }
     });
+}
+
+/// Rejects any request whose `Host` header is not exactly `127.0.0.1:52700`.
+///
+/// This closes the DNS-rebinding vector: a browser page on `attacker.com`
+/// (resolving to 127.0.0.1) or a non-browser client forging/omitting `Origin`
+/// would still send a `Host` header matching the hostname it dialed, so
+/// requests for `localhost:52700` or any rebinding hostname are blocked with
+/// `403 Forbidden`. Applies to every route, including `POST /api/open`.
+async fn validate_host(req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+    let host_ok = req
+        .headers()
+        .get(HOST)
+        .and_then(|h| h.to_str().ok())
+        .map(|h| h == "127.0.0.1:52700")
+        .unwrap_or(false);
+    if !host_ok {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(next.run(req).await)
 }
 
 async fn get_usage(

@@ -9,7 +9,26 @@ pub(crate) fn save_to_store(app: &AppHandle, key: &str, value: &str) -> Result<(
         .store("credentials.json")
         .map_err(|e| format!("Store error: {}", e))?;
     store.set(key, serde_json::json!(value));
-    store.save().map_err(|e| format!("Store save error: {}", e))
+    store
+        .save()
+        .map_err(|e| format!("Store save error: {}", e))?;
+
+    // credentials.json holds plaintext secrets (session_key, codex/cursor tokens).
+    // tauri-plugin-store writes it with umask-derived permissions (often 0644),
+    // which is world-readable on Linux. Tighten to owner-only (0600) on Unix.
+    // The store resolves its file under BaseDirectory::AppData (app_data_dir),
+    // so reconstruct that same path to chmod the written file.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        use tauri::Manager;
+        if let Ok(dir) = app.path().app_data_dir() {
+            let file = dir.join("credentials.json");
+            let _ = std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+
+    Ok(())
 }
 
 
@@ -106,7 +125,7 @@ pub fn get_org_id(cache: tauri::State<'_, Arc<CredentialsCache>>) -> Result<Opti
 
 #[tauri::command]
 pub async fn test_connection(session_key: String) -> Result<Vec<Organization>, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let cookie = crate::commands::usage::claude_cookie_header(&session_key);
     let response = client
         .get("https://claude.ai/api/organizations")

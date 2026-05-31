@@ -1219,21 +1219,90 @@ pub fn mcp_set_enabled_bulk(
     state: tauri::State<'_, std::sync::Arc<McpState>>,
     server: String,
     changes: Vec<(HostTarget, bool)>,
-) -> Result<(), String> {
+) -> Result<AddReport, String> {
+    let mut outcomes: Vec<WriteOutcome> = Vec::new();
     let mut affected: Vec<McpHost> = Vec::new();
+    let mut any_error = false;
     for (target, enabled) in changes {
-        let path = target_path(&target).ok_or_else(|| "no path for target".to_string())?;
-        ensure_backup(&app, &state, target.host, &target.scope, &path)?;
-        let mut file = read_host_file_for(target.host, &path)?;
+        let path = match target_path(&target) {
+            Some(p) => p,
+            None => {
+                any_error = true;
+                outcomes.push(WriteOutcome {
+                    target,
+                    support: SupportLevel::Native,
+                    written: false,
+                    note: Some("no config path for target".into()),
+                });
+                continue;
+            }
+        };
+        if let Err(e) = ensure_backup(&app, &state, target.host, &target.scope, &path) {
+            any_error = true;
+            outcomes.push(WriteOutcome {
+                target,
+                support: SupportLevel::Native,
+                written: false,
+                note: Some(format!("backup failed: {e}")),
+            });
+            continue;
+        }
+        let mut file = match read_host_file_for(target.host, &path) {
+            Ok(f) => f,
+            Err(e) => {
+                any_error = true;
+                outcomes.push(WriteOutcome {
+                    target,
+                    support: SupportLevel::Native,
+                    written: false,
+                    note: Some(format!("read failed: {e}")),
+                });
+                continue;
+            }
+        };
         if move_server_in_file(&mut file, &server, enabled) {
-            write_host_file(&path, &file)?;
+            if let Err(e) = write_host_file(&path, &file) {
+                any_error = true;
+                outcomes.push(WriteOutcome {
+                    target,
+                    support: SupportLevel::Native,
+                    written: false,
+                    note: Some(format!("write failed: {e}")),
+                });
+                continue;
+            }
             if !affected.contains(&target.host) {
                 affected.push(target.host);
             }
         }
+        outcomes.push(WriteOutcome {
+            target,
+            support: SupportLevel::Native,
+            written: true,
+            note: None,
+        });
     }
     notify_change(&app, &affected, &server);
-    Ok(())
+    if any_error {
+        let failed: Vec<String> = outcomes
+            .iter()
+            .filter(|o| !o.written)
+            .map(|o| {
+                format!(
+                    "{:?}/{:?}: {}",
+                    o.target.host,
+                    o.target.scope,
+                    o.note.as_deref().unwrap_or("unknown error")
+                )
+            })
+            .collect();
+        return Err(format!(
+            "partial failure — {} host(s) could not be updated: {}",
+            failed.len(),
+            failed.join("; ")
+        ));
+    }
+    Ok(AddReport { outcomes })
 }
 
 #[derive(Debug, Deserialize)]
@@ -1275,10 +1344,37 @@ pub fn mcp_add_server(
             });
             continue;
         }
-        ensure_backup(&app, &state, target.host, &target.scope, &path)?;
-        let mut file = read_host_file_for(target.host, &path)?;
+        if let Err(e) = ensure_backup(&app, &state, target.host, &target.scope, &path) {
+            outcomes.push(WriteOutcome {
+                target: target.clone(),
+                support,
+                written: false,
+                note: Some(format!("backup failed: {e}")),
+            });
+            continue;
+        }
+        let mut file = match read_host_file_for(target.host, &path) {
+            Ok(f) => f,
+            Err(e) => {
+                outcomes.push(WriteOutcome {
+                    target: target.clone(),
+                    support,
+                    written: false,
+                    note: Some(format!("read failed: {e}")),
+                });
+                continue;
+            }
+        };
         set_server_in_file(&mut file, &input.server.name, value, input.enabled);
-        write_host_file(&path, &file)?;
+        if let Err(e) = write_host_file(&path, &file) {
+            outcomes.push(WriteOutcome {
+                target: target.clone(),
+                support,
+                written: false,
+                note: Some(format!("write failed: {e}")),
+            });
+            continue;
+        }
         if !affected.contains(&target.host) {
             affected.push(target.host);
         }

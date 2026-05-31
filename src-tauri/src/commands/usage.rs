@@ -56,7 +56,7 @@ fn top_level_keys(value: &serde_json::Value) -> Vec<String> {
 
 #[tauri::command]
 pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageData, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("https://claude.ai/api/organizations/{}/usage", org_id);
     let cookie = claude_cookie_header(&session_key);
 
@@ -93,7 +93,7 @@ pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageDat
 
 #[tauri::command]
 pub async fn fetch_usage_raw(session_key: String, org_id: String) -> Result<String, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("https://claude.ai/api/organizations/{}/usage", org_id);
     let cookie = claude_cookie_header(&session_key);
 
@@ -114,7 +114,7 @@ pub async fn fetch_usage_raw(session_key: String, org_id: String) -> Result<Stri
 
 #[tauri::command]
 pub async fn fetch_billing(session_key: String, org_id: String) -> Result<BillingInfo, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let cookie = claude_cookie_header(&session_key);
     let headers = |req: reqwest::RequestBuilder| {
         req.header("cookie", cookie.clone())
@@ -192,7 +192,7 @@ async fn debug_claude_api_impl(
     cache: &std::sync::Arc<crate::credentials_cache::CredentialsCache>,
     include_raw: bool,
 ) -> Result<String, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let session_key = cache.get_session_key();
     let org_id = cache.get_org_id();
     let auth_method = cache.get_claude_auth_method();
@@ -450,7 +450,7 @@ mod tests {
 /// Fetch Claude usage via OAuth Bearer token from the Anthropic API.
 /// Used when `claude_auth_method == "oauth"` (i.e. Claude Code CLI credentials).
 pub(crate) async fn fetch_usage_oauth(access_token: &str) -> Result<UsageData, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let resp = client
         .get("https://api.anthropic.com/api/oauth/usage")
         .header("Authorization", format!("Bearer {}", access_token))
@@ -507,7 +507,7 @@ pub(crate) async fn fetch_peak_hours() -> Option<PeakHoursStatus> {
         is_weekend: bool,
     }
 
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let resp = client
         .get("https://promoclock.co/api/status")
         .header("user-agent", crate::USER_AGENT)

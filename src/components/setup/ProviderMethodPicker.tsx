@@ -313,12 +313,27 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
   }
 
   async function finishClaudeSetup(key: string, orgId: string, name: string) {
-    await invoke("save_session_key", { key });
-    await invoke("save_org_id", { orgId });
+    const method = activeMethod ?? "manual";
+    try {
+      await invoke("save_session_key", { key });
+    } catch (err) {
+      setStatus(method, "error", String(err));
+      return;
+    }
+    try {
+      await invoke("save_org_id", { orgId });
+    } catch (err) {
+      // rollback so we don't leave a half-written credential set
+      // (session_key present but org_id missing => next launch forces re-setup)
+      try {
+        await invoke("delete_session_key");
+      } catch {}
+      setStatus(method, "error", String(err));
+      return;
+    }
     setConnected(true);
     setConnectedInfo(name);
     setSelectedOrg(orgId);
-    const method = activeMethod ?? "manual";
     setStatus(method, "success");
     onConnected();
   }
@@ -480,7 +495,13 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
           <label>Organization</label>
           <select
             value={selectedOrg}
-            onChange={(e) => selectClaudeOrg(e.target.value)}
+            onChange={async (e) => {
+              try {
+                await selectClaudeOrg(e.target.value);
+              } catch (err) {
+                setStatus(activeMethod ?? "manual", "error", String(err));
+              }
+            }}
             className="input"
           >
             <option value="">Select organization...</option>
