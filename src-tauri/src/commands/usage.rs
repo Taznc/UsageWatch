@@ -11,6 +11,7 @@ pub(crate) fn claude_cookie_header(session_key_or_cookie: &str) -> String {
     }
 }
 
+#[cfg(debug_assertions)]
 fn summarize_usage_windows(value: &serde_json::Value) -> serde_json::Value {
     let mut out = serde_json::Map::new();
     for key in [
@@ -45,6 +46,7 @@ fn summarize_usage_windows(value: &serde_json::Value) -> serde_json::Value {
     serde_json::Value::Object(out)
 }
 
+#[cfg(debug_assertions)]
 fn top_level_keys(value: &serde_json::Value) -> Vec<String> {
     let mut keys = value
         .as_object()
@@ -91,6 +93,7 @@ pub async fn fetch_usage(session_key: String, org_id: String) -> Result<UsageDat
     Ok(usage)
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn fetch_usage_raw(session_key: String, org_id: String) -> Result<String, String> {
     let client = crate::http_client::HTTP_CLIENT.clone();
@@ -174,6 +177,7 @@ pub async fn fetch_billing(session_key: String, org_id: String) -> Result<Billin
     })
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn debug_claude_api(
     cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
@@ -181,6 +185,7 @@ pub async fn debug_claude_api(
     debug_claude_api_impl(cache.inner(), false).await
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn debug_claude_api_raw(
     cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,
@@ -188,6 +193,7 @@ pub async fn debug_claude_api_raw(
     debug_claude_api_impl(cache.inner(), true).await
 }
 
+#[cfg(debug_assertions)]
 async fn debug_claude_api_impl(
     cache: &std::sync::Arc<crate::credentials_cache::CredentialsCache>,
     include_raw: bool,

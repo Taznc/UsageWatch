@@ -1054,6 +1054,7 @@ pub(crate) async fn fetch_cursor_usage_internal(
 
 const CURSOR_MANUAL_TOKEN_KEY: &str = "cursor_manual_token";
 
+#[cfg(debug_assertions)]
 fn debug_scalar_preview(v: &serde_json::Value) -> serde_json::Value {
     match v {
         serde_json::Value::String(s) => {
@@ -1071,6 +1072,7 @@ fn debug_scalar_preview(v: &serde_json::Value) -> serde_json::Value {
 }
 
 /// HTTP + JSON shape for one Connect RPC (no bearer token in output).
+#[cfg(debug_assertions)]
 async fn inspect_cursor_dashboard_rpc(
     client: &reqwest::Client,
     method: &str,
@@ -1166,6 +1168,7 @@ async fn inspect_cursor_dashboard_rpc(
 // ── Commands ───────────────────────────────────────────────────────────────
 
 /// Diagnostics for Cursor dashboard APIs (no secrets). Compare with [OpenUsage Cursor provider](https://github.com/robinebers/openusage/blob/main/docs/providers/cursor.md).
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn debug_cursor_api(
     cache: tauri::State<'_, std::sync::Arc<crate::credentials_cache::CredentialsCache>>,

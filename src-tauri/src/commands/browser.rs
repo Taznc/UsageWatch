@@ -83,6 +83,7 @@ fn claude_cookie_header_from_cookies(cookies: &[Cookie]) -> Option<String> {
 
 /// Detailed diagnostic for Claude Desktop cookie detection on Windows.
 /// Returns a list of log lines explaining each step.
+#[cfg(debug_assertions)]
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub fn debug_claude_desktop_cookies() -> Vec<String> {
@@ -155,6 +156,7 @@ pub fn debug_claude_desktop_cookies() -> Vec<String> {
     log
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 #[cfg(not(target_os = "windows"))]
 pub fn debug_claude_desktop_cookies() -> Vec<String> {

@@ -1525,6 +1525,7 @@ pub fn mcp_preview_translation(host: McpHost, server: McpServerEntry) -> Value {
 }
 
 /// Debug: return the resolved config path and raw file contents for a host.
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub fn mcp_debug_host(host: McpHost) -> Value {
     let path = match host {
