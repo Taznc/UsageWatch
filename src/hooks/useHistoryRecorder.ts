@@ -4,6 +4,15 @@ import type { UsageData } from "../types/usage";
 
 let db: Awaited<ReturnType<typeof Database.load>> | null = null;
 
+// Timestamp (ms) of the last Claude account switch. History before this point
+// belongs to a different account, so burn-rate calculations must ignore it.
+let lastSwitchAt = 0;
+
+/// Called when the active Claude account changes — see useUsageData.
+export function markAccountSwitch() {
+  lastSwitchAt = Date.now();
+}
+
 async function getDb() {
   if (!db) {
     db = await Database.load("sqlite:usage_history.db");
@@ -78,7 +87,10 @@ export async function getBurnRate(
 
   try {
     const database = await getDb();
-    const cutoff = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+    // Look back 90 minutes, but never across an account switch (whose pre-switch
+    // history would produce a bogus delta against the new account's usage).
+    const cutoffMs = Math.max(Date.now() - 90 * 60 * 1000, lastSwitchAt);
+    const cutoff = new Date(cutoffMs).toISOString();
     const rows = await database.select<
       { timestamp: string; five_hour_pct: number | null; seven_day_pct: number | null }[]
     >(

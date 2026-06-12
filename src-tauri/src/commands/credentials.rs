@@ -32,7 +32,31 @@ pub(crate) fn save_to_store(app: &AppHandle, key: &str, value: &str) -> Result<(
 }
 
 
-fn delete_from_store(app: &AppHandle, key: &str) -> Result<(), String> {
+/// Like [`save_to_store`] but stores an arbitrary JSON value (e.g. the account array).
+/// Applies the same 0600 permission tightening on Unix.
+pub(crate) fn save_json_to_store(app: &AppHandle, key: &str, value: serde_json::Value) -> Result<(), String> {
+    let store = app
+        .store("credentials.json")
+        .map_err(|e| format!("Store error: {}", e))?;
+    store.set(key, value);
+    store
+        .save()
+        .map_err(|e| format!("Store save error: {}", e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        use tauri::Manager;
+        if let Ok(dir) = app.path().app_data_dir() {
+            let file = dir.join("credentials.json");
+            let _ = std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn delete_from_store(app: &AppHandle, key: &str) -> Result<(), String> {
     let store = app
         .store("credentials.json")
         .map_err(|e| format!("Store error: {}", e))?;

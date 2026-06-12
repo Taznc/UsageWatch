@@ -591,6 +591,29 @@ pub struct BrowserResult {
     pub session_key: Option<String>,
     /// Debug info: how many cookies found, key prefix, key length
     pub debug: Option<String>,
+    /// User-facing error explaining why this source yielded no usable session
+    /// (e.g. locked cookie DB, Chrome v20 app-bound encryption). `None` on success.
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// One detected Claude Desktop instance (the main `%APPDATA%\Claude` profile or a
+/// per-instance profile under `~/.claude-instances/<name>`), with account metadata
+/// parsed from its `claude-config/.claude.json` and a session cookie if readable.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaudeInstanceResult {
+    /// "main" for the default profile, otherwise the instance directory name.
+    pub instance: String,
+    /// User-facing label (instance dir name, or "Claude Desktop" for main).
+    pub label: String,
+    pub email: Option<String>,
+    pub display_name: Option<String>,
+    pub org_id: Option<String>,
+    pub org_name: Option<String>,
+    /// Full `name=val; ...` cookie header for claude.ai, if a sessionKey was readable.
+    pub session_key: Option<String>,
+    /// User-facing error if the cookie DB couldn't be read/decrypted.
+    pub error: Option<String>,
 }
 
 // ── Provider switching types ────────────────────────────────────────────────

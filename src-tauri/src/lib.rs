@@ -139,6 +139,13 @@ pub fn run() {
                 commands::browser::pull_codex_session_from_browsers,
                 commands::browser::debug_claude_desktop_cookies,
                 commands::browser::scan_browsers,
+                commands::browser::scan_claude_instances,
+                commands::claude_accounts::list_claude_accounts,
+                commands::claude_accounts::rescan_claude_accounts,
+                commands::claude_accounts::add_claude_account,
+                commands::claude_accounts::remove_claude_account,
+                commands::claude_accounts::set_active_claude_account,
+                commands::claude_oauth::get_claude_oauth_status,
                 commands::usage::fetch_billing,
                 commands::codex::check_codex_auth,
                 commands::codex::fetch_codex_usage,
@@ -209,6 +216,13 @@ pub fn run() {
                 commands::browser::pull_session_from_browsers,
                 commands::browser::pull_codex_session_from_browsers,
                 commands::browser::scan_browsers,
+                commands::browser::scan_claude_instances,
+                commands::claude_accounts::list_claude_accounts,
+                commands::claude_accounts::rescan_claude_accounts,
+                commands::claude_accounts::add_claude_account,
+                commands::claude_accounts::remove_claude_account,
+                commands::claude_accounts::set_active_claude_account,
+                commands::claude_oauth::get_claude_oauth_status,
                 commands::usage::fetch_billing,
                 commands::codex::check_codex_auth,
                 commands::codex::fetch_codex_usage,
@@ -276,6 +290,9 @@ pub fn run() {
 
             // Load saved credentials from store file into memory cache
             commands::credentials::load_credentials_from_store(handle, &cache);
+            // Migrate a legacy single credential into the multi-account model, and
+            // mirror the active account's credentials into the cache.
+            commands::claude_accounts::migrate_and_sync(handle, &cache);
 
             if let Some(main_window) = app.get_webview_window("main") {
                 let _ = main_window.set_maximizable(false);

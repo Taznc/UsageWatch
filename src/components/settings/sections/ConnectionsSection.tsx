@@ -1,5 +1,6 @@
 import { useApp } from "../../../context/AppContext";
 import { ProviderMethodPicker } from "../../setup/ProviderMethodPicker";
+import { ClaudeAccountsPanel } from "../../setup/ClaudeAccountsPanel";
 
 export function ConnectionsSection() {
   const { dispatch } = useApp();
@@ -7,6 +8,7 @@ export function ConnectionsSection() {
 
   return (
     <div>
+      <ClaudeAccountsPanel />
       <ProviderMethodPicker provider="Claude" onConnected={onConnected} />
       <ProviderMethodPicker provider="Codex" onConnected={onConnected} />
       <ProviderMethodPicker provider="Cursor" onConnected={onConnected} />

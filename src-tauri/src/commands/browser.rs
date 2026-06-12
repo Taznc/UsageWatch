@@ -1,7 +1,10 @@
 use rookie::common::enums::Cookie;
-use crate::models::BrowserResult;
+use crate::models::{BrowserResult, ClaudeInstanceResult};
 
 type BrowserFn = fn(Option<Vec<String>>) -> rookie::Result<Vec<Cookie>>;
+
+/// Shown when Chrome's app-bound (v20) cookie encryption blocks decryption.
+const CHROME_V20_MSG: &str = "Chrome uses app-bound encryption (v20) for these cookies, which cannot be decrypted by external apps. Use Firefox/Zen, Claude Desktop, or manual entry.";
 
 /// Copy a file that may be held open by another process.
 /// Uses OpenOptionsExt::share_mode which sets FILE_SHARE_READ|WRITE|DELETE,
@@ -44,22 +47,99 @@ fn read_electron_cookie_windows(
     result.ok()?.into_iter().find(|c| c.name == cookie_name).map(|c| c.value)
 }
 
+/// Reads the full claude.ai cookie header from an Electron app's cookie DB.
+/// Returns `Ok(Some(header))` on success, `Ok(None)` if decryption worked but no
+/// sessionKey was present, and `Err(msg)` with a user-facing reason if the DB was
+/// locked (Claude Desktop running) or decryption failed.
 #[cfg(target_os = "windows")]
 fn read_electron_cookie_header_windows(
     local_state_path: &std::path::Path,
     cookies_path: &std::path::Path,
     domains: Option<Vec<String>>,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     let tmp = std::env::temp_dir().join("usagewatch_electron_cookies_tmp.db");
-    let result = if copy_shared(cookies_path, &tmp).is_ok() {
-        let result = rookie::chromium_based(local_state_path.to_path_buf(), tmp.clone(), domains.clone());
+    let copy_err = copy_shared(cookies_path, &tmp).err();
+
+    let result = if copy_err.is_none() {
+        let r = rookie::chromium_based(local_state_path.to_path_buf(), tmp.clone(), domains.clone());
         let _ = std::fs::remove_file(&tmp);
-        result
+        r
     } else {
+        // Copy failed (often a sharing violation while the app holds the DB open).
+        // Try a direct read as a fallback — rookie can sometimes still open it.
         rookie::chromium_based(local_state_path.to_path_buf(), cookies_path.to_path_buf(), domains)
     };
 
-    claude_cookie_header_from_cookies(&result.ok()?)
+    match result {
+        Ok(cookies) => Ok(claude_cookie_header_from_cookies(&cookies)),
+        Err(e) => {
+            // ERROR_SHARING_VIOLATION (os error 32) on the copy means the DB is
+            // exclusively locked by a running Electron app.
+            if copy_err.as_ref().and_then(|e| e.raw_os_error()) == Some(32) {
+                Err("Cookie database is locked — Claude Desktop appears to be running. Close it and rescan.".to_string())
+            } else {
+                Err(format!("Cookie decryption failed: {e}"))
+            }
+        }
+    }
+}
+
+/// Loose account metadata parsed from a Claude Code `.claude.json` `oauthAccount`.
+#[derive(Default)]
+struct ClaudeAccountMeta {
+    email: Option<String>,
+    display_name: Option<String>,
+    org_id: Option<String>,
+    org_name: Option<String>,
+}
+
+fn read_claude_account_meta(claude_json_path: &std::path::Path) -> ClaudeAccountMeta {
+    let mut meta = ClaudeAccountMeta::default();
+    let Ok(content) = std::fs::read_to_string(claude_json_path) else { return meta; };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) else { return meta; };
+    if let Some(acct) = val.get("oauthAccount") {
+        let s = |k: &str| acct.get(k).and_then(|v| v.as_str()).map(String::from);
+        meta.email = s("emailAddress");
+        meta.display_name = s("displayName");
+        meta.org_id = s("organizationUuid");
+        meta.org_name = s("organizationName");
+    }
+    meta
+}
+
+/// Detects whether Chrome's claude.ai cookies use app-bound (v20) encryption,
+/// which rookie cannot decrypt. The encrypted_value prefix "v20" == x'763230'.
+#[cfg(target_os = "windows")]
+fn chrome_has_v20_claude_cookies() -> bool {
+    let Ok(local) = std::env::var("LOCALAPPDATA") else { return false; };
+    let db = std::path::PathBuf::from(local)
+        .join("Google").join("Chrome").join("User Data")
+        .join("Default").join("Network").join("Cookies");
+    if !db.exists() {
+        return false;
+    }
+    let tmp = std::env::temp_dir().join("usagewatch_chrome_v20_check.db");
+    if copy_shared(&db, &tmp).is_err() {
+        return false;
+    }
+    let count: i64 = (|| {
+        let conn = rusqlite::Connection::open_with_flags(
+            &tmp,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        ).ok()?;
+        conn.query_row(
+            "SELECT count(*) FROM cookies WHERE host_key LIKE '%claude.ai' AND substr(encrypted_value,1,3) = x'763230'",
+            [],
+            |row| row.get(0),
+        ).ok()
+    })().unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp);
+    count > 0
+}
+
+#[cfg(not(target_os = "windows"))]
+fn chrome_has_v20_claude_cookies() -> bool {
+    false
 }
 
 fn claude_cookie_header_from_cookies(cookies: &[Cookie]) -> Option<String> {
@@ -163,6 +243,160 @@ pub fn debug_claude_desktop_cookies() -> Vec<String> {
     vec!["Debug only available on Windows".to_string()]
 }
 
+/// Scan all Claude Desktop instances (the main `%APPDATA%\Claude` profile plus every
+/// per-instance profile under `~/.claude-instances/<name>`) for a claude.ai session,
+/// pairing each with account metadata from its `claude-config/.claude.json`.
+#[cfg(target_os = "windows")]
+fn scan_claude_instances_inner() -> Vec<ClaudeInstanceResult> {
+    let mut candidates: Vec<(String, std::path::PathBuf, Option<std::path::PathBuf>)> = Vec::new();
+
+    // Main %APPDATA%\Claude profile; metadata falls back to %USERPROFILE%\.claude.json.
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::PathBuf::from(appdata).join("Claude");
+        if dir.exists() {
+            let meta = std::env::var("USERPROFILE").ok()
+                .map(|p| std::path::PathBuf::from(p).join(".claude.json"));
+            candidates.push(("main".to_string(), dir, meta));
+        }
+    }
+
+    // Per-instance Electron profiles under %USERPROFILE%\.claude-instances\<name>\
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        let instances_dir = std::path::PathBuf::from(userprofile).join(".claude-instances");
+        if let Ok(entries) = std::fs::read_dir(&instances_dir) {
+            for entry in entries.flatten() {
+                let dir = entry.path();
+                // Must look like an Electron profile (has a Local State key store).
+                if !dir.is_dir() || !dir.join("Local State").exists() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_string();
+                let meta = dir.join("claude-config").join(".claude.json");
+                candidates.push((name, dir, Some(meta)));
+            }
+        }
+    }
+
+    let mut results = Vec::new();
+    for (instance, dir, meta_path) in candidates {
+        let meta = meta_path.as_deref().map(read_claude_account_meta).unwrap_or_default();
+        let key_path = dir.join("Local State");
+        let cookie_candidates = [
+            dir.join("Network").join("Cookies"),  // Modern Electron layout
+            dir.join("Default").join("Cookies"),  // Chromium profile layout
+            dir.join("Cookies"),                   // Flat/legacy layout
+        ];
+
+        let mut session_key = None;
+        let mut error = None;
+        let mut tried_any = false;
+        for cookies_path in &cookie_candidates {
+            if !cookies_path.exists() || !key_path.exists() {
+                continue;
+            }
+            tried_any = true;
+            match read_electron_cookie_header_windows(&key_path, cookies_path, Some(vec!["claude.ai".to_string()])) {
+                Ok(Some(header)) => { session_key = Some(header); error = None; break; }
+                Ok(None) => {}
+                Err(e) => { error = Some(e); break; }
+            }
+        }
+        if session_key.is_none() && error.is_none() {
+            error = Some(if tried_any {
+                "No Claude session cookie found — this profile may not be logged in.".to_string()
+            } else {
+                "No cookie database found for this profile.".to_string()
+            });
+        }
+
+        let label = if instance == "main" { "Claude Desktop".to_string() } else { instance.clone() };
+        results.push(ClaudeInstanceResult {
+            instance, label,
+            email: meta.email, display_name: meta.display_name,
+            org_id: meta.org_id, org_name: meta.org_name,
+            session_key, error,
+        });
+    }
+    results
+}
+
+#[cfg(target_os = "macos")]
+fn scan_claude_instances_inner() -> Vec<ClaudeInstanceResult> {
+    let home = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+    let mut candidates: Vec<(String, std::path::PathBuf, Option<std::path::PathBuf>)> = Vec::new();
+
+    let main_dir = home.join("Library/Application Support/Claude");
+    if main_dir.exists() {
+        candidates.push(("main".to_string(), main_dir, Some(home.join(".claude.json"))));
+    }
+    if let Ok(entries) = std::fs::read_dir(home.join(".claude-instances")) {
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let meta = dir.join("claude-config").join(".claude.json");
+            candidates.push((name, dir, Some(meta)));
+        }
+    }
+
+    let config = rookie::config::Browser {
+        paths: vec![],
+        channels: None,
+        unix_crypt_name: None,
+        osx_key_service: Some("Claude Safe Storage".to_string()),
+        osx_key_user: Some("Claude".to_string()),
+    };
+
+    let mut results = Vec::new();
+    for (instance, dir, meta_path) in candidates {
+        let meta = meta_path.as_deref().map(read_claude_account_meta).unwrap_or_default();
+        let cookie_candidates = [dir.join("Network").join("Cookies"), dir.join("Cookies")];
+
+        let mut session_key = None;
+        let mut error = None;
+        for cookies_path in &cookie_candidates {
+            if !cookies_path.exists() {
+                continue;
+            }
+            match rookie::chromium_based(&config, cookies_path.clone(), Some(vec!["claude.ai".to_string()])) {
+                Ok(cookies) => {
+                    if let Some(header) = claude_cookie_header_from_cookies(&cookies) {
+                        session_key = Some(header);
+                        error = None;
+                        break;
+                    }
+                }
+                Err(e) => { error = Some(format!("Cookie decryption failed: {e}")); }
+            }
+        }
+        if session_key.is_none() && error.is_none() {
+            error = Some("No Claude session cookie found — this profile may not be logged in.".to_string());
+        }
+
+        let label = if instance == "main" { "Claude Desktop".to_string() } else { instance.clone() };
+        results.push(ClaudeInstanceResult {
+            instance, label,
+            email: meta.email, display_name: meta.display_name,
+            org_id: meta.org_id, org_name: meta.org_name,
+            session_key, error,
+        });
+    }
+    results
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn scan_claude_instances_inner() -> Vec<ClaudeInstanceResult> {
+    Vec::new()
+}
+
+/// Tauri command wrapper around [`scan_claude_instances_inner`].
+#[tauri::command]
+pub fn scan_claude_instances() -> Vec<ClaudeInstanceResult> {
+    scan_claude_instances_inner()
+}
+
 #[tauri::command]
 pub fn pull_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
     let domains = Some(vec!["claude.ai".to_string()]);
@@ -223,102 +457,57 @@ pub fn pull_session_from_browsers() -> Result<Vec<BrowserResult>, String> {
 
                 let session_key = claude_cookie_header_from_cookies(&cookies);
 
-                if session_key.is_some() || debug.is_some() {
+                // If Chrome has claude.ai cookies but none are readable, explain v20.
+                let error = if session_key.is_none() && name == "Chrome" && chrome_has_v20_claude_cookies() {
+                    Some(CHROME_V20_MSG.to_string())
+                } else {
+                    None
+                };
+
+                if session_key.is_some() || debug.is_some() || error.is_some() {
                     results.push(BrowserResult {
                         browser: name.to_string(),
                         session_key,
                         debug,
+                        error,
                     });
                 }
             }
             Err(e) => {
                 eprintln!("[browser-scan] {}: error: {:?}", name, e);
-            }
-        }
-    }
-
-    // Claude Desktop — Electron app with its own Chromium cookie store.
-    // Checked after browsers so it appears at the end but is marked "recommended"
-    // in the UI when found.
-    #[cfg(target_os = "macos")]
-    {
-        let cookies_path = std::env::var("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_default()
-            .join("Library/Application Support/Claude/Cookies");
-
-        if cookies_path.exists() {
-            let config = rookie::config::Browser {
-                paths: vec![],
-                channels: None,
-                unix_crypt_name: None,
-                osx_key_service: Some("Claude Safe Storage".to_string()),
-                osx_key_user: Some("Claude".to_string()),
-            };
-
-            match rookie::chromium_based(&config, cookies_path, domains.clone()) {
-                Ok(cookies) => {
-                    let session_key = claude_cookie_header_from_cookies(&cookies);
-
-                    if session_key.is_some() {
-                        results.push(BrowserResult {
-                            browser: "Claude Desktop".to_string(),
-                            session_key,
-                            debug: None,
-                        });
-                    }
-                }
-                Err(_) => {}
-            }
-        }
-    }
-
-    // Claude Desktop on Windows — Electron app, cookies in %APPDATA%\Claude\
-    // Try both the flat layout and the Default profile layout.
-    #[cfg(target_os = "windows")]
-    {
-        let claude_dir = std::env::var("APPDATA")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_default()
-            .join("Claude");
-        let key_path = claude_dir.join("Local State");
-
-        // Candidate cookie paths in priority order
-        let cookie_candidates = [
-            claude_dir.join("Network").join("Cookies"),  // Modern Electron (current Claude Desktop)
-            claude_dir.join("Default").join("Cookies"),  // Chromium profile layout
-            claude_dir.join("Cookies"),                  // Flat layout (older)
-        ];
-
-        let mut found = false;
-        for cookies_path in &cookie_candidates {
-            if !cookies_path.exists() || !key_path.exists() {
-                continue;
-            }
-
-            match read_electron_cookie_header_windows(&key_path, cookies_path, Some(vec!["claude.ai".to_string()])) {
-                Some(cookie_header) => {
+                // Chrome erroring on claude.ai cookies is usually app-bound encryption.
+                if name == "Chrome" && chrome_has_v20_claude_cookies() {
                     results.push(BrowserResult {
-                        browser: "Claude Desktop".to_string(),
-                        session_key: Some(cookie_header),
+                        browser: "Chrome".to_string(),
+                        session_key: None,
                         debug: None,
+                        error: Some(CHROME_V20_MSG.to_string()),
                     });
-                    found = true;
-                    break;
-                }
-                None => {
-                    eprintln!("[claude-desktop-win] no sessionKey at {}", cookies_path.display());
                 }
             }
         }
+    }
 
-        if !found {
-            let exists_info: Vec<String> = cookie_candidates
-                .iter()
-                .map(|p| format!("{}={}", p.display(), p.exists()))
-                .collect();
-            eprintln!("[claude-desktop-win] no cookies found. paths: {}", exists_info.join(", "));
+    // Claude Desktop instances — the main profile plus every per-instance profile
+    // under ~/.claude-instances/*. Each appears as its own pick-list entry, labeled
+    // with the account email when available. Errors (locked DB, decryption) surface
+    // instead of being silently dropped. Listed after browsers.
+    for inst in scan_claude_instances_inner() {
+        // Skip profiles with nothing useful to show.
+        if inst.session_key.is_none() && inst.error.is_none() {
+            continue;
         }
+        let browser = match (inst.instance.as_str(), inst.email.as_deref()) {
+            ("main", _) => "Claude Desktop".to_string(),
+            (name, Some(email)) => format!("Claude Desktop ({name} — {email})"),
+            (name, None) => format!("Claude Desktop ({name})"),
+        };
+        results.push(BrowserResult {
+            browser,
+            session_key: inst.session_key,
+            debug: None,
+            error: inst.error,
+        });
     }
 
     Ok(results)
@@ -393,6 +582,7 @@ pub fn pull_codex_session_from_browsers() -> Result<Vec<BrowserResult>, String> 
                         browser: name.to_string(),
                         session_key: session_cookie,
                         debug,
+                        error: None,
                     });
                 }
             }
@@ -426,6 +616,7 @@ pub fn pull_codex_session_from_browsers() -> Result<Vec<BrowserResult>, String> 
                             browser: "ChatGPT Desktop".to_string(),
                             session_key: Some(session_cookie),
                             debug: None,
+                            error: None,
                         });
                     }
                 }
@@ -458,6 +649,7 @@ pub fn pull_codex_session_from_browsers() -> Result<Vec<BrowserResult>, String> 
                     browser: "ChatGPT Desktop".to_string(),
                     session_key: Some(cookie),
                     debug: None,
+                    error: None,
                 });
                 break;
             }

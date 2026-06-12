@@ -125,6 +125,7 @@ pub fn scan_cursor_browsers() -> Vec<BrowserResult> {
                         browser: name.to_string(),
                         session_key: cookie_str,
                         debug,
+                        error: None,
                     });
                 }
             }

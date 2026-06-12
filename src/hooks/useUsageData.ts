@@ -2,6 +2,7 @@ import { useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../context/AppContext";
+import { markAccountSwitch } from "./useHistoryRecorder";
 import type { UsageUpdate, CodexUpdate, CursorUpdate } from "../types/usage";
 
 export function useUsageData() {
@@ -36,10 +37,17 @@ export function useUsageData() {
       }
     });
 
+    // Account switch: clear stale data and ignore pre-switch history for burn rate.
+    const unlistenAccount = listen('claude-account-changed', () => {
+      markAccountSwitch();
+      dispatch({ type: 'CLAUDE_ACCOUNT_SWITCHED' });
+    });
+
     return () => {
       unlisten.then((fn) => fn());
       unlistenCodex.then((fn) => fn());
       unlistenCursor.then((fn) => fn());
+      unlistenAccount.then((fn) => fn());
     };
   }, [dispatch]);
 

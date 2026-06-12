@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useUsageData } from "../hooks/useUsageData";
+import { useClaudeAccounts } from "../hooks/useClaudeAccounts";
 import { useHistoryRecorder } from "../hooks/useHistoryRecorder";
 import { useBurnRate } from "../hooks/useBurnRate";
 import { useAlertEngine } from "../hooks/useAlertEngine";
@@ -34,6 +36,7 @@ export function Popover() {
   useEffect(() => { if (hasCursor) setCursorConfigured(true); }, [hasCursor]);
 
   const showTabs = codexConfigured || cursorConfigured;
+  const { accounts, activeId, switchTo } = useClaudeAccounts();
   const [billing, setBilling] = useState<BillingInfo | null>(null);
   const { pinned } = state;
   const setPinned = (p: boolean) => dispatch({ type: "SET_PINNED", pinned: p });
@@ -45,24 +48,35 @@ export function Popover() {
     getCurrentWindow().startDragging();
   };
 
+  const loadBilling = useCallback(async () => {
+    try {
+      const sessionKey = await invoke<string | null>("get_session_key");
+      const orgId = await invoke<string | null>("get_org_id");
+      if (sessionKey && orgId) {
+        const info = await invoke<BillingInfo>("fetch_billing", { sessionKey, orgId });
+        setBilling(info);
+      } else {
+        setBilling(null);
+      }
+    } catch {
+      // Non-critical — billing info is optional
+    }
+  }, []);
+
   // Fetch billing info on mount and every 5 minutes
   useEffect(() => {
-    async function loadBilling() {
-      try {
-        const sessionKey = await invoke<string | null>("get_session_key");
-        const orgId = await invoke<string | null>("get_org_id");
-        if (sessionKey && orgId) {
-          const info = await invoke<BillingInfo>("fetch_billing", { sessionKey, orgId });
-          setBilling(info);
-        }
-      } catch {
-        // Non-critical — billing info is optional
-      }
-    }
     loadBilling();
     const interval = setInterval(loadBilling, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadBilling]);
+
+  // Refresh billing immediately when the active account changes (don't wait 5 min).
+  useEffect(() => {
+    const unlisten = listen("claude-account-changed", () => loadBilling());
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [loadBilling]);
 
   // Record usage data to SQLite on each update
   useHistoryRecorder(usageData);
@@ -212,6 +226,22 @@ export function Popover() {
       {/* ── Claude tab ──────────────────────────────────────────────────────── */}
       {activeTab === 'claude' && (
         <>
+          {accounts.length > 1 && (
+            <div className="account-switcher" style={{ marginBottom: 10 }}>
+              <select
+                className="input"
+                value={activeId ?? ""}
+                onChange={(e) => { if (e.target.value && e.target.value !== activeId) switchTo(e.target.value); }}
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.email ?? a.label}{a.org_name ? ` · ${a.org_name}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {isOffline && (
             <div className="status-banner offline">
               Offline — showing last known data

@@ -299,10 +299,54 @@ pub async fn get_claude_oauth_token() -> Result<String, String> {
     Ok(refreshed.access_token)
 }
 
-/// Returns true if Claude Code credentials are available (keychain on macOS, file on others).
+/// Returns true if Claude Code credentials are available AND usable — i.e. the token
+/// is still fresh, or it's expiring/expired but has a non-empty refresh token. An
+/// expired token with no refresh token (a common dead state) reports `false`.
 #[tauri::command]
 pub async fn check_claude_oauth() -> Result<bool, String> {
-    Ok(read_oauth().is_some())
+    Ok(read_oauth().is_some_and(|o| {
+        !is_expiring_soon(o.expires_at) || !o.refresh_token.trim().is_empty()
+    }))
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaudeOauthStatus {
+    pub available: bool,
+    pub reason: Option<String>,
+}
+
+/// Detailed availability of Claude Code OAuth credentials, with a human-readable
+/// reason the UI can show instead of a generic "not connected" message.
+#[tauri::command]
+pub async fn get_claude_oauth_status() -> Result<ClaudeOauthStatus, String> {
+    let Some(o) = read_oauth() else {
+        return Ok(ClaudeOauthStatus {
+            available: false,
+            reason: Some("No Claude Code credentials found — run `claude` in a terminal to log in.".to_string()),
+        });
+    };
+
+    let expired = is_expiring_soon(o.expires_at);
+    let has_refresh = !o.refresh_token.trim().is_empty();
+    let when = if o.expires_at == 0 {
+        "an unknown time".to_string()
+    } else {
+        use chrono::TimeZone;
+        chrono::Local
+            .timestamp_millis_opt(o.expires_at as i64)
+            .single()
+            .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| "an unknown time".to_string())
+    };
+
+    let (available, reason) = match (expired, has_refresh) {
+        (false, _) => (true, Some(format!("Valid until {when}"))),
+        (true, true) => (true, Some("Token expired but will be refreshed automatically.".to_string())),
+        (true, false) => (false, Some(format!(
+            "Token expired {when} and has no refresh token — run `claude` in a terminal to log in again."
+        ))),
+    };
+    Ok(ClaudeOauthStatus { available, reason })
 }
 
 /// Saves the preferred Claude auth method ("session_key" or "oauth") to the store

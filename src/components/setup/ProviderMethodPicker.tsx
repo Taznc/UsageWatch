@@ -8,6 +8,7 @@ interface BrowserResult {
   browser: string;
   session_key: string | null;
   debug: string | null;
+  error: string | null;
 }
 
 interface ProviderMethodPickerProps {
@@ -51,6 +52,8 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
   // Browser scan results shared between "browser" method display
   const [browserResults, setBrowserResults] = useState<BrowserResult[]>([]);
   const [selectedBrowser, setSelectedBrowser] = useState<string>("");
+  // Sources that produced an explainable error (locked DB, Chrome v20, etc.)
+  const [scanErrors, setScanErrors] = useState<BrowserResult[]>([]);
 
   // Manual entry
   const [manualToken, setManualToken] = useState("");
@@ -122,6 +125,7 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setActiveMethod(null);
     setBrowserResults([]);
     setSelectedBrowser("");
+    setScanErrors([]);
     setManualToken("");
     setOrgs([]);
     setSelectedOrg("");
@@ -163,12 +167,20 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setStatus("browser", "loading");
     setBrowserResults([]);
     setSelectedBrowser("");
+    setScanErrors([]);
     try {
       const results = await invoke<BrowserResult[]>("scan_browsers", { provider });
       const valid = results.filter((r) => r.session_key);
+      const errors = results.filter((r) => !r.session_key && r.error);
+      setScanErrors(errors);
       if (valid.length === 0) {
-        const site = provider === "Claude" ? "claude.ai" : provider === "Codex" ? "chatgpt.com" : "cursor.com";
-        setStatus("browser", "error", `No session found in any browser. Make sure you're signed into ${site}.`);
+        if (errors.length > 0) {
+          // Show the actual reasons (e.g. "Claude Desktop is running — close it").
+          setStatus("browser", "error", errors.map((e) => `${e.browser}: ${e.error}`).join("\n"));
+        } else {
+          const site = provider === "Claude" ? "claude.ai" : provider === "Codex" ? "chatgpt.com" : "cursor.com";
+          setStatus("browser", "error", `No session found in any browser. Make sure you're signed into ${site}.`);
+        }
         return;
       }
       setBrowserResults(valid);
@@ -224,12 +236,15 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
     setActiveMethod("oauth_file");
     setStatus("oauth_file", "loading");
     try {
-      const ok = await invoke<boolean>("check_claude_oauth");
+      const status = await invoke<{ available: boolean; reason: string | null }>("get_claude_oauth_status")
+        .catch(() => null);
+      const ok = status ? status.available : await invoke<boolean>("check_claude_oauth");
       if (!ok) {
         setStatus(
           "oauth_file",
           "error",
-          "Claude Code credentials not found. Sign in with the Claude CLI first by running 'claude' in a terminal."
+          status?.reason ??
+            "Claude Code credentials not found. Sign in with the Claude CLI first by running 'claude' in a terminal."
         );
         return;
       }
@@ -314,20 +329,26 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
 
   async function finishClaudeSetup(key: string, orgId: string, name: string) {
     const method = activeMethod ?? "manual";
-    try {
-      await invoke("save_session_key", { key });
-    } catch (err) {
-      setStatus(method, "error", String(err));
-      return;
+    // Register (and activate) the account. This mirrors into the legacy session_key/
+    // org_id keys, so the rest of the app keeps working, and adds the account to the
+    // multi-account list shown in the accounts panel + popover switcher.
+    let label = "Manual";
+    let source = "manual";
+    if (method === "browser") {
+      label = selectedBrowser || "Browser";
+      source = selectedBrowser.startsWith("Claude Desktop") ? "claude_desktop" : "browser";
     }
     try {
-      await invoke("save_org_id", { orgId });
+      await invoke("add_claude_account", {
+        label,
+        sessionKey: key,
+        orgId,
+        orgName: name,
+        email: null,
+        source,
+        setActive: true,
+      });
     } catch (err) {
-      // rollback so we don't leave a half-written credential set
-      // (session_key present but org_id missing => next launch forces re-setup)
-      try {
-        await invoke("delete_session_key");
-      } catch {}
       setStatus(method, "error", String(err));
       return;
     }
@@ -460,6 +481,15 @@ export function ProviderMethodPicker({ provider, onConnected }: ProviderMethodPi
             >
               {methodStatuses.browser === "loading" ? "Verifying..." : "Use selected \u2014 save"}
             </button>
+          )}
+          {scanErrors.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              {scanErrors.map((e) => (
+                <p key={e.browser} className="setup-hint" style={{ opacity: 0.7, marginTop: 2 }}>
+                  {e.browser}: {e.error}
+                </p>
+              ))}
+            </div>
           )}
         </div>
       )}

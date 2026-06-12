@@ -48,10 +48,11 @@ Repo-local Claude configuration exists, but there are no repo-local Claude skill
 - `lib.rs`: app startup, plugin registration, tray/menu setup, focus monitor startup, HTTP server startup, unified polling (`start_unified_polling`), `refresh_all_providers`, and tray/provider state management.
 - `commands/credentials.rs`: store-backed Claude credential persistence and connection testing.
 - `commands/usage.rs`: Claude usage, billing, raw-response, and Anthropic status fetches.
-- `commands/browser.rs`: browser cookie scanning for Claude, Codex (ChatGPT session tokens), and Cursor credentials, plus Claude Desktop / ChatGPT Desktop app cookie extraction.
+- `commands/browser.rs`: browser cookie scanning for Claude, Codex (ChatGPT session tokens), and Cursor credentials, plus Claude Desktop / ChatGPT Desktop app cookie extraction. `scan_claude_instances` detects the main `%APPDATA%\Claude` profile plus every per-instance profile under `~/.claude-instances/*`, pairing each cookie with account metadata from that profile's `claude-config/.claude.json`. `BrowserResult.error` surfaces per-source failures to the UI (locked cookie DB → "Claude Desktop is running…", Chrome v20 app-bound encryption). Note: the `rookie` crate is frozen at 0.5.6 (upstream archived) and cannot decrypt Chrome's v20 cookies — that case is detected and explained, not decrypted.
 - `commands/codex.rs`: Codex auth discovery, OAuth token refresh, and Codex usage fetches.
 - `commands/cursor.rs`: Cursor globalStorage auth discovery and usage HTTP fetches when a token exists.
-- `commands/claude_oauth.rs`: reads Claude Code OAuth credentials from macOS Keychain or `~/.claude/.credentials.json`, with auto-refresh near expiry.
+- `commands/claude_oauth.rs`: reads Claude Code OAuth credentials from macOS Keychain or `~/.claude/.credentials.json`, with auto-refresh near expiry. `check_claude_oauth`/`get_claude_oauth_status` only report "available" when the token is fresh or has a non-empty refresh token (an expired token with no refresh token reports unavailable).
+- `commands/claude_accounts.rs`: multi-account Claude support. Detects accounts from Claude Desktop instances, stores them in `credentials.json` under `claude_accounts` (+ `active_claude_account_id`), and mirrors the active account into the legacy `session_key`/`org_id` keys + cache so the rest of the app is unchanged. Commands: `list_claude_accounts`, `rescan_claude_accounts`, `add_claude_account`, `set_active_claude_account`, `remove_claude_account`. `migrate_and_sync` (run at startup) wraps any legacy single credential as a "Default" account.
 - `polling.rs`: one background loop that polls Claude, Codex, and Cursor in parallel each tick (`poll_all_providers`), with an immediate first poll after a short boot delay.
 - `http_server.rs`: local API on `127.0.0.1:52700` (`/api/usage`, `/api/codex`, `/api/cursor`, `/api/open`).
 - `credentials_cache.rs`: in-memory session/org cache.
@@ -92,7 +93,7 @@ Repo-local Claude configuration exists, but there are no repo-local Claude skill
 
 ## Events and State Flow
 
-- Rust emits `usage-update`, `codex-update`, `cursor-update`, `provider-changed`, `open-settings`, `window-opened`, and `device-mouse-move` (widget hitbox).
+- Rust emits `usage-update`, `codex-update`, `cursor-update`, `provider-changed`, `open-settings`, `window-opened`, `claude-account-changed` (active Claude account switched/added/removed), and `device-mouse-move` (widget hitbox).
 - Frontend emits `widget-geometry-sync` (to Rust for geometry cache) and `widget-layout-updated` (between windows).
 - Tray **Refresh** invokes `poll_all_providers` in Rust; the UI uses `refresh_all_providers` so all providers refresh together (there is no `refresh-requested` event).
 - React windows subscribe using `@tauri-apps/api/event`.
@@ -102,7 +103,7 @@ Repo-local Claude configuration exists, but there are no repo-local Claude skill
 ## Persistence
 
 - `tauri-plugin-store` file: `credentials.json`
-- Store keys include Claude credentials, tray format, tray config, alert config, and widget layout.
+- Store keys include Claude credentials (legacy `session_key`/`org_id` mirror the active account), `claude_accounts` + `active_claude_account_id` (multi-account), tray format, tray config, alert config, and widget layout.
 - Claude history snapshots are persisted in `sqlite:usage_history.db`.
 
 ## Network/API Surface

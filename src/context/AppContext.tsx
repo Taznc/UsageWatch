@@ -40,7 +40,8 @@ type AppAction =
   | { type: 'SET_CURSOR_ERROR'; error: string; timestamp: string }
   | { type: "SET_SETTINGS_SECTION"; section: SettingsSectionId }
   | { type: "SET_MCP_VIEW"; view: McpViewMode }
-  | { type: "OPEN_MCP_ALL_SERVERS" };
+  | { type: "OPEN_MCP_ALL_SERVERS" }
+  | { type: "CLAUDE_ACCOUNT_SWITCHED" };
 
 const defaultSettings: AppSettings = {
   poll_interval_secs: 60,
@@ -124,6 +125,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, mcpView: action.view };
     case "OPEN_MCP_ALL_SERVERS":
       return { ...state, view: "settings", settingsSection: "mcp", mcpView: "matrix" };
+    case "CLAUDE_ACCOUNT_SWITCHED":
+      // Clear the previous account's data so the UI shows a spinner until the
+      // triggered poll repopulates it.
+      return { ...state, usageData: null, error: null, peakHours: null, isLoading: true };
     default:
       return state;
   }
