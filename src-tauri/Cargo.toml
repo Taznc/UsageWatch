@@ -36,6 +36,7 @@ tauri-plugin-single-instance = "2"
 rookie = "0.5"
 rusqlite = { version = "0.31", features = ["bundled"] }
 base64 = "0.22"
+aes-gcm = "0.10"
 toml_edit = { version = "0.22", default-features = false, features = ["parse", "display"] }
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]

@@ -340,9 +340,6 @@ pub fn run() {
 
             // Build tray icon
             let tray_menu = menu;
-            let widget_menu_for_menu_event = widget.clone();
-            #[cfg(target_os = "windows")]
-            let widget_menu_for_tray_event = widget.clone();
             let tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
@@ -378,10 +375,24 @@ pub fn run() {
                         }
                     }
                     "widget" => {
-                        toggle_widget_window(app, Some(&widget_menu_for_menu_event));
+                        toggle_widget_window(app);
                     }
                     "quit" => {
                         app.exit(0);
+                    }
+                    id if id.starts_with("account::") => {
+                        let account_id = id.strip_prefix("account::").unwrap_or("").to_string();
+                        let app = app.clone();
+                        let cache = (*app.state::<Arc<CredentialsCache>>()).clone();
+                        let lu = (*app.state::<Arc<Mutex<Option<UsageUpdate>>>>()).clone();
+                        let lc = (*app.state::<Arc<Mutex<Option<CodexUpdate>>>>()).clone();
+                        let lcur = (*app.state::<Arc<Mutex<Option<CursorUpdate>>>>()).clone();
+                        let lb = (*app.state::<Arc<Mutex<Option<polling::BillingUpdate>>>>()).clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = commands::claude_accounts::switch_account_for_tray(
+                                app, account_id, cache, lu, lc, lcur, lb,
+                            ).await;
+                        });
                     }
                     _ => {}
                 })
@@ -394,7 +405,7 @@ pub fn run() {
                         tray_left_click_generation.fetch_add(1, Ordering::SeqCst);
                         suppress_next_tray_left_up.store(true, Ordering::SeqCst);
                         let app = tray.app_handle().clone();
-                        toggle_widget_window(&app, Some(&widget_menu_for_tray_event));
+                        toggle_widget_window(&app);
                     }
                     tauri::tray::TrayIconEvent::Click {
                         button: tauri::tray::MouseButton::Left,
@@ -441,6 +452,9 @@ pub fn run() {
                     }
                 });
             }
+
+            // Build the accounts submenu now that the tray exists.
+            commands::claude_accounts::rebuild_tray_menu(handle);
 
             // Initialize global tray state for provider-aware rendering
             tray_state::init(tray_state::TrayState {
@@ -874,25 +888,26 @@ fn is_widget_window_visible(app: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-fn sync_widget_menu_checked(widget_menu: Option<&CheckMenuItem<tauri::Wry>>, visible: bool) {
-    if let Some(widget_menu) = widget_menu {
-        let _ = widget_menu.set_checked(visible);
-    }
+fn sync_widget_menu_checked(app: &tauri::AppHandle, _visible: bool) {
+    // TrayIcon has no menu() getter in Tauri 2 — rebuild the full menu from current state.
+    // rebuild_tray_menu reads widget visibility from the window, so the caller must
+    // show/hide the window before calling this.
+    commands::claude_accounts::rebuild_tray_menu(app);
 }
 
-fn toggle_widget_window(app: &tauri::AppHandle, widget_menu: Option<&CheckMenuItem<tauri::Wry>>) {
+fn toggle_widget_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("widget") {
         if w.is_visible().unwrap_or(false) {
             let _ = w.hide();
             save_widget_visible_to_store(app, false);
-            sync_widget_menu_checked(widget_menu, false);
+            sync_widget_menu_checked(app, false);
         } else {
             ensure_widget_window_transparent(&w);
             let _ = w.show();
             ensure_widget_window_transparent(&w);
             let _ = w.set_focus();
             save_widget_visible_to_store(app, true);
-            sync_widget_menu_checked(widget_menu, true);
+            sync_widget_menu_checked(app, true);
         }
     }
 }

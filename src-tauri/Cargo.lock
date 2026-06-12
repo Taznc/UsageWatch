@@ -6790,6 +6790,7 @@ dependencies = [
 name = "usagewatch"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "axum",
  "base64 0.22.1",
  "chrono",

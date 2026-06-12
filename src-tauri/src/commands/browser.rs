@@ -24,6 +24,119 @@ fn copy_shared(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<
     std::fs::write(dst, &buf)
 }
 
+/// Decrypt a DPAPI-protected blob using Win32 CryptUnprotectData.
+/// Used to recover the AES-256 key stored in an Electron profile's `Local State`.
+#[cfg(target_os = "windows")]
+fn dpapi_decrypt(data: &[u8]) -> Option<Vec<u8>> {
+    #[repr(C)]
+    struct DataBlob { cb: u32, pb: *mut u8 }
+    #[link(name = "crypt32")]
+    extern "system" {
+        fn CryptUnprotectData(
+            p_in: *const DataBlob, descr: *mut *mut u16, entropy: *const DataBlob,
+            reserved: *mut core::ffi::c_void, prompt: *const core::ffi::c_void,
+            flags: u32, p_out: *mut DataBlob,
+        ) -> i32;
+    }
+    extern "system" { fn LocalFree(h: *mut core::ffi::c_void) -> *mut core::ffi::c_void; }
+    let input = DataBlob { cb: data.len() as u32, pb: data.as_ptr() as *mut u8 };
+    let mut output = DataBlob { cb: 0, pb: std::ptr::null_mut() };
+    unsafe {
+        let ok = CryptUnprotectData(
+            &input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null_mut(),
+            std::ptr::null(), 0, &mut output,
+        );
+        if ok != 0 && !output.pb.is_null() {
+            let bytes = std::slice::from_raw_parts(output.pb, output.cb as usize).to_vec();
+            LocalFree(output.pb as *mut _);
+            Some(bytes)
+        } else {
+            None
+        }
+    }
+}
+
+/// Manual fallback for Electron cookie decryption when rookie fails.
+/// Reads the AES-256 key from `Local State` (DPAPI-encrypted), then decrypts
+/// v10/v11 cookie values with AES-256-GCM using rusqlite for the DB query.
+/// Used for per-instance profiles in `~/.claude-instances/*`.
+#[cfg(target_os = "windows")]
+fn read_instance_cookies_manual_windows(
+    local_state_path: &std::path::Path,
+    cookies_path: &std::path::Path,
+) -> Result<Option<String>, String> {
+    use base64::engine::{Engine, general_purpose::STANDARD as B64};
+    use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
+
+    // 1. Extract AES key from Local State
+    let ls = std::fs::read_to_string(local_state_path)
+        .map_err(|e| format!("Cannot read Local State: {e}"))?;
+    let val: serde_json::Value = serde_json::from_str(&ls)
+        .map_err(|e| format!("Cannot parse Local State: {e}"))?;
+    let enc_b64 = val["os_crypt"]["encrypted_key"].as_str()
+        .ok_or("No os_crypt.encrypted_key in Local State")?;
+    let enc_bytes = B64.decode(enc_b64).map_err(|e| format!("Base64 error: {e}"))?;
+    if enc_bytes.get(..5) != Some(b"DPAPI") {
+        return Err("Unexpected Local State key format (no DPAPI prefix)".to_string());
+    }
+    let aes_key = dpapi_decrypt(&enc_bytes[5..])
+        .ok_or("DPAPI decryption of cookie key failed")?;
+    if aes_key.len() != 32 {
+        return Err(format!("AES key wrong length: {} (expected 32)", aes_key.len()));
+    }
+
+    // 2. Copy cookie DB to temp path
+    let tmp = std::env::temp_dir().join("usagewatch_manual_inst_cookies.db");
+    copy_shared(cookies_path, &tmp).map_err(|e| {
+        if e.raw_os_error() == Some(32) {
+            "Cookie database is locked — Claude Desktop appears to be running. Close it and rescan.".to_string()
+        } else {
+            format!("Cannot copy cookie DB: {e}")
+        }
+    })?;
+
+    // 3. Open DB, query claude.ai cookies, decrypt each v10/v11 value
+    let cookie_pairs: Option<Vec<(String, String)>> = (|| {
+        let conn = rusqlite::Connection::open_with_flags(
+            &tmp, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        ).ok()?;
+        let mut stmt = conn.prepare(
+            "SELECT name, encrypted_value FROM cookies WHERE host_key LIKE '%claude.ai'",
+        ).ok()?;
+        let raw: Vec<(String, Vec<u8>)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .ok()?.flatten().collect();
+
+        let cipher = Aes256Gcm::new_from_slice(&aes_key).ok()?;
+        let mut out = Vec::new();
+        for (name, enc_val) in raw {
+            if enc_val.len() > 15
+                && (enc_val.starts_with(b"v10") || enc_val.starts_with(b"v11"))
+            {
+                let nonce = aes_gcm::aead::generic_array::GenericArray::from_slice(&enc_val[3..15]);
+                if let Ok(plain) = cipher.decrypt(nonce, &enc_val[15..]) {
+                    if let Ok(s) = String::from_utf8(plain) {
+                        out.push((name, s));
+                    }
+                }
+            }
+        }
+        Some(out)
+    })();
+    let _ = std::fs::remove_file(&tmp);
+
+    let pairs = cookie_pairs.unwrap_or_default();
+    if !pairs.iter().any(|(n, _)| n == "sessionKey") {
+        return Ok(None);
+    }
+    let header = pairs.iter()
+        .filter(|(_, v)| !v.is_empty())
+        .map(|(n, v)| format!("{n}={v}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    Ok(if header.is_empty() { None } else { Some(header) })
+}
+
 /// Read a named cookie from a Chromium-based Electron app's SQLite cookie DB.
 /// Copies the DB to a temp file first (handles file locking from running Electron apps),
 /// then uses rookie's chromium_based() which handles DPAPI + AES-GCM decryption correctly.
@@ -77,6 +190,10 @@ fn read_electron_cookie_header_windows(
             // exclusively locked by a running Electron app.
             if copy_err.as_ref().and_then(|e| e.raw_os_error()) == Some(32) {
                 Err("Cookie database is locked — Claude Desktop appears to be running. Close it and rescan.".to_string())
+            } else if e.to_string().contains("decrypt_encrypted_value") {
+                // Rookie failed decrypting a specific cookie (e.g. mixed key versions).
+                // Fall back to manual DPAPI + AES-256-GCM decryption.
+                read_instance_cookies_manual_windows(local_state_path, cookies_path)
             } else {
                 Err(format!("Cookie decryption failed: {e}"))
             }

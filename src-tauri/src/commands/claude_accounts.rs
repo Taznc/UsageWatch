@@ -11,13 +11,112 @@
 
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
 
 use crate::credentials_cache::CredentialsCache;
 use crate::models::Organization;
 use crate::polling::{self, BillingUpdate, CodexUpdate, CursorUpdate, UsageUpdate};
 use super::credentials::{save_json_to_store, save_to_store};
+
+// ── Tray menu helpers ────────────────────────────────────────────────────────
+
+fn acct_display_label(acct: &ClaudeAccount) -> String {
+    if let Some(email) = &acct.email {
+        if !acct.org_name.is_empty() {
+            format!("{} · {}", email, acct.org_name)
+        } else {
+            email.clone()
+        }
+    } else if !acct.org_name.is_empty() {
+        format!("{} · {}", acct.label, acct.org_name)
+    } else {
+        acct.label.clone()
+    }
+}
+
+/// Rebuild the tray right-click menu, adding a "Switch Account" submenu when
+/// more than one account is stored. Preserves the current widget-visible state.
+/// Called at startup and after any account switch/add/remove.
+pub fn rebuild_tray_menu(app: &AppHandle) {
+    use tauri::menu::{CheckMenuItem, Menu, MenuItem, Submenu};
+
+    let accounts = read_accounts(app);
+    let active_id = read_active_id(app).unwrap_or_default();
+    let is_widget_visible = app
+        .get_webview_window("widget")
+        .map(|w: tauri::WebviewWindow| w.is_visible().unwrap_or(false))
+        .unwrap_or(false);
+
+    let Ok(refresh) = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>) else { return; };
+    let Ok(settings) = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>) else { return; };
+    let Ok(widget) = CheckMenuItem::with_id(app, "widget", "Widget", true, is_widget_visible, None::<&str>) else { return; };
+    let Ok(quit) = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>) else { return; };
+
+    let new_menu = if accounts.len() > 1 {
+        let sub_result = Submenu::new(app, "Switch Account", true);
+        if let Ok(sub) = sub_result {
+            for acct in &accounts {
+                let label = if acct.id == active_id {
+                    format!("✓ {}", acct_display_label(acct))
+                } else {
+                    format!("  {}", acct_display_label(acct))
+                };
+                let enabled = acct.id != active_id;
+                if let Ok(item) = MenuItem::with_id(
+                    app,
+                    format!("account::{}", acct.id),
+                    label,
+                    enabled,
+                    None::<&str>,
+                ) {
+                    let _ = sub.append(&item);
+                }
+            }
+            Menu::with_items(app, &[&refresh, &settings, &sub, &widget, &quit])
+        } else {
+            Menu::with_items(app, &[&refresh, &settings, &widget, &quit])
+        }
+    } else {
+        Menu::with_items(app, &[&refresh, &settings, &widget, &quit])
+    };
+
+    if let (Ok(menu), Some(tray)) = (new_menu, app.tray_by_id("main-tray")) {
+        let _ = tray.set_menu(Some(menu));
+    }
+}
+
+/// Called from the tray `account::*` menu event to switch the active account.
+/// Takes owned Arcs so it can be spawned into an async task.
+pub async fn switch_account_for_tray(
+    app: AppHandle,
+    id: String,
+    cache: Arc<CredentialsCache>,
+    latest_usage: Arc<Mutex<Option<UsageUpdate>>>,
+    latest_codex: Arc<Mutex<Option<CodexUpdate>>>,
+    latest_cursor: Arc<Mutex<Option<CursorUpdate>>>,
+    latest_billing: Arc<Mutex<Option<BillingUpdate>>>,
+) -> Result<(), String> {
+    let accounts = read_accounts(&app);
+    let acct = accounts
+        .into_iter()
+        .find(|a| a.id == id)
+        .ok_or_else(|| format!("Account not found: {id}"))?;
+    mirror_active(&app, &*cache, &acct)?;
+    save_active_id(&app, &id)?;
+    rebuild_tray_menu(&app);
+    let _ = app.emit("claude-account-changed", &id);
+    polling::poll_all_providers(
+        &app,
+        &*cache,
+        &latest_usage,
+        &latest_codex,
+        &latest_cursor,
+        &latest_billing,
+    )
+    .await;
+    Ok(())
+}
 
 const ACCOUNTS_KEY: &str = "claude_accounts";
 const ACTIVE_KEY: &str = "active_claude_account_id";
@@ -376,6 +475,7 @@ pub async fn add_claude_account(
     if activate {
         mirror_active(&app, &cache, &acct)?;
         save_active_id(&app, &acct.id)?;
+        rebuild_tray_menu(&app);
         let _ = app.emit("claude-account-changed", &acct.id);
         polling::poll_all_providers(
             &app, &**cache, &*latest_usage, &*latest_codex, &*latest_cursor, &*latest_billing,
@@ -404,6 +504,7 @@ pub async fn set_active_claude_account(
 
     mirror_active(&app, &cache, &acct)?;
     save_active_id(&app, &id)?;
+    rebuild_tray_menu(&app);
     let _ = app.emit("claude-account-changed", &id);
     polling::poll_all_providers(
         &app, &**cache, &*latest_usage, &*latest_codex, &*latest_cursor, &*latest_billing,
@@ -429,6 +530,7 @@ pub async fn remove_claude_account(
     accounts.retain(|a| a.id != id);
     write_accounts(&app, &accounts)?;
 
+    rebuild_tray_menu(&app);
     if was_active {
         match accounts.first().cloned() {
             Some(next) => {
