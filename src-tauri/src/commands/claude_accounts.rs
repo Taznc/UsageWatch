@@ -83,6 +83,11 @@ pub fn rebuild_tray_menu(app: &AppHandle) {
 
     if let (Ok(menu), Some(tray)) = (new_menu, app.tray_by_id("main-tray")) {
         let _ = tray.set_menu(Some(menu));
+        // On macOS, set_menu re-attaches NSStatusItem.menu, which re-enables the
+        // system click interception and breaks left-click → popover. Re-detach it
+        // so the native bridge keeps routing left-clicks to TaoTrayTarget.
+        #[cfg(target_os = "macos")]
+        crate::styled_tray::resync_native_tray_menu();
     }
 }
 

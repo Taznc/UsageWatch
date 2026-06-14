@@ -229,8 +229,14 @@ fn render_tray(app: &AppHandle, _provider: Provider, data: &TrayDisplayData, for
 
     #[cfg(target_os = "macos")]
     {
-        let segments = build_styled_segments(data, format);
-        crate::styled_tray::set_native_styled_title_with_icon(&segments, Some(_provider.icon_name()));
+        let icon = if format.show_icon { Some(_provider.icon_name()) } else { None };
+        if format.stacked {
+            let (top, bottom) = build_stacked_rows(data, format);
+            crate::styled_tray::set_native_styled_title_stacked(&top, &bottom, icon);
+        } else {
+            let segments = build_styled_segments(data, format);
+            crate::styled_tray::set_native_styled_title_with_icon(&segments, icon);
+        }
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -302,15 +308,21 @@ fn render_multi_tray(
 
     #[cfg(target_os = "macos")]
     {
-        let styled = build_multi_styled_segments(segments, format, &cache);
-        let icon_provider = segments.iter().find_map(|s| match &s.kind {
-            TraySegmentKind::ProviderData { provider, .. } => Some(*provider),
-            _ => None,
-        });
-        crate::styled_tray::set_native_styled_title_with_icon(
-            &styled,
-            icon_provider.map(|p| p.icon_name()),
-        );
+        let icon = if format.show_icon {
+            segments.iter().find_map(|s| match &s.kind {
+                TraySegmentKind::ProviderData { provider, .. } => Some(provider.icon_name()),
+                _ => None,
+            })
+        } else {
+            None
+        };
+        if format.stacked {
+            let (top, bottom) = build_multi_stacked_rows(segments, format, &cache);
+            crate::styled_tray::set_native_styled_title_stacked(&top, &bottom, icon);
+        } else {
+            let styled = build_multi_styled_segments(segments, format, &cache);
+            crate::styled_tray::set_native_styled_title_with_icon(&styled, icon);
+        }
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -335,17 +347,18 @@ fn render_multi_tray(
 fn resolve_field_plain(
     field: &TrayField,
     data: Option<&TrayDisplayData>,
+    abbreviated: bool,
 ) -> Option<String> {
     let dd = data?;
     match field {
         TrayField::SessionPct => dd.session_pct.map(|p| format!("S {}%", p.round() as i32)),
         TrayField::SessionTimer => dd.session_reset.as_ref().and_then(|r| {
-            let cd = crate::tray_renderer::format_countdown_public(r);
+            let cd = crate::tray_renderer::format_countdown_public(r, abbreviated);
             if cd.is_empty() { None } else { Some(format!("S {}", cd)) }
         }),
         TrayField::WeeklyPct => dd.weekly_pct.map(|p| format!("W {}%", p.round() as i32)),
         TrayField::WeeklyTimer => dd.weekly_reset.as_ref().and_then(|r| {
-            let cd = crate::tray_renderer::format_countdown_public(r);
+            let cd = crate::tray_renderer::format_countdown_public(r, abbreviated);
             if cd.is_empty() { None } else { Some(format!("W {}", cd)) }
         }),
         TrayField::SonnetPct => dd.sonnet_pct.filter(|&p| p > 0.0).map(|p| format!("So {}%", p.round() as i32)),
@@ -378,7 +391,7 @@ fn build_multi_plain_title(
     for seg in segments {
         match &seg.kind {
             TraySegmentKind::ProviderData { provider, field } => {
-                if let Some(text) = resolve_field_plain(field, cache.get(provider)) {
+                if let Some(text) = resolve_field_plain(field, cache.get(provider), format.abbreviate_time) {
                     let needs_emoji = last_provider != Some(*provider);
                     if needs_emoji {
                         parts.push(format!("{} {}", provider.emoji(), text));
@@ -421,7 +434,7 @@ fn build_multi_styled_segments(
         match &seg.kind {
             TraySegmentKind::ProviderData { provider, field } => {
                 let dd = cache.get(provider);
-                if let Some(segs) = resolve_field_styled(field, dd, label_color, timer_color) {
+                if let Some(segs) = resolve_field_styled(field, dd, label_color, timer_color, format.abbreviate_time) {
                     let mut group = Vec::new();
                     group.extend(segs);
                     groups.push(group);
@@ -455,6 +468,7 @@ fn resolve_field_styled(
     data: Option<&TrayDisplayData>,
     label_color: (u8, u8, u8, u8),
     timer_color: (u8, u8, u8, u8),
+    abbreviated: bool,
 ) -> Option<Vec<crate::styled_tray::StyledSegment>> {
     use crate::styled_tray::StyledSegment;
 
@@ -481,7 +495,7 @@ fn resolve_field_styled(
         }
         TrayField::SessionTimer => {
             let reset = dd.session_reset.as_ref()?;
-            let cd = crate::tray_renderer::format_countdown_public(reset);
+            let cd = crate::tray_renderer::format_countdown_public(reset, abbreviated);
             if cd.is_empty() { return None; }
             let (r, g, b, a) = timer_color;
             Some(vec![StyledSegment::from_rgba_u8(&cd, r, g, b, a, 13.0, false)])
@@ -497,7 +511,7 @@ fn resolve_field_styled(
         }
         TrayField::WeeklyTimer => {
             let reset = dd.weekly_reset.as_ref()?;
-            let cd = crate::tray_renderer::format_countdown_public(reset);
+            let cd = crate::tray_renderer::format_countdown_public(reset, abbreviated);
             if cd.is_empty() { return None; }
             let (r, g, b, a) = timer_color;
             Some(vec![StyledSegment::from_rgba_u8(&cd, r, g, b, a, 13.0, false)])
@@ -551,7 +565,7 @@ fn build_plain_title(data: &TrayDisplayData, format: &TrayFormat) -> String {
     }
     if format.show_session_timer {
         if let Some(ref reset) = data.session_reset {
-            let cd = crate::tray_renderer::format_countdown_public(reset);
+            let cd = crate::tray_renderer::format_countdown_public(reset, format.abbreviate_time);
             if !cd.is_empty() {
                 parts.push(format!("S {}", cd));
             }
@@ -564,7 +578,7 @@ fn build_plain_title(data: &TrayDisplayData, format: &TrayFormat) -> String {
     }
     if format.show_weekly_timer {
         if let Some(ref reset) = data.weekly_reset {
-            let cd = crate::tray_renderer::format_countdown_public(reset);
+            let cd = crate::tray_renderer::format_countdown_public(reset, format.abbreviate_time);
             if !cd.is_empty() {
                 parts.push(format!("W {}", cd));
             }
@@ -601,6 +615,185 @@ fn build_plain_title(data: &TrayDisplayData, format: &TrayFormat) -> String {
         }
     }
     parts.join(&format.separator)
+}
+
+/// Placeholder point size carried on stacked segments. The native renderer
+/// (`set_styled_tray_title_stacked`) OWNS the actual stacked font size: it sizes
+/// the image to the real usable menu-bar height (taller on notched Macs) and
+/// scales the font to match, overriding this value. Kept only so segment
+/// construction has a sane size.
+#[cfg(target_os = "macos")]
+const STACK_FONT: f32 = 12.0;
+
+/// Build the top (session) and bottom (weekly) rows for the stacked layout.
+/// Per-model lines ride with session on top; extra usage rides with weekly on
+/// the bottom. Stacked rows always use the compact countdown so they stay narrow.
+#[cfg(target_os = "macos")]
+fn build_stacked_rows(
+    data: &TrayDisplayData,
+    format: &TrayFormat,
+) -> (
+    Vec<crate::styled_tray::StyledSegment>,
+    Vec<crate::styled_tray::StyledSegment>,
+) {
+    use crate::styled_tray::StyledSegment;
+
+    let label_color = (185, 185, 200, 255);
+    let timer_color = (160, 210, 255, 255);
+    let abbr = true; // stacked is always compact
+
+    fn space(row: &mut Vec<StyledSegment>) {
+        if !row.is_empty() {
+            row.push(StyledSegment::from_rgba_u8(" ", 0, 0, 0, 0, STACK_FONT as f64, false));
+        }
+    }
+
+    // Right-align percentages to a common digit width using figure spaces
+    // (U+2007 == a tabular-digit width in the monospaced-digit font the native
+    // renderer uses). This makes the "%" and the following timer column line up
+    // across rows even when one percentage is 1 digit and the other is 2.
+    let digits = |p: Option<f64>| -> usize {
+        match p {
+            Some(v) if v >= 0.0 => (v.round() as i64).abs().to_string().len(),
+            _ => 0,
+        }
+    };
+    let pct_width = [
+        if format.show_session_pct { digits(data.session_pct) } else { 0 },
+        if format.show_weekly_pct { digits(data.weekly_pct) } else { 0 },
+        if format.show_sonnet_pct { digits(data.sonnet_pct) } else { 0 },
+        if format.show_opus_pct { digits(data.opus_pct) } else { 0 },
+        if format.show_design_pct { digits(data.design_pct) } else { 0 },
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(1)
+    .max(1);
+
+    fn pad_pct(segs: &mut [StyledSegment], width: usize) {
+        if let Some(last) = segs.iter_mut().rev().find(|s| s.text.ends_with('%')) {
+            if let Some(num) = last.text.strip_suffix('%') {
+                let pad = width.saturating_sub(num.chars().count());
+                if pad > 0 {
+                    last.text = format!("{}{}%", "\u{2007}".repeat(pad), num);
+                }
+            }
+        }
+    }
+
+    let mut top: Vec<StyledSegment> = Vec::new();
+    let mut bottom: Vec<StyledSegment> = Vec::new();
+
+    // Top row: session %, session timer, then any per-model percentages.
+    if format.show_session_pct {
+        if let Some(mut segs) = resolve_field_styled(&TrayField::SessionPct, Some(data), label_color, timer_color, abbr) {
+            pad_pct(&mut segs, pct_width);
+            // "\t<label>\t" — leading tab right-aligns the label, trailing tab
+            // starts the value columns, so rows align despite S vs W glyph widths.
+            if let Some(first) = segs.first_mut() {
+                first.text = format!("\t{}\t", first.text.trim_end());
+            }
+            top.extend(segs);
+        }
+    }
+    if format.show_session_timer {
+        if let Some(segs) = resolve_field_styled(&TrayField::SessionTimer, Some(data), label_color, timer_color, abbr) {
+            space(&mut top);
+            top.extend(segs);
+        }
+    }
+    for (show, field) in [
+        (format.show_sonnet_pct, TrayField::SonnetPct),
+        (format.show_opus_pct, TrayField::OpusPct),
+        (format.show_design_pct, TrayField::DesignPct),
+    ] {
+        if show {
+            if let Some(mut segs) = resolve_field_styled(&field, Some(data), label_color, timer_color, abbr) {
+                pad_pct(&mut segs, pct_width);
+                space(&mut top);
+                top.extend(segs);
+            }
+        }
+    }
+
+    // Bottom row: weekly %, weekly timer, then extra usage.
+    if format.show_weekly_pct {
+        if let Some(mut segs) = resolve_field_styled(&TrayField::WeeklyPct, Some(data), label_color, timer_color, abbr) {
+            pad_pct(&mut segs, pct_width);
+            if let Some(first) = segs.first_mut() {
+                first.text = format!("\t{}\t", first.text.trim_end());
+            }
+            bottom.extend(segs);
+        }
+    }
+    if format.show_weekly_timer {
+        if let Some(segs) = resolve_field_styled(&TrayField::WeeklyTimer, Some(data), label_color, timer_color, abbr) {
+            space(&mut bottom);
+            bottom.extend(segs);
+        }
+    }
+    if format.show_extra_usage {
+        if let Some(segs) = resolve_field_styled(&TrayField::ExtraUsage, Some(data), label_color, timer_color, abbr) {
+            space(&mut bottom);
+            bottom.extend(segs);
+        }
+    }
+
+    for s in top.iter_mut().chain(bottom.iter_mut()) {
+        s.font_size = STACK_FONT;
+    }
+
+    (top, bottom)
+}
+
+/// Stacked layout for Multi/Static mode: distribute the resolved segment groups
+/// across two rows (alternating), so e.g. two providers land one per line.
+#[cfg(target_os = "macos")]
+fn build_multi_stacked_rows(
+    segments: &[TraySegmentDef],
+    format: &TrayFormat,
+    cache: &MultiDisplayCache,
+) -> (
+    Vec<crate::styled_tray::StyledSegment>,
+    Vec<crate::styled_tray::StyledSegment>,
+) {
+    use crate::styled_tray::StyledSegment;
+
+    let label_color = (185, 185, 200, 255);
+    let timer_color = (160, 210, 255, 255);
+    let custom_color = (200, 200, 220, 255);
+
+    let mut groups: Vec<Vec<StyledSegment>> = Vec::new();
+    for seg in segments {
+        match &seg.kind {
+            TraySegmentKind::ProviderData { provider, field } => {
+                let dd = cache.get(provider);
+                if let Some(segs) = resolve_field_styled(field, dd, label_color, timer_color, format.abbreviate_time) {
+                    groups.push(segs);
+                }
+            }
+            TraySegmentKind::CustomText { text } => {
+                let (r, g, b, a) = custom_color;
+                groups.push(vec![StyledSegment::from_rgba_u8(text, r, g, b, a, STACK_FONT as f64, false)]);
+            }
+        }
+    }
+
+    let mut top: Vec<StyledSegment> = Vec::new();
+    let mut bottom: Vec<StyledSegment> = Vec::new();
+    for (i, group) in groups.into_iter().enumerate() {
+        let row = if i % 2 == 0 { &mut top } else { &mut bottom };
+        if !row.is_empty() {
+            row.push(StyledSegment::from_rgba_u8(" ", 0, 0, 0, 0, STACK_FONT as f64, false));
+        }
+        row.extend(group);
+    }
+
+    for s in top.iter_mut().chain(bottom.iter_mut()) {
+        s.font_size = STACK_FONT;
+    }
+
+    (top, bottom)
 }
 
 #[cfg(target_os = "macos")]
@@ -641,7 +834,7 @@ fn build_styled_segments(
             }
             if format.show_session_timer {
                 if let Some(ref reset) = data.session_reset {
-                    let cd = tray_renderer::format_countdown_public(reset);
+                    let cd = tray_renderer::format_countdown_public(reset, format.abbreviate_time);
                     if !cd.is_empty() {
                         let (r, g, b, a) = timer_color;
                         segs.push(StyledSegment::from_rgba_u8(
@@ -672,7 +865,7 @@ fn build_styled_segments(
             }
             if format.show_weekly_timer {
                 if let Some(ref reset) = data.weekly_reset {
-                    let cd = tray_renderer::format_countdown_public(reset);
+                    let cd = tray_renderer::format_countdown_public(reset, format.abbreviate_time);
                     if !cd.is_empty() {
                         let (r, g, b, a) = timer_color;
                         segs.push(StyledSegment::from_rgba_u8(

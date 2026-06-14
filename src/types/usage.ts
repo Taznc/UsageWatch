@@ -93,6 +93,9 @@ export interface TrayFormat {
   show_weekly_timer: boolean;
   show_extra_usage: boolean;
   separator: string;
+  abbreviate_time: boolean;
+  stacked: boolean;
+  show_icon: boolean;
 }
 
 export type AppView = "popover" | "settings";

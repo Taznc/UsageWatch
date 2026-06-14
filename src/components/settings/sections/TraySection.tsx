@@ -78,6 +78,9 @@ const DEFAULT_FORMAT: TrayFormat = {
   show_weekly_timer: false,
   show_extra_usage: false,
   separator: " | ",
+  abbreviate_time: false,
+  stacked: false,
+  show_icon: true,
 };
 
 const DEFAULT_CONFIG: TrayConfig = {

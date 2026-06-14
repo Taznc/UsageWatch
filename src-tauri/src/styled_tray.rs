@@ -25,7 +25,16 @@ mod macos {
             icon_data: *const u8,
             icon_len: c_int,
         );
+        fn set_styled_tray_title_stacked(
+            top: *const CTraySegment,
+            top_count: c_int,
+            bottom: *const CTraySegment,
+            bottom_count: c_int,
+            icon_data: *const u8,
+            icon_len: c_int,
+        );
         fn register_tray_status_item(status_item: *mut c_void);
+        fn resync_tray_menu();
         fn register_mouse_move_callback(cb: extern "C" fn(f64, f64));
         fn start_native_mouse_monitor();
         fn start_widget_drag_monitor();
@@ -59,22 +68,23 @@ mod macos {
         }
     }
 
-    pub fn set_native_styled_title_with_icon(segments: &[StyledSegment], icon_name: Option<&str>) {
-        if segments.is_empty() {
-            return;
-        }
-
+    fn icon_bytes_for(icon_name: Option<&str>) -> Option<&'static [u8]> {
         static CLAUDE_ICON: &[u8] = include_bytes!("../icons/providers/claude.png");
         static CODEX_ICON: &[u8] = include_bytes!("../icons/providers/codex.png");
         static CURSOR_ICON: &[u8] = include_bytes!("../icons/providers/cursor.png");
 
-        let icon_bytes: Option<&[u8]> = icon_name.and_then(|name| match name {
+        icon_name.and_then(|name| match name {
             "claude" => Some(CLAUDE_ICON),
             "codex" => Some(CODEX_ICON),
             "cursor" => Some(CURSOR_ICON),
             _ => None,
-        });
+        })
+    }
 
+    /// Build the C segment array for a slice of styled segments. The returned
+    /// `Vec<CString>` MUST be kept alive by the caller until the FFI call
+    /// returns, since the `CTraySegment.text` pointers borrow into it.
+    fn to_c_segments(segments: &[StyledSegment]) -> (Vec<CString>, Vec<CTraySegment>) {
         let c_strings: Vec<CString> = segments
             .iter()
             .map(|s| CString::new(s.text.as_str()).unwrap_or_default())
@@ -94,6 +104,18 @@ mod macos {
             })
             .collect();
 
+        (c_strings, c_segments)
+    }
+
+    pub fn set_native_styled_title_with_icon(segments: &[StyledSegment], icon_name: Option<&str>) {
+        if segments.is_empty() {
+            return;
+        }
+
+        let icon_bytes = icon_bytes_for(icon_name);
+        // `_c_strings` keeps the backing CStrings alive across the FFI call.
+        let (_c_strings, c_segments) = to_c_segments(segments);
+
         let icon_ptr = icon_bytes.map(|b| b.as_ptr()).unwrap_or(std::ptr::null());
         let icon_len = icon_bytes.map(|b| b.len() as c_int).unwrap_or(0);
 
@@ -107,9 +129,49 @@ mod macos {
         }
     }
 
+    /// Render the tray as two stacked rows (top + bottom), with an optional
+    /// provider icon centered across both. Used by the stacked layout option.
+    pub fn set_native_styled_title_stacked(
+        top: &[StyledSegment],
+        bottom: &[StyledSegment],
+        icon_name: Option<&str>,
+    ) {
+        if top.is_empty() && bottom.is_empty() {
+            return;
+        }
+
+        let icon_bytes = icon_bytes_for(icon_name);
+        // Keep both CString backings alive across the FFI call.
+        let (_top_strings, top_c) = to_c_segments(top);
+        let (_bottom_strings, bottom_c) = to_c_segments(bottom);
+
+        let icon_ptr = icon_bytes.map(|b| b.as_ptr()).unwrap_or(std::ptr::null());
+        let icon_len = icon_bytes.map(|b| b.len() as c_int).unwrap_or(0);
+
+        unsafe {
+            set_styled_tray_title_stacked(
+                top_c.as_ptr(),
+                top_c.len() as c_int,
+                bottom_c.as_ptr(),
+                bottom_c.len() as c_int,
+                icon_ptr,
+                icon_len,
+            );
+        }
+    }
+
     pub fn register_native_status_item(status_item: *mut c_void) {
         unsafe {
             register_tray_status_item(status_item);
+        }
+    }
+
+    /// Re-detach the status-item menu after a runtime `set_menu`, so the native
+    /// left-click → popover routing keeps working. Call right after any
+    /// `TrayIcon::set_menu(...)`. No-op until the tray button exists.
+    pub fn resync_native_tray_menu() {
+        unsafe {
+            resync_tray_menu();
         }
     }
 

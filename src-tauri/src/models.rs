@@ -190,6 +190,18 @@ pub struct TrayFormat {
     pub show_extra_usage: bool,
     #[serde(default = "default_separator")]
     pub separator: String,
+    /// Compact countdowns ("22m", "1d3h", "2d") instead of verbose ("22 min",
+    /// "1 days 3 hr"). Saves horizontal space in the menu bar.
+    #[serde(default)]
+    pub abbreviate_time: bool,
+    /// macOS only: render session on the top line and weekly on the bottom line
+    /// as a two-row menu-bar item, instead of a single inline row.
+    #[serde(default)]
+    pub stacked: bool,
+    /// Show the provider glyph (Claude/Codex/Cursor icon) before the text.
+    /// Turning it off reclaims ~16px of menu-bar width.
+    #[serde(default = "default_true")]
+    pub show_icon: bool,
 }
 
 fn default_true() -> bool {
@@ -212,6 +224,9 @@ impl Default for TrayFormat {
             show_weekly_timer: false,
             show_extra_usage: false,
             separator: " | ".to_string(),
+            abbreviate_time: false,
+            stacked: false,
+            show_icon: true,
         }
     }
 }

@@ -260,6 +260,9 @@ export function Settings() {
     show_weekly_timer: false,
     show_extra_usage: false,
     separator: " | ",
+    abbreviate_time: false,
+    stacked: false,
+    show_icon: true,
   });
   const [trayConfig, setTrayConfig] = useState<TrayConfig>({
     mode: "Dynamic",
@@ -440,24 +443,40 @@ export function Settings() {
   };
 
   const buildPreview = (): string => {
-    const parts: string[] = [];
-    if (trayFormat.show_session_pct || trayFormat.show_session_timer) {
-      const sub: string[] = [];
-      if (trayFormat.show_session_pct) sub.push("S:42%");
-      if (trayFormat.show_session_timer) sub.push("2h9m");
-      parts.push(sub.join(" "));
+    const stacked = isMacPlatform && trayFormat.stacked;
+    // Stacked rows always render compact; inline respects the toggle.
+    const compact = trayFormat.abbreviate_time || stacked;
+    const sessTimer = compact ? "2h9m" : "2 hr 9 min";
+    const weekTimer = compact ? "3d15h" : "3 days 15 hr";
+
+    const sessionParts: string[] = [];
+    if (trayFormat.show_session_pct) sessionParts.push("S 42%");
+    if (trayFormat.show_session_timer) sessionParts.push(sessTimer);
+
+    const weeklyParts: string[] = [];
+    if (trayFormat.show_weekly_pct) weeklyParts.push("W 85%");
+    if (trayFormat.show_weekly_timer) weeklyParts.push(weekTimer);
+
+    const models: string[] = [];
+    if (trayFormat.show_sonnet_pct) models.push("So 8%");
+    if (trayFormat.show_opus_pct) models.push("Op 15%");
+    if (trayFormat.show_design_pct) models.push("Dz 22%");
+    const extraSpend = trayFormat.show_extra_usage ? "$5/$20" : null;
+
+    if (stacked) {
+      // Top: session (+ per-model lines); Bottom: weekly (+ extra spend).
+      const top = [...sessionParts, ...models].join(" ");
+      const bottom = [...weeklyParts, ...(extraSpend ? [extraSpend] : [])].join(" ");
+      const lines = [top, bottom].filter((l) => l.length > 0);
+      return lines.length > 0 ? lines.join("\n") : "--";
     }
-    if (trayFormat.show_weekly_pct || trayFormat.show_weekly_timer) {
-      const sub: string[] = [];
-      if (trayFormat.show_weekly_pct) sub.push("W:85%");
-      if (trayFormat.show_weekly_timer) sub.push("3d15h");
-      parts.push(sub.join(" "));
-    }
-    if (trayFormat.show_sonnet_pct) parts.push("So:8%");
-    if (trayFormat.show_opus_pct) parts.push("Op:15%");
-    if (trayFormat.show_design_pct) parts.push("Dz:22%");
-    if (trayFormat.show_extra_usage) parts.push("$5/$20");
-    return parts.length > 0 ? parts.join(trayFormat.separator) : "--";
+
+    const groups: string[] = [];
+    if (sessionParts.length) groups.push(sessionParts.join(" "));
+    if (weeklyParts.length) groups.push(weeklyParts.join(" "));
+    groups.push(...models);
+    if (extraSpend) groups.push(extraSpend);
+    return groups.length > 0 ? groups.join(trayFormat.separator) : "--";
   };
 
   const updatePollInterval = async (secs: number) => {
@@ -548,7 +567,12 @@ export function Settings() {
           {activeTab === "menu-bar" && (
             <div className="settings-section">
               <p className="section-hint">Preview of what appears in the {statusDisplayTarget}.</p>
-              <div className="tray-preview">{buildPreview()}</div>
+              <div
+                className="tray-preview"
+                style={{ whiteSpace: "pre-line", lineHeight: 1.25, textAlign: "center" }}
+              >
+                {buildPreview()}
+              </div>
 
               <div className="settings-card">
                 <p className="card-label">{isMacPlatform ? "Show in menu bar" : "Show in tooltip"}</p>
@@ -575,10 +599,52 @@ export function Settings() {
                 ))}
               </div>
 
-              <div className="form-group" style={{ marginTop: 12 }}>
+              <div className="settings-card" style={{ marginTop: 12 }}>
+                <p className="card-label">Layout</p>
+                {isMacPlatform && (
+                  <div className="toggle-row">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={trayFormat.stacked}
+                        onChange={(e) => updateTrayFormat({ stacked: e.target.checked })}
+                      />
+                      Stacked — session on top, weekly below
+                    </label>
+                  </div>
+                )}
+                <div className="toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={trayFormat.abbreviate_time}
+                      onChange={(e) => updateTrayFormat({ abbreviate_time: e.target.checked })}
+                    />
+                    Abbreviated time (22m, 1d3h)
+                  </label>
+                </div>
+                {isMacPlatform && (
+                  <div className="toggle-row">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={trayFormat.show_icon}
+                        onChange={(e) => updateTrayFormat({ show_icon: e.target.checked })}
+                      />
+                      Show provider icon
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="form-group"
+                style={{ marginTop: 12, opacity: isMacPlatform && trayFormat.stacked ? 0.5 : 1 }}
+              >
                 <label>Separator</label>
                 <select
                   className="input"
+                  disabled={isMacPlatform && trayFormat.stacked}
                   value={trayFormat.separator}
                   onChange={(e) => updateTrayFormat({ separator: e.target.value })}
                 >

@@ -125,15 +125,31 @@ static void registerFrameObserverIfNeeded(NSStatusBarButton *button) {
 //      TaoTrayTarget → mouseUp: → Rust on_tray_icon_event.
 // ---------------------------------------------------------------------------
 
-static void setupClickHandling(NSStatusBarButton *button) {
+// Capture whatever NSMenu is currently attached to the status item and detach
+// it, so left-clicks flow through normal NSView routing to TaoTrayTarget instead
+// of being swallowed by the system status-bar menu interception.
+//
+// Safe to call repeatedly. A runtime [NSStatusItem setMenu:] (e.g. from
+// rebuild_tray_menu when the account list or widget-checkmark changes) RE-ATTACHES
+// a menu, which silently re-enables the interception. Calling this again
+// re-captures the fresh menu (so right-click still shows the up-to-date items)
+// and detaches it again. If nothing is attached, the previously cached menu is
+// preserved.
+static void captureAndDetachMenu(void) {
+    if (!cachedStatusItem) return;
+    NSMenu *attached = cachedStatusItem.menu;
+    if (attached) {
+        cachedMenu = attached;
+        cachedStatusItem.menu = nil;
+    }
+}
+
+// Register the secondary-click event monitors exactly once. They read the static
+// cachedMenu at click time, so they automatically pick up a menu swapped in later
+// by captureAndDetachMenu().
+static void registerSecondaryClickMonitorsOnce(NSStatusBarButton *button) {
     if (clickHandlingSetup) return;
     clickHandlingSetup = YES;
-
-    // Grab and detach the menu.
-    cachedMenu = cachedStatusItem.menu;
-    cachedStatusItem.menu = nil;
-
-    if (!cachedMenu) return;
 
     // Secondary-click monitor: open the menu on mouse-down to match native status item behavior.
     [NSEvent addLocalMonitorForEventsMatchingMask:(NSEventMaskRightMouseDown | NSEventMaskLeftMouseDown)
@@ -142,6 +158,7 @@ static void setupClickHandling(NSStatusBarButton *button) {
         BOOL isControlClick = event.type == NSEventTypeLeftMouseDown
             && (event.modifierFlags & NSEventModifierFlagControl) == NSEventModifierFlagControl;
         if (!isRightClick && !isControlClick) return event;
+        if (!cachedMenu) return event;
 
         NSPoint screenPt = [NSEvent mouseLocation];
         if (!button.window) return event;
@@ -168,6 +185,33 @@ static void setupClickHandling(NSStatusBarButton *button) {
         suppressNextSecondaryMouseUp = NO;
         return nil;
     }];
+}
+
+static void setupClickHandling(NSStatusBarButton *button) {
+    captureAndDetachMenu();
+    registerSecondaryClickMonitorsOnce(button);
+}
+
+// Called from Rust immediately after [TrayIcon setMenu:] re-attaches a menu to
+// the status item (rebuild_tray_menu). Re-detaches the freshly attached menu so
+// left-click keeps reaching TaoTrayTarget (the popover/widget toggle) instead of
+// being intercepted by the system as a menu trigger. Without this, toggling the
+// widget or switching accounts would break left-click on the tray icon.
+__attribute__((used))
+__attribute__((visibility("default")))
+void resync_tray_menu(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            @try {
+                NSStatusBarButton *button = findOurButton();
+                if (!button) return;
+                captureAndDetachMenu();
+                registerSecondaryClickMonitorsOnce(button);
+            } @catch (NSException *e) {
+                NSLog(@"[UsageWatch] Exception in resync_tray_menu: %@", e);
+            }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +373,204 @@ void set_styled_tray_title_with_icon(const TraySegment *segments, int count, con
 
             } @catch (NSException *e) {
                 NSLog(@"[UsageWatch] Exception in set_styled_tray_title_with_icon: %@", e);
+            }
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Stacked (two-row) styled tray rendering
+//
+// Draws the session line on top and the weekly line on the bottom, with the
+// provider icon vertically centered across both rows.
+//
+// Key fact (verified on-device): a status-button image does NOT get scaled to
+// the 22pt NSStatusBar thickness — the button grows to fit a taller image (up
+// to the ~37-39pt notched menu-bar window). So we size the image to the actual
+// usable menu-bar height and scale the font to match, giving two large, clearly
+// separated lines on notched Macs while degrading gracefully (~24pt → smaller
+// font) on standard displays.
+//
+// Tray text has NO descenders (S/W/digits/%/d/h/m/$/"now"), so we pack the two
+// lines by their baselines (capHeight) rather than full line boxes.
+// ---------------------------------------------------------------------------
+
+// Build a row's attributed string at a fixed point size (overriding any size
+// carried on the segments — the native layer owns stacked sizing). Keeps each
+// segment's color and bold flag.
+static NSAttributedString *buildRowAttrString(const TraySegment *segs, int count, CGFloat pointSize) {
+    NSMutableAttributedString *attrStr = [[NSMutableAttributedString alloc] init];
+    for (int i = 0; i < count; i++) {
+        NSString *text = [NSString stringWithUTF8String:segs[i].text];
+        if (!text) continue;
+
+        // Monospaced (tabular) digits: every digit is the same width, so the
+        // tray doesn't shift as countdowns tick and the two rows' numbers align.
+        NSFont *font = [NSFont monospacedDigitSystemFontOfSize:pointSize
+                                                        weight:(segs[i].is_bold ? NSFontWeightBold : NSFontWeightRegular)];
+        NSColor *color = [NSColor colorWithSRGBRed:segs[i].r
+                                             green:segs[i].g
+                                              blue:segs[i].b
+                                             alpha:segs[i].a];
+        [attrStr appendAttributedString:[[NSAttributedString alloc]
+            initWithString:text
+                attributes:@{NSFontAttributeName: font,
+                             NSForegroundColorAttributeName: color}]];
+    }
+    return [attrStr copy];
+}
+
+__attribute__((used))
+__attribute__((visibility("default")))
+void set_styled_tray_title_stacked(const TraySegment *topSegs, int topCount,
+                                   const TraySegment *botSegs, int botCount,
+                                   const uint8_t *icon_data, int icon_len) {
+    if (topCount == 0 && botCount == 0) return;
+
+    // Usable menu-bar height = the top inset between the full screen frame and
+    // its visibleFrame (the menu-bar band). ~39pt on a notched MacBook, ~24pt on
+    // a standard display. Falls back to the classic 22pt thickness.
+    CGFloat menuBarH = 22.0;
+    NSScreen *scr = [NSScreen mainScreen];
+    if (scr) {
+        CGFloat topInset = NSMaxY(scr.frame) - NSMaxY(scr.visibleFrame);
+        if (topInset > menuBarH) menuBarH = topInset;
+    }
+    CGFloat H = menuBarH - 2.0;          // small inset so glyphs don't touch edges
+    if (H < 22.0) H = 22.0;
+    if (H > 38.0) H = 38.0;
+
+    // Font scaled to the available height (two stacked lines).
+    CGFloat rowSize = round(H * 0.43);
+    if (rowSize < 9.0)  rowSize = 9.0;
+    if (rowSize > 16.0) rowSize = 16.0;
+
+    NSFont *rowFont = [NSFont monospacedDigitSystemFontOfSize:rowSize weight:NSFontWeightRegular];
+    CGFloat cap = rowFont.capHeight;
+    CGFloat asc = rowFont.ascender;
+
+    // Even vertical rhythm: top margin == inter-line gap == bottom margin, i.e.
+    // gap = (H - 2*cap)/3. Without this, a fixed small gap leaves the two lines
+    // clustered in the middle with big empty margins — which reads as squished.
+    CGFloat gap = (H - 2.0 * cap) / 3.0;
+    if (gap < 3.0) gap = 3.0;
+    if (gap > 6.0) gap = 6.0;
+
+    // Build rows + measure synchronously while the Rust-owned segment pointers
+    // are still valid (they are freed once this call returns; the async block
+    // below must NOT touch topSegs/botSegs).
+    NSAttributedString *topAttr = buildRowAttrString(topSegs, topCount, rowSize);
+    NSAttributedString *botAttr = buildRowAttrString(botSegs, botCount, rowSize);
+
+    // Column alignment: each row is "<label>\t<value columns>". A single left
+    // tab stop placed just past the widest label makes the value columns start
+    // at the same x on every row — so S vs W (different glyph widths) no longer
+    // shift the percent/timer columns out of alignment. Combined with the
+    // figure-space percent padding (Rust side), all three columns line up.
+    // Rows are "\t<label>\t<values>". The label sits BETWEEN the first and
+    // second tab; the values follow the last tab. Measure both columns.
+    CGFloat labelW = 0.0, afterW = 0.0;
+    for (NSAttributedString *row in @[topAttr, botAttr]) {
+        NSString *s = row.string;
+        NSRange first = [s rangeOfString:@"\t"];
+        if (first.location != NSNotFound) {
+            NSRange second = [s rangeOfString:@"\t"
+                                      options:0
+                                        range:NSMakeRange(first.location + 1, s.length - first.location - 1)];
+            if (second.location != NSNotFound) {
+                CGFloat lw = [[row attributedSubstringFromRange:NSMakeRange(first.location + 1, second.location - first.location - 1)] size].width;
+                if (lw > labelW) labelW = lw;
+            }
+            NSRange last = [s rangeOfString:@"\t" options:NSBackwardsSearch];
+            NSUInteger start = last.location + last.length;
+            CGFloat aw = [[row attributedSubstringFromRange:NSMakeRange(start, row.length - start)] size].width;
+            if (aw > afterW) afterW = aw;
+        } else {
+            CGFloat w = [row size].width;
+            if (w > afterW) afterW = w;
+        }
+    }
+    CGFloat colGap = round(rowSize * 0.30);
+    CGFloat valueX = labelW + colGap;
+
+    // Right-align the label to labelW (so S and W share a right edge and have a
+    // uniform gap to the values), then left-align the value columns at valueX.
+    NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+    ps.tabStops = @[[[NSTextTab alloc] initWithType:NSRightTabStopType location:labelW],
+                    [[NSTextTab alloc] initWithType:NSLeftTabStopType location:valueX]];
+    ps.defaultTabInterval = valueX;
+    NSMutableAttributedString *topM = [topAttr mutableCopy];
+    NSMutableAttributedString *botM = [botAttr mutableCopy];
+    if (topM.length) [topM addAttribute:NSParagraphStyleAttributeName value:ps range:NSMakeRange(0, topM.length)];
+    if (botM.length) [botM addAttribute:NSParagraphStyleAttributeName value:ps range:NSMakeRange(0, botM.length)];
+
+    CGFloat lineH = [topAttr size].height;   // natural line height (tabs don't change it)
+    CGFloat textW = valueX + afterW;          // robust width including the tab gap
+
+    NSImage *providerIcon = nil;
+    if (icon_data != NULL && icon_len > 0) {
+        NSData *data = [NSData dataWithBytes:icon_data length:(NSUInteger)icon_len];
+        providerIcon = [[NSImage alloc] initWithData:data];
+    }
+    NSImage *capturedIcon = providerIcon;
+
+    CGFloat iconPt  = (capturedIcon != nil) ? MIN(round(H * 0.5), 18.0) : 0.0;
+    CGFloat iconGap = (capturedIcon != nil) ? 3.0 : 0.0;
+    CGFloat hPad    = 3.0;
+    CGFloat totalW  = hPad + iconPt + iconGap + textW + hPad;
+    NSSize  imgSize = NSMakeSize(totalW, H);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            @try {
+                NSStatusBarButton *button = findOurButton();
+                if (!button) return;
+
+                setupClickHandling(button);
+                registerFrameObserverIfNeeded(button);
+
+                NSImage *image = [NSImage imageWithSize:imgSize
+                                               flipped:NO
+                                        drawingHandler:^BOOL(NSRect dstRect) {
+                    CGFloat drawH = dstRect.size.height;
+
+                    // Provider icon: vertically centered across both rows.
+                    if (capturedIcon) {
+                        CGFloat yOff = (drawH - iconPt) / 2.0;
+                        NSRect iconRect = NSMakeRect(hPad, yOff, iconPt, iconPt);
+                        [capturedIcon drawInRect:iconRect
+                                        fromRect:NSZeroRect
+                                       operation:NSCompositingOperationSourceOver
+                                        fraction:1.0
+                                  respectFlipped:YES
+                                           hints:nil];
+                    }
+
+                    CGFloat xText = hPad + iconPt + iconGap;
+                    // Center the two-line block (2*cap + gap) vertically. No
+                    // descenders, so packing by capHeight never clips the bottom.
+                    CGFloat blockInk = 2.0 * cap + gap;
+                    CGFloat bottomBaseline = (drawH - blockInk) / 2.0;
+                    CGFloat topBaseline = bottomBaseline + cap + gap;
+                    // drawInRect (flipped:NO) top-aligns the single line, so its
+                    // baseline lands at rect.y + lineHeight - ascender; solve for
+                    // rect.y. (Verified on-device — do NOT change to baseline-asc.)
+                    CGFloat topRectY = topBaseline - lineH + asc;
+                    CGFloat botRectY = bottomBaseline - lineH + asc;
+                    [topM drawInRect:NSMakeRect(xText, topRectY, textW, lineH)];
+                    [botM drawInRect:NSMakeRect(xText, botRectY, textW, lineH)];
+                    return YES;
+                }];
+                image.template = NO;
+
+                [button setImage:image];
+                [button setImagePosition:NSImageOnly];
+                [button setTitle:@""];
+
+                ensureSubviewCoverage(button);
+
+            } @catch (NSException *e) {
+                NSLog(@"[UsageWatch] Exception in set_styled_tray_title_stacked: %@", e);
             }
         }
     });
