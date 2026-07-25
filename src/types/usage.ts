@@ -27,6 +27,8 @@ export interface UsageData {
   /** Codename window introduced with MAX 20x — friendly name TBD. */
   iguana_necktie?: UsageWindow | null;
   extra_usage: ExtraUsage | null;
+  /** Forward-compatible Claude usage windows returned by the API. */
+  [usageWindowKey: string]: unknown;
 }
 
 export interface PeakHoursStatus {
@@ -92,6 +94,9 @@ export interface TrayFormat {
   show_session_timer: boolean;
   show_weekly_timer: boolean;
   show_extra_usage: boolean;
+  show_code_review_pct: boolean;
+  show_code_review_timer: boolean;
+  show_credits: boolean;
   separator: string;
   abbreviate_time: boolean;
   stacked: boolean;
@@ -207,7 +212,10 @@ export type TrayField =
   | "SonnetPct"
   | "OpusPct"
   | "DesignPct"
-  | "ExtraUsage";
+  | "ExtraUsage"
+  | "CodeReviewPct"
+  | "CodeReviewTimer"
+  | "Credits";
 
 export type TraySegmentKind =
   | { type: "ProviderData"; provider: Provider; field: TrayField }

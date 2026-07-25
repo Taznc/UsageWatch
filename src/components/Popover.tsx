@@ -10,7 +10,7 @@ import { useAlertEngine } from "../hooks/useAlertEngine";
 import { useApp } from "../context/AppContext";
 import { UsageBar } from "./UsageBar";
 import { formatCurrencyFromCents, formatTimestamp } from "../utils/format";
-import type { BillingInfo } from "../types/usage";
+import type { BillingInfo, UsageData, UsageWindow } from "../types/usage";
 import { CursorAccountLimitBadge, CursorIncludedRemainingBar } from "./CursorVisualExtras";
 
 export function Popover() {
@@ -117,6 +117,26 @@ export function Popover() {
       : cursorData?.on_demand_limit_type === "team"
         ? "team cap"
         : "personal cap";
+  const isUsageWindow = (value: unknown): value is UsageWindow =>
+    !!value && typeof value === "object" &&
+    ("utilization" in value || "resets_at" in value);
+  const knownClaudeUsageKeys = new Set([
+    "five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet",
+    "seven_day_oauth_apps", "seven_day_cowork", "seven_day_omelette",
+    "omelette_promotional", "tangelo", "iguana_necktie", "extra_usage",
+  ]);
+  const additionalClaudeWindows: { key: string; label: string; window: UsageWindow }[] = [];
+  if (usageData) {
+    for (const [key, value] of Object.entries(usageData as UsageData)) {
+      if (!knownClaudeUsageKeys.has(key) && isUsageWindow(value)) {
+        additionalClaudeWindows.push({
+          key,
+          label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+          window: value,
+        });
+      }
+    }
+  }
   const claudeHasUsageWindows = !!(
     usageData?.five_hour ||
     usageData?.seven_day ||
@@ -126,7 +146,8 @@ export function Popover() {
     usageData?.seven_day_cowork ||
     usageData?.seven_day_omelette ||
     usageData?.tangelo ||
-    usageData?.iguana_necktie
+    usageData?.iguana_necktie ||
+    additionalClaudeWindows.length
   );
 
   const formatDisabledReason = (reason: string | null | undefined): string | null => {
@@ -344,6 +365,15 @@ export function Popover() {
                             showRemaining={show_remaining}
                           />
                         )}
+                      {additionalClaudeWindows.map(({ key, label, window }) => (
+                        <UsageBar
+                          key={key}
+                          label={label}
+                          percentage={window.utilization}
+                          resetAt={window.resets_at}
+                          showRemaining={show_remaining}
+                        />
+                      ))}
                     </div>
                   )}
 
@@ -510,8 +540,7 @@ export function Popover() {
                       resetAt={codexData.weekly_window.resets_at}
                       showRemaining={show_remaining}
                     />
-                    {codexData.code_review_window &&
-                      codexData.code_review_window.used_percent > 0 && (
+                    {codexData.code_review_window && (
                         <UsageBar
                           label="Code Review"
                           percentage={codexData.code_review_window.used_percent}

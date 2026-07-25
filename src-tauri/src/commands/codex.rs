@@ -433,7 +433,20 @@ pub(crate) async fn fetch_codex_usage_with_fallbacks(
     manual_token: Option<String>,
 ) -> Result<CodexUsageData, String> {
     if let Some(cookie) = browser_cookie {
-        return fetch_codex_usage_with_cookie(&cookie).await;
+        // Browser sessions are convenient but shorter-lived and cannot be
+        // refreshed by this app. Do not let one stale saved cookie prevent the
+        // durable Codex CLI/app OAuth credentials from being used.
+        match fetch_codex_usage_with_cookie(&cookie).await {
+            Ok(data) => return Ok(data),
+            Err(cookie_error) => {
+                match fetch_codex_usage_internal(manual_token).await {
+                    Ok(data) => return Ok(data),
+                    Err(auth_error) => {
+                        return Err(format!("Browser session failed ({cookie_error}); CLI/app auth also failed ({auth_error})"));
+                    }
+                }
+            }
+        }
     }
 
     fetch_codex_usage_internal(manual_token).await

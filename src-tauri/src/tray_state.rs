@@ -161,6 +161,10 @@ pub struct TrayDisplayData {
     pub extra_usage_enabled: bool,
     pub extra_used: Option<f64>,
     pub extra_limit: Option<f64>,
+    pub code_review_pct: Option<f64>,
+    pub code_review_reset: Option<String>,
+    pub credits_balance: Option<String>,
+    pub credits_unlimited: bool,
 }
 
 impl TrayDisplayData {
@@ -180,6 +184,10 @@ impl TrayDisplayData {
                 .unwrap_or(false),
             extra_used: data.extra_usage.as_ref().and_then(|e| e.used_credits),
             extra_limit: data.extra_usage.as_ref().and_then(|e| e.monthly_limit),
+            code_review_pct: None,
+            code_review_reset: None,
+            credits_balance: None,
+            credits_unlimited: false,
         }
     }
 
@@ -195,6 +203,10 @@ impl TrayDisplayData {
             extra_usage_enabled: true,
             extra_used: Some(data.current_spend_cents),
             extra_limit: Some(data.limit_cents),
+            code_review_pct: None,
+            code_review_reset: None,
+            credits_balance: None,
+            credits_unlimited: false,
         }
     }
 
@@ -216,6 +228,10 @@ impl TrayDisplayData {
             extra_usage_enabled: false,
             extra_used: None,
             extra_limit: None,
+            code_review_pct: data.code_review_window.as_ref().map(|w| w.used_percent),
+            code_review_reset: data.code_review_window.as_ref().and_then(|w| w.resets_at.clone()),
+            credits_balance: data.credits.as_ref().and_then(|c| c.balance.clone()),
+            credits_unlimited: data.credits.as_ref().map(|c| c.unlimited).unwrap_or(false),
         }
     }
 }
@@ -375,6 +391,15 @@ fn resolve_field_plain(
                 }
             }
             None
+        }
+        TrayField::CodeReviewPct => dd.code_review_pct.map(|p| format!("CR {}%", p.round() as i32)),
+        TrayField::CodeReviewTimer => dd.code_review_reset.as_ref().and_then(|r| {
+            let cd = crate::tray_renderer::format_countdown_public(r, abbreviated);
+            if cd.is_empty() { None } else { Some(format!("CR {cd}")) }
+        }),
+        TrayField::Credits => {
+            if dd.credits_unlimited { Some("Credits ∞".to_string()) }
+            else { dd.credits_balance.as_ref().map(|balance| format!("${balance}")) }
         }
     }
 }
@@ -552,6 +577,26 @@ fn resolve_field_styled(
                 139, 92, 246, 255, 13.0, false,
             )])
         }
+        TrayField::CodeReviewPct => {
+            let pct = dd.code_review_pct?;
+            let (r, g, b, a) = label_color;
+            let (pr, pg, pb, pa) = pct_color(pct);
+            Some(vec![
+                StyledSegment::from_rgba_u8("CR ", r, g, b, a, 13.0, false),
+                StyledSegment::from_rgba_u8(&format!("{}%", pct.round() as i32), pr, pg, pb, pa, 13.0, false),
+            ])
+        }
+        TrayField::CodeReviewTimer => {
+            let reset = dd.code_review_reset.as_ref()?;
+            let cd = crate::tray_renderer::format_countdown_public(reset, abbreviated);
+            if cd.is_empty() { return None; }
+            let (r, g, b, a) = timer_color;
+            Some(vec![StyledSegment::from_rgba_u8(&cd, r, g, b, a, 13.0, false)])
+        }
+        TrayField::Credits => {
+            let value = if dd.credits_unlimited { "Credits ∞".to_string() } else { format!("${}", dd.credits_balance.as_ref()?) };
+            Some(vec![StyledSegment::from_rgba_u8(&value, 139, 92, 246, 255, 13.0, false)])
+        }
     }
 }
 
@@ -614,6 +659,19 @@ fn build_plain_title(data: &TrayDisplayData, format: &TrayFormat) -> String {
             ));
         }
     }
+    if format.show_code_review_pct {
+        if let Some(pct) = data.code_review_pct { parts.push(format!("CR {}%", pct.round() as i32)); }
+    }
+    if format.show_code_review_timer {
+        if let Some(reset) = &data.code_review_reset {
+            let cd = crate::tray_renderer::format_countdown_public(reset, format.abbreviate_time);
+            if !cd.is_empty() { parts.push(format!("CR {cd}")); }
+        }
+    }
+    if format.show_credits {
+        if data.credits_unlimited { parts.push("Credits ∞".to_string()); }
+        else if let Some(balance) = &data.credits_balance { parts.push(format!("${balance}")); }
+    }
     parts.join(&format.separator)
 }
 
@@ -664,6 +722,7 @@ fn build_stacked_rows(
         if format.show_sonnet_pct { digits(data.sonnet_pct) } else { 0 },
         if format.show_opus_pct { digits(data.opus_pct) } else { 0 },
         if format.show_design_pct { digits(data.design_pct) } else { 0 },
+        if format.show_code_review_pct { digits(data.code_review_pct) } else { 0 },
     ]
     .into_iter()
     .max()
@@ -734,6 +793,25 @@ fn build_stacked_rows(
     }
     if format.show_extra_usage {
         if let Some(segs) = resolve_field_styled(&TrayField::ExtraUsage, Some(data), label_color, timer_color, abbr) {
+            space(&mut bottom);
+            bottom.extend(segs);
+        }
+    }
+    if format.show_code_review_pct {
+        if let Some(mut segs) = resolve_field_styled(&TrayField::CodeReviewPct, Some(data), label_color, timer_color, abbr) {
+            pad_pct(&mut segs, pct_width);
+            space(&mut bottom);
+            bottom.extend(segs);
+        }
+    }
+    if format.show_code_review_timer {
+        if let Some(segs) = resolve_field_styled(&TrayField::CodeReviewTimer, Some(data), label_color, timer_color, abbr) {
+            space(&mut bottom);
+            bottom.extend(segs);
+        }
+    }
+    if format.show_credits {
+        if let Some(segs) = resolve_field_styled(&TrayField::Credits, Some(data), label_color, timer_color, abbr) {
             space(&mut bottom);
             bottom.extend(segs);
         }
@@ -943,6 +1021,34 @@ fn build_styled_segments(
                 ),
                 139, 92, 246, 255, 13.0, false,
             )]);
+        }
+    }
+
+    // Codex-only fields.
+    if format.show_code_review_pct {
+        if let Some(pct) = data.code_review_pct {
+            let (r, g, b, a) = label_color;
+            let (pr, pg, pb, pa) = pct_color(pct);
+            groups.push(vec![
+                StyledSegment::from_rgba_u8("CR ", r, g, b, a, 13.0, false),
+                StyledSegment::from_rgba_u8(&format!("{}%", pct.round() as i32), pr, pg, pb, pa, 13.0, false),
+            ]);
+        }
+    }
+    if format.show_code_review_timer {
+        if let Some(reset) = &data.code_review_reset {
+            let cd = tray_renderer::format_countdown_public(reset, format.abbreviate_time);
+            if !cd.is_empty() {
+                let (r, g, b, a) = timer_color;
+                groups.push(vec![StyledSegment::from_rgba_u8(&format!("CR {cd}"), r, g, b, a, 13.0, false)]);
+            }
+        }
+    }
+    if format.show_credits {
+        let value = if data.credits_unlimited { Some("Credits ∞".to_string()) }
+            else { data.credits_balance.as_ref().map(|balance| format!("${balance}")) };
+        if let Some(value) = value {
+            groups.push(vec![StyledSegment::from_rgba_u8(&value, 139, 92, 246, 255, 13.0, false)]);
         }
     }
 

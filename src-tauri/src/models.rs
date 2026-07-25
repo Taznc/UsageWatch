@@ -27,6 +27,12 @@ pub struct UsageData {
     pub iguana_necktie: Option<UsageWindow>,
     #[serde(default)]
     pub extra_usage: Option<ExtraUsage>,
+    /// Preserve newly introduced usage windows instead of silently discarding
+    /// them when Claude adds a limit. The API's window keys are not a stable
+    /// public contract, so the UI renders any additional value that has the
+    /// usual `{ utilization, resets_at }` shape.
+    #[serde(default, flatten)]
+    pub additional_windows: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl UsageData {
@@ -41,6 +47,7 @@ impl UsageData {
             || self.omelette_promotional.is_some()
             || self.tangelo.is_some()
             || self.iguana_necktie.is_some()
+            || self.additional_windows.values().any(is_usage_window_value)
     }
 
     pub fn needs_window_supplement(&self) -> bool {
@@ -58,6 +65,7 @@ impl UsageData {
     }
 
     pub fn fill_missing_from(&mut self, fallback: UsageData) {
+        let fallback_additional_windows = fallback.additional_windows.clone();
         fill_usage_window(&mut self.five_hour, fallback.five_hour);
         fill_usage_window(&mut self.seven_day, fallback.seven_day);
         fill_usage_window(&mut self.seven_day_opus, fallback.seven_day_opus);
@@ -74,13 +82,25 @@ impl UsageData {
         if self.extra_usage.is_none() {
             self.extra_usage = fallback.extra_usage;
         }
+        for (key, value) in fallback_additional_windows {
+            self.additional_windows.entry(key).or_insert(value);
+        }
     }
 
     pub fn normalize_aliases(&mut self) {
         if self.seven_day_omelette.is_none() {
             self.seven_day_omelette = self.omelette_promotional.clone();
         }
+        // Known aliases are rendered through their friendly names, so don't
+        // show them a second time as an "additional" window.
+        self.additional_windows.remove("omelette_promotional");
     }
+}
+
+fn is_usage_window_value(value: &serde_json::Value) -> bool {
+    value
+        .as_object()
+        .is_some_and(|object| object.contains_key("utilization") || object.contains_key("resets_at"))
 }
 
 fn usage_window_needs_supplement(window: &Option<UsageWindow>) -> bool {
@@ -188,6 +208,12 @@ pub struct TrayFormat {
     pub show_weekly_timer: bool,
     #[serde(default)]
     pub show_extra_usage: bool,
+    #[serde(default)]
+    pub show_code_review_pct: bool,
+    #[serde(default)]
+    pub show_code_review_timer: bool,
+    #[serde(default)]
+    pub show_credits: bool,
     #[serde(default = "default_separator")]
     pub separator: String,
     /// Compact countdowns ("22m", "1d3h", "2d") instead of verbose ("22 min",
@@ -223,6 +249,9 @@ impl Default for TrayFormat {
             show_session_timer: true,
             show_weekly_timer: false,
             show_extra_usage: false,
+            show_code_review_pct: false,
+            show_code_review_timer: false,
+            show_credits: false,
             separator: " | ".to_string(),
             abbreviate_time: false,
             stacked: false,
@@ -660,6 +689,9 @@ pub enum TrayField {
     OpusPct,
     DesignPct,
     ExtraUsage,
+    CodeReviewPct,
+    CodeReviewTimer,
+    Credits,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

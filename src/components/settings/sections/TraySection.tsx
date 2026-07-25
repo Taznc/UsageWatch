@@ -39,6 +39,9 @@ const TRAY_FIELD_OPTIONS: { value: TrayField; label: string; providerOnly?: Prov
   { value: "OpusPct",      label: "Opus %",    providerOnly: "Claude" },
   { value: "DesignPct",    label: "Design %",  providerOnly: "Claude" },
   { value: "ExtraUsage",   label: "Extra usage spend" },
+  { value: "CodeReviewPct", label: "Code review %", providerOnly: "Codex" },
+  { value: "CodeReviewTimer", label: "Code review countdown", providerOnly: "Codex" },
+  { value: "Credits", label: "Credits", providerOnly: "Codex" },
 ];
 
 function isStaticOrMulti(mode: TrayConfig["mode"]): boolean {
@@ -77,6 +80,9 @@ const DEFAULT_FORMAT: TrayFormat = {
   show_session_timer: true,
   show_weekly_timer: false,
   show_extra_usage: false,
+  show_code_review_pct: false,
+  show_code_review_timer: false,
+  show_credits: false,
   separator: " | ",
   abbreviate_time: false,
   stacked: false,
