@@ -427,6 +427,12 @@ void set_styled_tray_title_stacked(const TraySegment *topSegs, int topCount,
                                    const uint8_t *icon_data, int icon_len) {
     if (topCount == 0 && botCount == 0) return;
 
+    // A provider may expose only one limit (for example, Codex accounts with
+    // just a weekly window).  Do not reserve a phantom second line in that
+    // case: it makes the real value look pinned to the top or bottom of the
+    // menu bar instead of sitting naturally beside its icon.
+    BOOL singleRow = topCount == 0 || botCount == 0;
+
     // Usable menu-bar height = the top inset between the full screen frame and
     // its visibleFrame (the menu-bar band). ~39pt on a notched MacBook, ~24pt on
     // a standard display. Falls back to the classic 22pt thickness.
@@ -504,7 +510,8 @@ void set_styled_tray_title_stacked(const TraySegment *topSegs, int topCount,
     if (topM.length) [topM addAttribute:NSParagraphStyleAttributeName value:ps range:NSMakeRange(0, topM.length)];
     if (botM.length) [botM addAttribute:NSParagraphStyleAttributeName value:ps range:NSMakeRange(0, botM.length)];
 
-    CGFloat lineH = [topAttr size].height;   // natural line height (tabs don't change it)
+    NSAttributedString *activeAttr = topCount > 0 ? topAttr : botAttr;
+    CGFloat lineH = [activeAttr size].height; // natural line height (tabs don't change it)
     CGFloat textW = valueX + afterW;          // robust width including the tab gap
 
     NSImage *providerIcon = nil;
@@ -547,18 +554,26 @@ void set_styled_tray_title_stacked(const TraySegment *topSegs, int topCount,
                     }
 
                     CGFloat xText = hPad + iconPt + iconGap;
-                    // Center the two-line block (2*cap + gap) vertically. No
-                    // descenders, so packing by capHeight never clips the bottom.
-                    CGFloat blockInk = 2.0 * cap + gap;
-                    CGFloat bottomBaseline = (drawH - blockInk) / 2.0;
-                    CGFloat topBaseline = bottomBaseline + cap + gap;
-                    // drawInRect (flipped:NO) top-aligns the single line, so its
-                    // baseline lands at rect.y + lineHeight - ascender; solve for
-                    // rect.y. (Verified on-device — do NOT change to baseline-asc.)
-                    CGFloat topRectY = topBaseline - lineH + asc;
-                    CGFloat botRectY = bottomBaseline - lineH + asc;
-                    [topM drawInRect:NSMakeRect(xText, topRectY, textW, lineH)];
-                    [botM drawInRect:NSMakeRect(xText, botRectY, textW, lineH)];
+                    if (singleRow) {
+                        // A one-line tray item should be centered vertically;
+                        // both the icon and text then share the same visual axis.
+                        CGFloat rowRectY = (drawH - lineH) / 2.0;
+                        NSMutableAttributedString *row = topCount > 0 ? topM : botM;
+                        [row drawInRect:NSMakeRect(xText, rowRectY, textW, lineH)];
+                    } else {
+                        // Center the two-line block (2*cap + gap) vertically. No
+                        // descenders, so packing by capHeight never clips the bottom.
+                        CGFloat blockInk = 2.0 * cap + gap;
+                        CGFloat bottomBaseline = (drawH - blockInk) / 2.0;
+                        CGFloat topBaseline = bottomBaseline + cap + gap;
+                        // drawInRect (flipped:NO) top-aligns the single line, so its
+                        // baseline lands at rect.y + lineHeight - ascender; solve for
+                        // rect.y. (Verified on-device — do NOT change to baseline-asc.)
+                        CGFloat topRectY = topBaseline - lineH + asc;
+                        CGFloat botRectY = bottomBaseline - lineH + asc;
+                        [topM drawInRect:NSMakeRect(xText, topRectY, textW, lineH)];
+                        [botM drawInRect:NSMakeRect(xText, botRectY, textW, lineH)];
+                    }
                     return YES;
                 }];
                 image.template = NO;
