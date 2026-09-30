@@ -37,3 +37,6 @@ playwright-widget.png
 
 # MCP server build output
 mcp-server/dist
+
+# Agent worktrees
+.worktrees/
